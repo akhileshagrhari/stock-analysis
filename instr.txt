@@ -1,0 +1,7 @@
+Extract the financial statements from this annual report.
+
+Company: Reliance Industries Limited
+NSE symbol: RELIANCE
+Expected fiscal year: 2026 (Indian fiscal years end 31 March, so FY2026 normally means the year ended 31 March 2026)
+
+Report the figures for the year ended in that fiscal year, not the prior-year comparative. If the document turns out to cover a different year, extract the year it actually covers and say so in extraction_notes.

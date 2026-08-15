@@ -1,0 +1,59 @@
+[project]
+name = "stockanalysis"
+version = "0.1.0"
+description = "Factor-based equity research system for Indian markets (NSE/BSE)"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.1.0",
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "yfinance>=0.2.50",
+    "requests>=2.32.0",
+    "pyarrow>=17.0.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "typer>=0.15.0",
+    "rich>=13.9.0",
+    "python-dateutil>=2.9.0",
+    "anthropic>=0.40.0",
+    "pymupdf>=1.24.0",
+    "nse>=1.1.0",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "streamlit>=1.36.0",
+]
+
+[project.optional-dependencies]
+# FinBERT. ~2GB installed and nothing else in the system uses torch, so news
+# ingest and ticker resolution work without it and only `score-news` needs it.
+sentiment = [
+    "transformers>=4.44",
+    "torch>=2.4",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+
+[project.scripts]
+stockanalysis = "stockanalysis.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stockanalysis"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

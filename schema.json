@@ -1,0 +1,404 @@
+{
+  "description": "Structured financials for one company-year, as printed in the report.",
+  "properties": {
+    "fiscal_year_label": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Fiscal year exactly as printed, e.g. '2023-24' or 'FY2024'.",
+      "title": "Fiscal Year Label"
+    },
+    "period_end_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Closing date of the reporting period, usually 31 March.",
+      "title": "Period End Date"
+    },
+    "basis": {
+      "anyOf": [
+        {
+          "enum": [
+            "CONSOLIDATED",
+            "STANDALONE"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Which set of statements these figures come from. Use CONSOLIDATED whenever the report contains consolidated statements.",
+      "title": "Basis"
+    },
+    "reporting_unit": {
+      "anyOf": [
+        {
+          "enum": [
+            "ABSOLUTE",
+            "THOUSAND",
+            "LAKH",
+            "MILLION",
+            "CRORE",
+            "BILLION"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The unit the statements are denominated in, from the header line such as '(Rs. in crore)' or '(Amount in Rs. lakhs)'. Applies to all monetary fields, never to per-share figures.",
+      "title": "Reporting Unit"
+    },
+    "currency": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "ISO currency code, normally INR.",
+      "title": "Currency"
+    },
+    "revenue": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Revenue from Operations. NOT Total Income \u2014 Total Income adds other income and is reported separately below.",
+      "title": "Revenue"
+    },
+    "other_income": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Other Income"
+    },
+    "total_income": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Total Income (revenue from operations plus other income).",
+      "title": "Total Income"
+    },
+    "total_expenses": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Total Expenses line.",
+      "title": "Total Expenses"
+    },
+    "ebitda": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Only if the report states EBITDA or 'Operating Profit' explicitly. Leave null rather than deriving it.",
+      "title": "Ebitda"
+    },
+    "depreciation": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Depreciation and amortisation expense.",
+      "title": "Depreciation"
+    },
+    "interest_expense": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Finance costs.",
+      "title": "Interest Expense"
+    },
+    "profit_before_tax": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Profit Before Tax"
+    },
+    "tax_expense": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Total tax expense: current plus deferred.",
+      "title": "Tax Expense"
+    },
+    "pat": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Profit After Tax for the year. Where the report splits profit attributable to owners versus non-controlling interests, use profit attributable to owners of the parent.",
+      "title": "Pat"
+    },
+    "eps_basic": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Basic earnings per share, in rupees per share.",
+      "title": "Eps Basic"
+    },
+    "eps_diluted": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Diluted EPS, rupees per share.",
+      "title": "Eps Diluted"
+    },
+    "total_assets": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Total Assets"
+    },
+    "total_equity": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Total equity, including non-controlling interests.",
+      "title": "Total Equity"
+    },
+    "total_liabilities": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Total liabilities: current plus non-current.",
+      "title": "Total Liabilities"
+    },
+    "total_debt": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Interest-bearing borrowings, current plus non-current. Excludes trade payables and other non-debt liabilities.",
+      "title": "Total Debt"
+    },
+    "cash": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Cash and cash equivalents, plus bank balances treated as such.",
+      "title": "Cash"
+    },
+    "contingent_liabilities": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Total contingent liabilities from the notes.",
+      "title": "Contingent Liabilities"
+    },
+    "ocf": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Net cash generated from operating activities.",
+      "title": "Ocf"
+    },
+    "capex": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Purchase of property, plant and equipment plus intangibles, as a POSITIVE magnitude even though the cash flow statement shows it as an outflow in brackets.",
+      "title": "Capex"
+    },
+    "fcf": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Only if the report states free cash flow. Otherwise null.",
+      "title": "Fcf"
+    },
+    "auditor_opinion": {
+      "anyOf": [
+        {
+          "enum": [
+            "UNMODIFIED",
+            "QUALIFIED",
+            "ADVERSE",
+            "DISCLAIMER",
+            "NOT_STATED"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Opinion type in the Independent Auditor's Report.",
+      "title": "Auditor Opinion"
+    },
+    "auditor_remarks": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Verbatim basis for any qualification, adverse opinion or disclaimer. Null when the opinion is unmodified.",
+      "title": "Auditor Remarks"
+    },
+    "extraction_notes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Anything ambiguous: figures restated, a line item found under an unusual name, standalone used because consolidated was absent, a value that could not be located. Null if the extraction was clean.",
+      "title": "Extraction Notes"
+    }
+  },
+  "title": "AnnualReportExtraction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fiscal_year_label",
+    "period_end_date",
+    "basis",
+    "reporting_unit",
+    "currency",
+    "revenue",
+    "other_income",
+    "total_income",
+    "total_expenses",
+    "ebitda",
+    "depreciation",
+    "interest_expense",
+    "profit_before_tax",
+    "tax_expense",
+    "pat",
+    "eps_basic",
+    "eps_diluted",
+    "total_assets",
+    "total_equity",
+    "total_liabilities",
+    "total_debt",
+    "cash",
+    "contingent_liabilities",
+    "ocf",
+    "capex",
+    "fcf",
+    "auditor_opinion",
+    "auditor_remarks",
+    "extraction_notes"
+  ]
+}
