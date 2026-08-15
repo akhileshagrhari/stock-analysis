@@ -166,7 +166,13 @@ class PanelCache:
         self._panel: Panel | None = None
 
     def get(self, db: Database, isins: list[str], as_of: dt.date) -> Panel:
-        key = (id(db), as_of, tuple(isins))
+        # Keyed on the connection *object*, not `id(db)`. An id is only unique
+        # among live objects: close one database, open another, and CPython
+        # will hand back the same address — at which point a second connection
+        # asking for the same universe on the same date silently receives the
+        # first one's panel. Holding the reference is what makes the key mean
+        # what it says, and one slot means one connection kept alive.
+        key = (db, as_of, tuple(isins))
         if key != self._key or self._panel is None:
             self._panel = load_panel(db, isins, as_of)
             self._key = key

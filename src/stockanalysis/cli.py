@@ -1119,6 +1119,346 @@ def status() -> None:
             console.print(f"  [yellow]{pending_review}[/yellow] extractions awaiting review")
 
 
+@app.command()
+def stock(
+    symbol: str = typer.Argument(..., help="NSE symbol or ISIN"),
+    as_of: str = typer.Option(None, "--as-of", help="Decision date (default: today)"),
+    index_name: str = typer.Option(settings.default_index, "--index"),
+    min_coverage: float = typer.Option(0.5, "--min-coverage"),
+    fill: bool = typer.Option(
+        False, "--fill", help="Run the steps that close the gaps, then re-score"
+    ),
+    paid: bool = typer.Option(
+        False, "--paid", help="With --fill, also run steps that spend money"
+    ),
+) -> None:
+    """What data we hold for one company, what is missing, and what fills it.
+
+    `status` counts rows across the whole universe; this is the per-company
+    view — which factors are computable, which are blocked and on what, and
+    whether a scoring run today would produce a signal at all.
+    """
+    from stockanalysis.factors.composite import ScoringConfig
+    from stockanalysis.serve import readiness as rd
+
+    date = dt.date.fromisoformat(as_of) if as_of else dt.date.today()
+    cfg = ScoringConfig(min_coverage=min_coverage)
+
+    with open_db(read_only=not fill) as db:
+        isin = rd.resolve(db, symbol)
+        if isin is None:
+            console.print(
+                f"[red]{symbol.upper()} is not in `instruments`.[/red] "
+                f"Run `seed-universe` first, or check the NSE symbol."
+            )
+            raise typer.Exit(1)
+
+        report = rd.readiness(db, isin, date, index_name=index_name, config=cfg)
+        _print_readiness(report)
+
+        if not fill:
+            return
+
+        if not report.gaps:
+            console.print("\n[green]No gaps to fill.[/green] Re-scoring anyway.")
+        steps = _fill_steps(report, paid)
+        console.print(
+            f"\n[bold]Filling gaps[/bold] — steps: {', '.join(steps)}\n"
+        )
+        _run_fill(db, report.symbol or isin, steps, index_name, date, min_coverage)
+
+        console.print("\n[bold]After the run[/bold]")
+        _print_readiness(
+            rd.readiness(db, isin, date, index_name=index_name, config=cfg)
+        )
+
+
+def _fill_steps(report, paid: bool) -> list[str]:
+    """Gap-closing steps plus `score`, with paid steps dropped unless asked for.
+
+    Scoring is always appended: the point of filling a gap is to get a signal
+    out of it, and a run that ingests without re-scoring leaves the stored
+    signal describing the data as it was before.
+    """
+    from stockanalysis.run.steps import PAID, STEPS_BY_KEY
+
+    steps = list(report.next_steps())
+    if not paid:
+        dropped = [k for k in steps if STEPS_BY_KEY[k].cost == PAID]
+        steps = [k for k in steps if k not in dropped]
+        if dropped:
+            console.print(
+                f"\n[yellow]Skipping paid step(s):[/yellow] {', '.join(dropped)}. "
+                f"Re-run with --paid to include them."
+            )
+    return [*steps, "score"]
+
+
+def _run_fill(
+    db,
+    symbol: str,
+    steps: list[str],
+    index_name: str,
+    as_of: dt.date,
+    min_coverage: float,
+) -> None:
+    from stockanalysis.run.runner import run_now
+    from stockanalysis.run.steps import RunOptions, company_plan
+
+    plan = company_plan(
+        symbol,
+        steps,
+        RunOptions(index_name=index_name, as_of=as_of, min_coverage=min_coverage),
+    )
+    colours = {"warn": "yellow", "error": "red"}
+
+    def show(event) -> None:
+        colour = colours.get(event.level)
+        text = f"  {event.message}" if event.step else event.message
+        console.print(f"[{colour}]{text}[/{colour}]" if colour else text)
+
+    job = run_now(plan, db=db, on_event=show)
+    if job.state.value == "failed":
+        console.print(f"[red]{job.error}[/red]")
+
+
+HAVE_MARK = {"PRESENT": "[green]have[/green]",
+             "PARTIAL": "[yellow]partial[/yellow]",
+             "ABSENT": "[red]missing[/red]"}
+
+FLAG_MARK = {"TRIPPED": "[red]TRIPPED[/red]",
+             "CLEAR": "[green]clear[/green]",
+             "UNKNOWN": "[yellow]unknown[/yellow]"}
+
+
+def _print_readiness(report) -> None:
+    from stockanalysis.serve.readiness import DATASETS_BY_KEY
+
+    membership = (
+        f"{report.index_name} member"
+        if report.in_universe
+        else f"[yellow]not in {report.index_name}[/yellow] on this date"
+    )
+    console.print(
+        f"\n[bold]{report.name}[/bold] ({report.symbol or '—'})  {report.isin}\n"
+        f"{report.sector or 'unclassified'} · {membership} · "
+        f"decision date {report.as_of}"
+    )
+
+    table = Table(title="Data we hold")
+    table.add_column("Source")
+    table.add_column("")
+    table.add_column("What we hold")
+    table.add_column("What is missing")
+    table.add_column("Blocks", justify="right")
+    for source in report.sources:
+        table.add_row(
+            source.label,
+            HAVE_MARK.get(source.have.value, source.have.value),
+            source.detail,
+            source.gap or "-",
+            str(len(source.blocks)) if source.blocks else "-",
+        )
+    console.print(table)
+
+    verdict = (
+        "[green]enough to score[/green]"
+        if report.scorable
+        else f"[yellow]below the {report.min_coverage:.0%} floor — "
+             f"a run today would leave this company unscored[/yellow]"
+    )
+    console.print(f"\nModel coverage [bold]{report.coverage:.0%}[/bold] — {verdict}")
+
+    families = Table(title="Coverage by family")
+    families.add_column("Family")
+    families.add_column("Weight", justify="right")
+    families.add_column("Factors", justify="right")
+    families.add_column("Measured", justify="right")
+    for fam in report.families:
+        colour = "green" if fam.covered >= 0.999 else (
+            "yellow" if fam.covered > 0 else "red"
+        )
+        families.add_row(
+            fam.family,
+            f"{fam.weight:.0%}",
+            f"{fam.measured}/{fam.total}",
+            f"[{colour}]{fam.covered:.0%}[/{colour}]",
+        )
+    console.print(families)
+
+    blocked = [f for f in report.factors if not f.computable]
+    if blocked:
+        missing = Table(title=f"Not computable ({len(blocked)} factors)")
+        missing.add_column("Factor")
+        missing.add_column("Family")
+        missing.add_column("Weight", justify="right")
+        missing.add_column("Why")
+        for f in sorted(blocked, key=lambda x: -x.weight):
+            missing.add_row(f.name, f.family, f"{f.weight:.1%}", f.reason)
+        console.print(missing)
+
+    flags = Table(title="Red flags")
+    flags.add_column("Flag")
+    flags.add_column("")
+    flags.add_column("Needs")
+    for flag in report.flags:
+        needs = "-"
+        if not flag.reachable:
+            needs = "no source ingests this — cannot be cleared"
+        elif flag.blocked_by:
+            needs = ", ".join(
+                DATASETS_BY_KEY[k].label.lower() for k in flag.blocked_by
+            )
+        flags.add_row(flag.name, FLAG_MARK.get(flag.state, flag.state), needs)
+    console.print(flags)
+
+    if report.stored_as_of is None:
+        console.print("\n[yellow]No signal has ever been stored[/yellow] for this company.")
+    else:
+        score = (
+            f"{report.stored_score:.1f}/100"
+            if report.stored_score is not None
+            else "unscored"
+        )
+        staleness = (
+            f" [yellow](computed {report.stored_as_of}, "
+            f"{(report.as_of - report.stored_as_of).days} days before the "
+            f"decision date)[/yellow]"
+            if report.stale_signal
+            else ""
+        )
+        console.print(
+            f"\nLast stored signal: [bold]{report.stored_signal or 'none'}[/bold] "
+            f"{score} · {report.stored_version or 'unversioned'}{staleness}"
+        )
+
+    steps = report.next_steps()
+    if steps:
+        console.print(
+            f"\n[bold]Next:[/bold] stockanalysis stock {report.symbol} --fill\n"
+            f"  equivalently: stockanalysis update {report.symbol} "
+            f"--steps {','.join([*steps, 'score'])}"
+        )
+    else:
+        console.print(
+            f"\n[green]Every source is complete.[/green] Re-score with "
+            f"`stockanalysis update {report.symbol} --steps score`."
+        )
+
+
+# ======================================================================
+# Pipeline runs — the same steps the dashboard's Run page drives
+# ======================================================================
+
+
+@app.command("update")
+def update_cmd(
+    symbol: str = typer.Argument(
+        None, help="NSE symbol or ISIN. Omit to update the whole universe."
+    ),
+    steps: str = typer.Option(
+        None,
+        "--steps",
+        help="Comma-separated step keys. Default: every step that does not "
+             "cost money. `--steps list` prints them.",
+    ),
+    index_name: str = typer.Option(settings.default_index, "--index"),
+    as_of: str = typer.Option(None, "--as-of", help="Decision date for scoring"),
+    extraction_limit: int = typer.Option(3, "--extract-limit"),
+    min_coverage: float = typer.Option(0.5, "--min-coverage"),
+) -> None:
+    """Run the ingest → extract → score pipeline as one job.
+
+    The headless form of the dashboard's Run page: same steps, same order, same
+    reporting. Useful on its own, and it is what makes the pipeline testable
+    without a browser.
+    """
+    from stockanalysis.run.events import StepState
+    from stockanalysis.run.runner import run_now
+    from stockanalysis.run.steps import (
+        PAID,
+        RunOptions,
+        available_steps,
+        company_plan,
+        universe_plan,
+    )
+
+    scope = "company" if symbol else "universe"
+
+    if steps == "list":
+        table = Table(title=f"Steps for a {scope} run")
+        table.add_column("Key")
+        table.add_column("Step")
+        table.add_column("Cost")
+        table.add_column("Default")
+        for spec in available_steps(scope):
+            table.add_row(
+                spec.key,
+                spec.label,
+                "[red]money[/red]" if spec.cost == PAID else spec.cost,
+                "on" if spec.default_on else "[dim]off[/dim]",
+            )
+        console.print(table)
+        return
+
+    keys = [s.strip() for s in steps.split(",") if s.strip()] if steps else None
+    options = RunOptions(
+        index_name=index_name,
+        extraction_limit=extraction_limit,
+        min_coverage=min_coverage,
+        as_of=dt.date.fromisoformat(as_of) if as_of else None,
+    )
+
+    try:
+        plan = (
+            company_plan(symbol, keys, options)
+            if symbol
+            else universe_plan(keys, options)
+        )
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+
+    colours = {"warn": "yellow", "error": "red"}
+
+    def show(event) -> None:
+        colour = colours.get(event.level)
+        text = f"  {event.message}" if event.step else event.message
+        console.print(f"[{colour}]{text}[/{colour}]" if colour else text)
+
+    settings.ensure_dirs()
+    with open_db() as db:
+        job = run_now(plan, db=db, on_event=show)
+
+    table = Table(title=job.title)
+    table.add_column("Step")
+    table.add_column("Result")
+    table.add_column("Took", justify="right")
+    table.add_column("Detail")
+    marks = {
+        StepState.DONE: "[green]done[/green]",
+        StepState.SKIPPED: "[yellow]skipped[/yellow]",
+        StepState.FAILED: "[red]FAILED[/red]",
+        StepState.CANCELLED: "[yellow]cancelled[/yellow]",
+        StepState.PENDING: "[dim]not reached[/dim]",
+    }
+    for record in job.steps:
+        detail = record.error or record.message or ", ".join(
+            f"{k} {v}" for k, v in record.summary.items()
+        )
+        table.add_row(
+            record.label,
+            marks.get(record.state, record.state.value),
+            f"{record.duration_seconds:.0f}s" if record.duration_seconds else "-",
+            detail[:70],
+        )
+    console.print(table)
+
+    if job.state.value == "failed":
+        console.print(f"[red]{job.error}[/red]")
+        raise typer.Exit(1)
+
+
 @app.command("serve-api")
 def serve_api(
     # Loopback by default. The API is an unauthenticated read surface over the

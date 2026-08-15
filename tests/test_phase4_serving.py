@@ -1000,6 +1000,36 @@ class TestDashboardHelpers:
         assert format_driver(("quality", -0.31)) == "Quality ↓"
         assert format_driver(None) == "—"
 
+    def test_readiness_frames_render(self, scored_db):
+        from stockanalysis.factors import redflags
+        from stockanalysis.serve import readiness as rd
+        from stockanalysis.serve.dashboard import (
+            blocked_frame,
+            flags_frame,
+            sources_frame,
+        )
+
+        isin = queries.list_instruments(scored_db)[0].isin
+        report = rd.readiness(scored_db, isin, AS_OF)
+
+        sources = sources_frame(report)
+        assert len(sources) == len(rd.DATASETS)
+        assert "What is missing" in sources.columns
+
+        flags = flags_frame(report)
+        assert len(flags) == len(redflags.DEFINITIONS)
+        # An unreachable flag must never be shown as something a run would fix.
+        unreachable = flags[flags["Flag"].isin(redflags.unreachable_flags())]
+        assert (unreachable["Needs"] == "no source ingests this — it cannot be "
+                "cleared").all()
+
+        blocked = blocked_frame(report)
+        assert len(blocked) == sum(1 for f in report.factors if not f.computable)
+        if len(blocked) > 1:
+            # Heaviest first — the order to close the gaps in.
+            weights = [float(w.rstrip("%")) for w in blocked["Weight"]]
+            assert weights == sorted(weights, reverse=True)
+
     def test_signals_frame_shows_the_driver(self, scored_db):
         from stockanalysis.serve.dashboard import signals_frame
 
@@ -1102,6 +1132,39 @@ class TestDashboardPages:
         assert caption is not None, "no scoring-window caption on the news section"
         # The fixture's articles all sit 1-3 days before the scoring date.
         assert "3 of these 3 articles" in caption
+
+    def test_instrument_page_shows_the_data_inventory(self, scored_db_path):
+        """The gap report renders alongside the rating, not instead of it."""
+        app = self._run("Instrument")
+        labels = {metric.label for metric in app.metric}
+        assert {"Model coverage", "Scorable today", "Sources with gaps"} <= labels
+
+        text = " ".join(m.value for m in app.markdown)
+        assert "Fill the gaps and re-evaluate" in text
+
+    def test_data_tab_survives_a_company_with_no_signal(self, scored_db_path):
+        """The failure this tab exists for.
+
+        `show_instrument` used to return early when `latest_signal` was None, so
+        the one screen that could say *why* a company is unrated went blank in
+        precisely that case. Deleting every signal reproduces it.
+        """
+        from streamlit.testing.v1 import AppTest
+
+        from stockanalysis.serve import dashboard
+
+        db = Database(scored_db_path)
+        try:
+            db.conn.execute("DELETE FROM signals")
+        finally:
+            db.close()
+
+        app = AppTest.from_file(dashboard.__file__, default_timeout=120).run()
+        app.sidebar.radio[0].set_value("Instrument").run()
+
+        assert not app.exception
+        assert {"Model coverage", "Factors measured"} <= {m.label for m in app.metric}
+        assert any("No signal stored" in info.value for info in app.info)
 
     def test_missing_database_stops_with_a_message(self, tmp_path, monkeypatch):
         """The old version raised FileNotFoundError and showed a traceback."""

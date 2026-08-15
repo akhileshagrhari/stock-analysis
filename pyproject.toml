@@ -20,7 +20,9 @@ dependencies = [
     "nse>=1.1.0",
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
-    "streamlit>=1.36.0",
+    # 1.49 for the `width=` sizing API, 1.37 for `st.rerun(scope=...)` and
+    # `st.fragment(run_every=...)` — the run console redraws through both.
+    "streamlit>=1.49.0",
 ]
 
 [project.optional-dependencies]

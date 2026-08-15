@@ -25,6 +25,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import pandas as pd
@@ -156,9 +157,16 @@ def promoter_holding_trend(db: Database, isin: str, as_of: dt.date) -> list[floa
 
 
 def ingest_shareholding(
-    db: Database, isins: list[str] | None = None, delay: float | None = None
+    db: Database,
+    isins: list[str] | None = None,
+    delay: float | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> int:
-    """Fetch and persist quarterly shareholding for the given instruments."""
+    """Fetch and persist quarterly shareholding for the given instruments.
+
+    `progress` is called as `progress(index, total, symbol)` before each
+    request, 1-based — see `ingest.prices.ingest_prices`.
+    """
     from nse import NSE
 
     delay = delay if delay is not None else settings.request_delay_seconds
@@ -180,6 +188,8 @@ def ingest_shareholding(
     nse = NSE(download_folder=settings.data_dir / "cache")
     try:
         for i, row in enumerate(df.itertuples(index=False), start=1):
+            if progress:
+                progress(i, len(df), row.nse_symbol)
             try:
                 time.sleep(delay)
                 raw = nse.shareholding(row.nse_symbol)

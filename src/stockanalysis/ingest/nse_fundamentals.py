@@ -19,6 +19,7 @@ import datetime as dt
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import pandas as pd
@@ -213,9 +214,16 @@ def _resolve_duplicate_periods(
 
 
 def ingest_quarterly(
-    db: Database, isins: list[str] | None = None, delay: float | None = None
+    db: Database,
+    isins: list[str] | None = None,
+    delay: float | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> int:
-    """Fetch and persist quarterly results for the given instruments."""
+    """Fetch and persist quarterly results for the given instruments.
+
+    `progress` is called as `progress(index, total, symbol)` before each
+    request, 1-based — see `ingest.prices.ingest_prices`.
+    """
     from nse import NSE
 
     delay = delay if delay is not None else settings.request_delay_seconds
@@ -237,6 +245,8 @@ def ingest_quarterly(
     nse = NSE(download_folder=settings.data_dir / "cache")
     try:
         for i, row in enumerate(df.itertuples(index=False), start=1):
+            if progress:
+                progress(i, len(df), row.nse_symbol)
             try:
                 time.sleep(delay)
                 raw = nse.results_comparison(row.nse_symbol)

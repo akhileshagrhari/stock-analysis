@@ -38,6 +38,7 @@ import re
 import shutil
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -272,11 +273,19 @@ def fetch_annual_reports(
     years: int | None = None,
     provider: FilingProvider | None = None,
     filings_dir: Path | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
+    on_document: Callable[[dict], None] | None = None,
 ) -> int:
     """Download annual reports and register them in `filings`.
 
     Returns the number of filings registered. Already-downloaded reports are
     re-registered but not re-fetched.
+
+    `progress(index, total, symbol)` fires before each company is listed.
+    `on_document(row)` fires once per registered PDF with the row as written,
+    which is what a caller needs to show *which* report arrived — a company
+    with three years on file and one that yielded nothing are otherwise
+    indistinguishable from the count alone.
     """
     years = years or settings.filing_years
     provider = provider or NseFilingProvider()
@@ -297,6 +306,8 @@ def fetch_annual_reports(
 
     registered = 0
     for i, row in enumerate(df.itertuples(index=False), start=1):
+        if progress:
+            progress(i, len(df), row.nse_symbol)
         try:
             refs = provider.list_annual_reports(row.nse_symbol, row.isin)
         except Exception as e:  # noqa: BLE001 - one bad symbol must not end the crawl
@@ -312,29 +323,24 @@ def fetch_annual_reports(
                 continue
 
             page_count = _page_count(path)
-            db.upsert_df(
-                "filings",
-                pd.DataFrame(
-                    [
-                        {
-                            "filing_id": ref.filing_id,
-                            "isin": ref.isin,
-                            "doc_type": "ANNUAL_REPORT",
-                            "fiscal_year": ref.fiscal_year,
-                            "period_end": ref.period_end,
-                            "broadcast_date": ref.broadcast_date,
-                            "broadcast_date_source": ref.broadcast_date_source,
-                            "source_url": ref.source_url,
-                            "local_path": str(path),
-                            "sha256": _sha256(path),
-                            "page_count": page_count,
-                            "bytes": path.stat().st_size,
-                        }
-                    ]
-                ),
-                ["filing_id"],
-            )
+            record = {
+                "filing_id": ref.filing_id,
+                "isin": ref.isin,
+                "doc_type": "ANNUAL_REPORT",
+                "fiscal_year": ref.fiscal_year,
+                "period_end": ref.period_end,
+                "broadcast_date": ref.broadcast_date,
+                "broadcast_date_source": ref.broadcast_date_source,
+                "source_url": ref.source_url,
+                "local_path": str(path),
+                "sha256": _sha256(path),
+                "page_count": page_count,
+                "bytes": path.stat().st_size,
+            }
+            db.upsert_df("filings", pd.DataFrame([record]), ["filing_id"])
             registered += 1
+            if on_document:
+                on_document({**record, "symbol": ref.symbol})
 
         if i % 10 == 0:
             log.info("processed %d/%d companies", i, len(df))

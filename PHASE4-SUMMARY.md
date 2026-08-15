@@ -3,7 +3,7 @@
 **Scope:** DESIGN §9 phase 4 — FastAPI endpoints, Streamlit dashboard, LLM
 narrative generation, daily scheduled run, alerting.
 
-**Status:** three of five components built.
+**Status:** three of five components built, plus a run console DESIGN did not ask for.
 
 | # | Component | State |
 |---|---|---|
@@ -12,6 +12,7 @@ narrative generation, daily scheduled run, alerting.
 | 3 | Streamlit dashboard | ✅ built |
 | 4 | Daily scheduled run | ⏳ deferred to phase 4b |
 | 5 | Alerting on signal changes | ⏳ deferred to phase 4b |
+| — | Run console (operator UI) | ✅ built — see §4 |
 
 Phase 4 is **not complete** until 4 and 5 land. The exit criterion in DESIGN
 names all five.
@@ -186,9 +187,107 @@ is not safe to use that way.
 
 ---
 
+## 4. Run console
+
+`src/stockanalysis/run/` + `src/stockanalysis/serve/ops.py` — the dashboard's
+**Run** page, and `stockanalysis update` for the same thing headless.
+
+Until this, every pipeline stage was a separate CLI command and the dashboard
+could only read what those commands left behind. The console runs them as one
+declared job and reports each step as it happens: which endpoint is in flight,
+how many rows landed, and the confidence score every extracted annual report
+came back with.
+
+```
+   run/steps.py        the registry: order, cost, what each step reports
+        |              (wraps the same functions the CLI commands call)
+   run/runner.py       execute_plan  ->  synchronous, owns nothing
+        |              JobRunner     ->  one background job, owns its connection
+   run/events.py       JobRecord / StepRecord / Reporter
+        |              worker mutates; readers take a snapshot
+   serve/ops.py        the page — picker, cost warning, live step view
+```
+
+### One writer, and what that forces
+
+DuckDB permits a single writer. Three consequences, all of them structural
+rather than stylistic:
+
+- **Jobs do not queue, they refuse.** A second `start()` raises rather than
+  waiting, because a queued job would fail on the lock later — after the
+  operator had walked away, and possibly after extraction had already spent
+  money.
+- **The worker owns the write connection** for the life of the job. DuckDB
+  connections are not safe across threads, so the thread doing the writing holds
+  the handle.
+- **Readers join rather than wait.** A read-only open *in the same process*
+  while that writable connection exists is refused by DuckDB for configuration
+  reasons — a distinct failure from another process holding the file, and one
+  that would blank the dashboard for the entire duration of every job.
+  `Database.connect_for_read` asks for read-only and joins the writable instance
+  if that is refused, which is why the other pages keep working while a job
+  runs. It is now `SameProcessConfigError`, not an unexplained traceback.
+
+### What the reporting is for
+
+A console that says "done" for work that did not happen is worse than no console.
+So:
+
+- **A step that could not run reports SKIPPED with the reason** — no API key,
+  nothing pending, NSE has no reports for this symbol — and the job continues.
+  Never DONE.
+- **A failure stops the job**, and every later step is marked *not reached*
+  rather than left pending. Steps are in dependency order: extraction after a
+  failed download would report a confidence score for stale filings.
+- **Extraction reports per filing, not per run.** Confidence, the band it falls
+  in (auto-accept / flagged / human review), which validator failed and by how
+  much, cost, latency. An average across three reports would hide the one that
+  failed the accounting identity.
+- **Scoring says what it could not see.** An unmeasured family reads as "not
+  counted", never as 50. A company below the coverage floor reads as *unscored*,
+  with the reminder that unscored is not HOLD.
+- **Cost is declared before the run.** Only `extract` and `narrative` spend
+  money, both are off unless ticked, and the page prices the run from DESIGN
+  §5.4's per-report figure before the button is live.
+
+Scoring runs over the whole index even for a single-company job, because every
+factor is a sector-relative z-score and a company cannot be ranked against
+itself. The page says so rather than implying the number came from that
+company's data alone.
+
+**Cancellation is cooperative.** It takes effect at the next checkpoint a step
+offers — between filings, between companies — because the ingest calls are
+ordinary blocking functions with no abort channel. A filing already sent to the
+model is paid for either way, so it finishes and persists rather than being
+abandoned.
+
+### Progress hooks
+
+`ingest_prices`, `ingest_quarterly`, `ingest_shareholding` and
+`fetch_annual_reports` gained an optional `progress(index, total, symbol)`
+called *before* each request, and `fetch_annual_reports` an `on_document` hook
+per registered PDF. Firing before rather than after is deliberate: on a crawl
+with a 1s pause between requests, almost all the elapsed time is spent inside
+the call, and the useful thing to display is the company in flight rather than
+the one that already finished.
+
+### Relation to phase 4b
+
+The scheduled run is the same `Plan` on a timer. That is the reason the plan is
+a value and `execute_plan` takes a database it does not own — APScheduler needs
+no part of the UI, and the UI needs no part of the scheduler.
+
+---
+
 ## Testing
 
 `tests/test_phase4_serving.py` — 88 tests.
+`tests/test_pipeline_runs.py` — 55 tests for the runner, the steps and the page,
+including one that clicks Start through `AppTest` and asserts the job actually
+ran and rendered. The runner tests were checked by mutation: disabling
+*not reached* marking, reporting a skip as success, removing the read-connection
+fallback, reporting an unmeasured family as 50, and allowing concurrent jobs each
+make them fail.
 
 The previous suite asked `seeded_db` for the `NIFTY100` universe while the
 fixture seeds `TESTIDX`. That returns an empty list, so nothing was scored,
@@ -219,6 +318,15 @@ the code it covers makes it fail.
    of this universe today", not "cheap".
 4. **The API is unauthenticated.** Loopback by default; do not bind it to a
    public interface as-is.
+5. **Job history does not survive a restart.** The console keeps the current
+   run in memory; a finished job is gone when Streamlit restarts. What the job
+   *wrote* is in the database — this is the log, not the data. Persisting a
+   `job_runs` table is the natural companion to 4b's alert history.
+6. **The run console has no authentication either**, and unlike the API it can
+   spend money. Do not expose the dashboard beyond loopback.
+7. **A universe run is serial and slow by design** — one company at a time with
+   a configured pause. Parallelising it is what gets the IP blocked, which is
+   the principal operational risk in DESIGN §10.
 
 ---
 

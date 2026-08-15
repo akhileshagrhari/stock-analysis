@@ -34,7 +34,17 @@ class Settings(BaseSettings):
     # own credentials (env var, or an `ant auth login` profile), and shadowing
     # that here would mean one more place for a stale key to hide.
 
-    extraction_model: str = "claude-opus-5"
+    # Also selects the *backend*, via the prefix `extract.factory` reads:
+    # bare for the Developer Platform API, `cli:` for the Claude Code CLI,
+    # `local:` for LM Studio. One setting rather than a separate backend flag,
+    # because the two are never chosen independently — and because everything
+    # that resolves a model from configuration goes through `make_extractor`,
+    # so `SA_EXTRACTION_MODEL=cli:claude-opus-5` is the whole switch.
+    #
+    # The batch commands are the exception and cannot honour a prefix: neither
+    # the CLI nor LM Studio has a Batch API. They refuse rather than silently
+    # falling back to the API, which would spend the wrong balance.
+    extraction_model: str = "cli:claude-opus-5"
 
     # The section locator narrows a 200-400pp report to roughly this many pages.
     # Cost scales linearly with it; extraction accuracy falls off a cliff if the

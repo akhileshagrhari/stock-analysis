@@ -194,6 +194,30 @@ class ExtractorUnavailableError(RuntimeError):
     """
 
 
+def _reject_prefixed_model(model: str) -> None:
+    """Refuse a `cli:` / `local:` model on the API backend, with the way out.
+
+    Kept as a check on the name rather than a silent strip of the prefix: the
+    prefix is the caller's statement about which balance to spend, and quietly
+    honouring it as an API call would spend the wrong one.
+    """
+    for prefix, backend, remedy in (
+        ("cli:", "the Claude Code CLI",
+         "run `stockanalysis extract` instead, which supports every backend"),
+        ("local:", "LM Studio",
+         "run `stockanalysis extract --model local:<id>` instead"),
+    ):
+        if model.startswith(prefix):
+            raise ExtractorUnavailableError(
+                f"{model!r} names {backend}, which this extractor cannot reach "
+                f"— it speaks to the Developer Platform API only. In practice "
+                f"you are here because the batch commands have no other "
+                f"backend: batching is an API feature and neither the CLI nor "
+                f"LM Studio offers one. Either {remedy}, or name an API model "
+                f"explicitly: --model claude-opus-5."
+            )
+
+
 class ClaudeExtractor:
     def __init__(
         self,
@@ -205,6 +229,14 @@ class ClaudeExtractor:
         self.model = model or settings.extraction_model
         self.max_tokens = max_tokens or settings.extraction_max_tokens
         self.timeout = timeout or settings.extraction_timeout_seconds
+
+        # A prefixed name names a different backend. It reaches here two ways:
+        # a batch command, which is API-only because neither the CLI nor LM
+        # Studio has a Batch API, and the `settings.extraction_model` fallback
+        # above once that setting is pointed at one of them. Both would
+        # otherwise send "cli:claude-opus-5" to the Messages API as a literal
+        # model id and come back with a 404 that names nothing useful.
+        _reject_prefixed_model(self.model)
         # Zero-arg construction on purpose: the SDK resolves ANTHROPIC_API_KEY or
         # an `ant auth login` profile, and re-implementing that here would only
         # add a place for a stale key to win.

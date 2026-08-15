@@ -81,8 +81,41 @@ Phase 4 — serving (API + dashboard):
 
 ```bash
 stockanalysis serve-api                       # FastAPI on 127.0.0.1:8000, docs at /docs
-stockanalysis dashboard                       # Streamlit on :8501
+stockanalysis dashboard                       # Streamlit on :8501 — starts on the Run page
 ```
+
+Running the pipeline as one job, from the dashboard's **Run** page or headless:
+
+```bash
+stockanalysis update --steps list             # the steps, their cost, their defaults
+stockanalysis update RELIANCE                 # one company, end to end
+stockanalysis update RELIANCE --steps prices,quarterly,score
+stockanalysis update                          # the whole universe (hours)
+```
+
+The Run page drives the same steps and shows each one as it happens — which
+endpoint is being hit, how many rows landed, and the confidence score every
+extracted annual report came back with. Steps that cost money are off until
+ticked.
+
+Before running anything, ask what is actually missing for one company:
+
+```bash
+stockanalysis stock RELIANCE                  # what we hold, what blocks each factor
+stockanalysis stock RELIANCE --as-of 2026-07-31
+stockanalysis stock RELIANCE --fill           # run the gap-closing steps, then re-score
+stockanalysis stock RELIANCE --fill --paid    # ...including LLM extraction
+```
+
+`status` counts rows across the whole universe, which cannot tell you that a
+company has prices but no cash flow statement. `stock` is the per-company view:
+each source marked have / partial / missing, every uncomputable factor with the
+reason, and the pipeline step that would fix it. It distinguishes the two ways a
+factor returns NaN — *no data* (an ingest closes it) from *the ratio is
+undefined for this company* (loss-making, negative equity; re-running changes
+nothing) — because only one of them is worth acting on. The same report is the
+**Data & gaps** tab of the dashboard's Instrument page, with a button that runs
+the steps and re-scores.
 
 With optional narrative generation (credentials resolved by the `anthropic` SDK):
 
@@ -272,6 +305,17 @@ src/stockanalysis/
     redflags.py        §6.2 overlay — TRIPPED / CLEAR / UNKNOWN, never a boolean
     composite.py       family weights, coverage rule, 0-100 score, signal
   backtest/            costs, walk-forward engine, metrics, factor attribution
+  run/
+    events.py          job/step records; the worker writes, the UI snapshots
+    steps.py           the step registry — order, cost, and what each reports
+    runner.py          synchronous execution + the one background job
+  serve/
+    queries.py         all read SQL; API and dashboard share it
+    api.py             FastAPI, read-only by construction
+    dashboard.py       Streamlit pages
+    ops.py             the Run page — start a job, watch it step by step
+    explain.py         why a signal is what it is, from stored z-scores
+    narrative.py       Claude explains a score it cannot revise
   cli.py
 ```
 

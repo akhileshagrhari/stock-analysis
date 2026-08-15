@@ -16,6 +16,7 @@ import datetime as dt
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -135,8 +136,15 @@ def ingest_prices(
     start: dt.date | None = None,
     end: dt.date | None = None,
     provider: PriceProvider | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> int:
-    """Fetch and persist daily prices for the given instruments."""
+    """Fetch and persist daily prices for the given instruments.
+
+    `progress` is called as `progress(index, total, symbol)` *before* each
+    company is fetched, so a caller can name the request in flight rather than
+    the one that just finished. `index` is 1-based. A rate-limited crawl spends
+    almost all its time inside the call, which is the part worth showing.
+    """
     provider = provider or YFinanceProvider()
     end = end or dt.date.today()
     start = start or (end - dt.timedelta(days=365 * 6))
@@ -155,6 +163,8 @@ def ingest_prices(
 
     total = 0
     for i, row in enumerate(sym_df.itertuples(index=False), start=1):
+        if progress:
+            progress(i, len(sym_df), row.nse_symbol)
         df = provider.fetch_daily(row.nse_symbol, start, end)
         if df.empty:
             log.warning("no price data for %s (%s)", row.nse_symbol, row.isin)

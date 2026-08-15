@@ -125,6 +125,54 @@ def test_missing_binary_fails_like_the_other_backends(monkeypatch):
     assert "local:" in str(excinfo.value), "should name the free alternative"
 
 
+def test_settings_alone_selects_the_cli_backend(monkeypatch):
+    """`SA_EXTRACTION_MODEL=cli:...` must be enough — no flag at the call site.
+
+    Every path that reaches a model through configuration rather than an
+    argument goes via `make_extractor(settings.extraction_model)`, so this is
+    the one assertion that covers `sa extract`, the Run page and `sa update`
+    together.
+    """
+    from stockanalysis.config import settings
+    from stockanalysis.extract.pipeline import run_extraction
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/local/bin/claude")
+    monkeypatch.setattr(settings, "extraction_model", "cli:claude-opus-5")
+
+    assert isinstance(make_extractor(settings.extraction_model), ClaudeCLIExtractor)
+    # `run_extraction` with no extractor resolves the same way, and with no
+    # filings it does so without touching a database.
+    assert run_extraction(db=None, filings=[], extractor=None) == []
+
+
+@pytest.mark.parametrize("model", ["cli:claude-opus-5", "local:qwen2.5-7b"])
+def test_api_extractor_refuses_a_prefixed_model(monkeypatch, model):
+    """The batch commands are API-only, and they inherit the configured model.
+
+    Without this the prefix goes to the Messages API as a literal model id and
+    comes back a 404 naming nothing the operator can act on — and if the prefix
+    were stripped instead, a run configured for a subscription would quietly
+    spend Developer Platform credits.
+    """
+    from stockanalysis.extract.claude import ClaudeExtractor
+
+    with pytest.raises(ExtractorUnavailableError) as excinfo:
+        ClaudeExtractor(model=model)
+    message = str(excinfo.value)
+    assert model in message
+    assert "batch" in message.lower()
+    assert "--model claude-opus-5" in message
+
+
+def test_api_extractor_refuses_a_prefixed_model_from_settings(monkeypatch):
+    from stockanalysis.config import settings
+    from stockanalysis.extract.claude import ClaudeExtractor
+
+    monkeypatch.setattr(settings, "extraction_model", "cli:claude-opus-5")
+    with pytest.raises(ExtractorUnavailableError, match="cli:claude-opus-5"):
+        ClaudeExtractor()
+
+
 # ----------------------------------------------------------------------
 # Envelope handling
 # ----------------------------------------------------------------------

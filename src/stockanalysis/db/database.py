@@ -28,6 +28,17 @@ class DatabaseLockedError(RuntimeError):
     """
 
 
+class SameProcessConfigError(RuntimeError):
+    """Raised when this process already holds a connection opened differently.
+
+    Distinct from `DatabaseLockedError`, which is another *process*. DuckDB
+    shares one database instance per file per process, so a read-only open
+    while a writable connection is open in the same process is refused for
+    configuration reasons, not lock reasons — and the fix is different: join the
+    existing configuration rather than wait. `connect_for_read` does that.
+    """
+
+
 class SchemaOutOfDateError(RuntimeError):
     """Raised when a read-only open finds tables the current schema declares.
 
@@ -38,7 +49,21 @@ class SchemaOutOfDateError(RuntimeError):
 
 
 class Database:
-    def __init__(self, path: str | Path = ":memory:", read_only: bool = False) -> None:
+    def __init__(
+        self,
+        path: str | Path = ":memory:",
+        read_only: bool = False,
+        ensure_schema: bool | None = None,
+    ) -> None:
+        """Open a connection.
+
+        `ensure_schema` defaults to "run the idempotent schema on a writable
+        open, verify it on a read-only one". Pass False to open writable
+        *without* the DDL — needed when another connection in this process is
+        mid-transaction, where a no-op `CREATE TABLE IF NOT EXISTS` can still
+        take a catalog write and collide with it. `connect_for_read` is the only
+        caller that wants this.
+        """
         self.path = str(path)
         self.read_only = read_only
 
@@ -61,11 +86,42 @@ class Database:
                     f"Wait for it to finish, or use a read-only command."
                 ) from e
             raise
+        except duckdb.ConnectionException as e:
+            # "Can't open a connection to same database file with a different
+            # configuration than existing connections" — this process already
+            # has one open, opened the other way.
+            if "different configuration" in str(e).lower():
+                raise SameProcessConfigError(str(e)) from e
+            raise
 
+        if ensure_schema is None:
+            ensure_schema = True
+        if not ensure_schema:
+            return
         if read_only:
             self._require_current_schema()
         else:
             self._init_schema()
+
+    @classmethod
+    def connect_for_read(cls, path: str | Path) -> Database:
+        """A readable handle, whatever this process already has open.
+
+        Read-only is preferred and is what a plain reader gets. But a background
+        job in this same process holds a *writable* connection for as long as it
+        runs, and DuckDB will not mix the two configurations against one file.
+        Rather than make every reader know whether a job is running — a race
+        even when it is knowable — this asks for read-only and joins the
+        writable instance if that is refused.
+
+        The returned handle can physically write. Nothing in the read path does,
+        and the alternative is a UI that goes blank for the ten minutes a job
+        takes.
+        """
+        try:
+            return cls(path, read_only=True)
+        except SameProcessConfigError:
+            return cls(path, read_only=False, ensure_schema=False)
 
     def _init_schema(self) -> None:
         self.conn.execute(SCHEMA_PATH.read_text())

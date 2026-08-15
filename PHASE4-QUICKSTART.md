@@ -91,6 +91,7 @@ for row in requests.get("http://localhost:8000/signals", timeout=30).json():
 ## 2. Dashboard
 
 ```bash
+/Users/akhileshagrahari/Projects/StockAnalysis/.venv/bin/stockanalysis dashboard
 stockanalysis dashboard                 # http://localhost:8501
 stockanalysis dashboard --port 8600
 ```
