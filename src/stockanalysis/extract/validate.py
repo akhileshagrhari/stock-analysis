@@ -182,8 +182,31 @@ def validate(
             )
         )
 
-    # ---- PBT - tax == PAT ----
+    # ---- PBT + associates - tax == PAT + non-controlling interest ----
+    #
+    # The naive form of this identity, `pbt - tax == pat`, only holds for a
+    # standalone statement. A consolidated one has two legitimate wedges between
+    # the two sides, and both are printed on the face of the statement:
+    #
+    #   share of associates/JVs   sits between PBT and tax, and is excluded from
+    #                             PBT wherever the statement reports "profit
+    #                             before share of associates and tax"
+    #   non-controlling interest  the minority's slice of the group's profit,
+    #                             which `pat` deliberately excludes because every
+    #                             factor built on it (ROE, EPS, earnings yield)
+    #                             is a claim of the parent's own shareholders
+    #
+    # Ignoring them discards a correct extraction for any group whose minorities
+    # are material: RELIANCE FY2024-26 failed this check by 12-16%, which is its
+    # non-controlling interest almost exactly, and every one of those three years
+    # was read correctly.
+    #
+    # A null on either line means the statement printed no such line — the common
+    # case — and means zero, not "unknown". Treating it as unknown would skip the
+    # check for precisely the standalone reports where it holds exactly.
     pbt, tax, pat = v.get("profit_before_tax"), v.get("tax_expense"), v.get("pat")
+    associates = v.get("share_of_associates") or 0.0
+    nci = v.get("non_controlling_interest") or 0.0
     if pbt is None or tax is None or pat is None:
         add(
             Check(
@@ -195,13 +218,17 @@ def validate(
             )
         )
     else:
-        diff = _rel_diff(pbt - tax, pat)
+        group_profit = pbt + associates - tax
+        attributed = pat + nci
+        diff = _rel_diff(group_profit, attributed)
         add(
             Check(
                 "pbt_tax_pat",
                 diff <= PROFIT_TOL,
                 "HARD",
-                f"pbt-tax {pbt - tax:,.1f} vs pat {pat:,.1f} ({diff:.2%})",
+                f"pbt {pbt:,.1f} + associates {associates:,.1f} - tax {tax:,.1f} "
+                f"= {group_profit:,.1f} vs pat {pat:,.1f} + nci {nci:,.1f} "
+                f"= {attributed:,.1f} ({diff:.2%})",
             )
         )
 

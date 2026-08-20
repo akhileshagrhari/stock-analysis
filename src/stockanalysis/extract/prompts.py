@@ -99,7 +99,18 @@ income. Both are in the schema; put each in its own field and never substitute \
 one for the other.
 - **Profit for the year** may be split into a portion attributable to owners of \
 the parent and a portion attributable to non-controlling interests. Use the \
-portion attributable to **owners of the parent** for `pat`.
+portion attributable to **owners of the parent** for `pat`, and put the \
+non-controlling portion in `non_controlling_interest`. Report both halves \
+whenever the split is printed: a downstream validator reconciles profit before \
+tax against the two of them together, and omitting the minority's share makes a \
+correct extraction look like a misread column. Leave \
+`non_controlling_interest` null only when the statement prints no such split.
+- **Share of profit of associates and joint ventures** is a separate line in a \
+consolidated statement, sitting between profit before tax and tax expense. \
+Report it in `share_of_associates`, negative where it is a share of losses. It \
+matters because many statements label the line above it "Profit before share of \
+associates and tax", which means that figure — the one belonging in \
+`profit_before_tax` — excludes the associates' contribution.
 - **Total equity** should include non-controlling interests where the balance \
 sheet presents them within equity.
 - **Borrowings** are the interest-bearing liabilities, current plus non-current. \

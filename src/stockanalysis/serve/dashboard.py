@@ -15,6 +15,7 @@ were open. A read-only open of a local file costs a millisecond.
 from __future__ import annotations
 
 import datetime as dt
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -33,6 +34,24 @@ from stockanalysis.serve import explain, ops, queries
 from stockanalysis.serve import readiness as rd
 
 PAGES = ["Run", "Overview", "Signals", "Instrument", "Red flags", "About"]
+
+# Session-state keys shared between pages. The sidebar radio and the
+# Instrument page's selectbox are both keyed, so writing these before a rerun
+# is how one page hands the app to another.
+PAGE_KEY = "nav_page"
+INSTRUMENT_KEY = "nav_instrument_symbol"
+
+
+def open_instrument(symbol: str) -> None:
+    """Send the app to the Instrument page for `symbol`.
+
+    Writes the two widget keys rather than rendering anything, so the caller
+    stays a click handler and the navigation stays testable without a browser.
+    Streamlit reads widget values from session state at the start of a run, so
+    this must be followed by a rerun to take effect.
+    """
+    st.session_state[PAGE_KEY] = "Instrument"
+    st.session_state[INSTRUMENT_KEY] = symbol
 
 SIGNAL_EMOJI = {"BUY": "🟢", "HOLD": "🟡", "SELL": "🔴"}
 
@@ -115,6 +134,160 @@ def signals_frame(
     )
 
 
+def format_crore(value: float | None) -> str:
+    """A crore amount, thousands-separated. Blank where the figure is absent.
+
+    Blank rather than 0 or '—' inside the statement: a zero in a financial
+    statement is a claim, and `contingent_liabilities` in particular is NULL for
+    every XBRL-sourced row because no element carries it. Printing 0 there would
+    read as "this company has none", which is the opposite of what is known.
+
+    NaN is treated as absent alongside None. Building the statement puts the
+    values through a DataFrame, which turns every None into NaN on the way — so
+    checking only for None formats the missing figures as the string "nan".
+    """
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return ""
+    return f"{value:,.0f}" if abs(value) >= 100 else f"{value:,.2f}"
+
+
+def annual_statement_frame(rows: list[queries.AnnualFinancials]) -> pd.DataFrame:
+    """Annual financials as a statement: line items down, years across.
+
+    Transposed relative to how the rows are stored, because that is how a
+    statement is read — one metric's trajectory across years is the question,
+    and a year-per-row table makes the reader scan sideways to answer it.
+    """
+    if not rows:
+        return pd.DataFrame()
+
+    # A year is labelled by year alone unless the same year is stored under two
+    # bases, in which case both columns need the basis to be distinguishable —
+    # and seeing them side by side is the point, since mixing the two across
+    # years is what turns a CAGR into a measurement of the change of basis.
+    years = [r.fiscal_year for r in rows]
+    columns = [
+        f"FY{r.fiscal_year}"
+        if years.count(r.fiscal_year) == 1
+        else f"FY{r.fiscal_year} {r.basis.title()}"
+        for r in rows
+    ]
+    frame = pd.DataFrame(
+        {
+            column: [
+                r.values.get(key) for key, _label in queries.ANNUAL_LINE_ITEMS
+            ]
+            for column, r in zip(columns, rows, strict=True)
+        },
+        index=[label for _key, label in queries.ANNUAL_LINE_ITEMS],
+    )
+    return frame.map(format_crore)
+
+
+def annual_provenance_frame(rows: list[queries.AnnualFinancials]) -> pd.DataFrame:
+    """Where each year came from, and when it became knowable.
+
+    Kept beside the statement rather than folded into it. Provenance is what
+    tells an operator whether a figure was read from tagged data or from a
+    model's reading of a page, and mixing it into the numbers would make the
+    statement harder to read for both audiences.
+    """
+    if not rows:
+        return pd.DataFrame(
+            columns=["Year", "Basis", "Source", "Period end", "Knowable from",
+                     "Auditor", "Confidence"]
+        )
+    return pd.DataFrame(
+        [
+            {
+                "Year": f"FY{r.fiscal_year}",
+                "Basis": r.basis.title(),
+                "Source": _SOURCE_LABEL.get(r.source or "", r.source or "—"),
+                "Period end": f"{r.period_end:%Y-%m-%d}" if r.period_end else "—",
+                "Knowable from": (
+                    f"{r.filing_date:%Y-%m-%d}" if r.filing_date else "—"
+                ),
+                "Auditor": r.auditor_opinion or "—",
+                "Confidence": format_number(r.confidence),
+            }
+            for r in rows
+        ]
+    )
+
+
+# "LLM" tells an operator nothing about what a row cost or how far to trust it.
+_SOURCE_LABEL = {"XBRL": "XBRL (tagged)", "LLM": "Claude (retired path)"}
+
+
+def quarterly_frame(rows: list[queries.QuarterlyFinancials]) -> pd.DataFrame:
+    """Quarterly results, newest first, with the year-on-year move where it exists."""
+    columns = [
+        "Quarter", "Relating to", "Basis", "Revenue", "PAT", "EPS (₹)",
+        "Rev YoY", "PAT YoY", "Knowable from",
+    ]
+    if not rows:
+        return pd.DataFrame(columns=columns)
+
+    by_period = {r.period_end: r for r in rows}
+
+    def yoy(row: queries.QuarterlyFinancials, field: str) -> str:
+        """Against the same quarter a year earlier, matched by date.
+
+        Matched on the date rather than by stepping four rows back: the stored
+        quarters are not guaranteed contiguous, and a gap would silently turn a
+        three-quarter comparison into a "year-on-year" number.
+        """
+        current = getattr(row, field)
+        prior_end = _same_quarter_last_year(row.period_end, by_period)
+        prior = getattr(by_period[prior_end], field) if prior_end else None
+        if current is None or prior is None or prior == 0:
+            return "—"
+        return f"{(current - prior) / abs(prior):+.1%}"
+
+    return pd.DataFrame(
+        [
+            {
+                "Quarter": f"{r.period_end:%Y-%m-%d}",
+                "Relating to": r.relating_to or "—",
+                "Basis": (
+                    "—" if r.is_consolidated is None
+                    else ("Consolidated" if r.is_consolidated else "Standalone")
+                ),
+                "Revenue": format_crore(r.revenue) or "—",
+                "PAT": format_crore(r.pat) or "—",
+                "EPS (₹)": format_number(r.eps),
+                "Rev YoY": yoy(r, "revenue"),
+                "PAT YoY": yoy(r, "pat"),
+                "Knowable from": (
+                    f"{r.filing_date:%Y-%m-%d}" if r.filing_date else "—"
+                ),
+            }
+            for r in rows
+        ],
+        columns=columns,
+    )
+
+
+def _same_quarter_last_year(
+    period_end: dt.date, available: dict[dt.date, object]
+) -> dt.date | None:
+    """The stored period ending closest to one year before `period_end`.
+
+    A tolerance rather than an exact match because quarter ends move by a day
+    or two — 52/53-week retailers, and February. Anything further out than a
+    fortnight is a different quarter and returns nothing.
+    """
+    target = period_end - dt.timedelta(days=365)
+    nearest = min(
+        (d for d in available if d != period_end),
+        key=lambda d: abs((d - target).days),
+        default=None,
+    )
+    if nearest is None or abs((nearest - target).days) > 14:
+        return None
+    return nearest
+
+
 def export_frame(signals: list[queries.Signal]) -> pd.DataFrame:
     """Unformatted numbers for CSV export — a spreadsheet wants floats, not emoji."""
     return pd.DataFrame(
@@ -180,6 +353,31 @@ def _table(frame: pd.DataFrame) -> None:
     st.dataframe(frame, width="stretch", hide_index=True)
 
 
+def _signal_table(
+    signals: list[queries.Signal],
+    drivers: dict[str, tuple[str, float]] | None,
+    key: str,
+) -> None:
+    """A signal table whose rows open the company on the Instrument page.
+
+    Every list of companies in this app is a list someone will want to drill
+    into, so the click-through lives here rather than on one page — a table
+    that navigates in one place and not another reads as a bug.
+    """
+    selection = st.dataframe(
+        signals_frame(signals, drivers),
+        width="stretch",
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key=key,
+    )
+    picked = _selected_row(selection)
+    if picked is not None and picked < len(signals):
+        open_instrument(signals[picked].nse_symbol)
+        st.rerun()
+
+
 def _require_signals(db: Database) -> dt.date:
     as_of = queries.latest_as_of(db)
     if as_of is None:
@@ -226,7 +424,7 @@ def show_overview(db: Database) -> None:
             if not rows:
                 st.info(f"No {name} signals on this date.")
             else:
-                _table(signals_frame(rows, drivers))
+                _signal_table(rows, drivers, key=f"overview_{name}")
 
     with tabs[3]:
         if not unscored:
@@ -236,7 +434,9 @@ def show_overview(db: Database) -> None:
                 "Coverage fell below the model's floor, so no score was produced. "
                 "These are not HOLDs — they are companies the model could not see."
             )
-            _table(signals_frame(unscored, drivers))
+            _signal_table(unscored, drivers, key="overview_unscored")
+
+    st.caption("Click any row to open that company on the Instrument page.")
 
 
 def show_signals(db: Database) -> None:
@@ -276,11 +476,12 @@ def show_signals(db: Database) -> None:
     st.caption(f"{len(signals)} companies")
     # One panel computation for the whole date, not one per row.
     drivers = explain.dominant_families(db, as_of)
-    _table(signals_frame(signals, drivers))
+
+    _signal_table(signals, drivers, key="signals_table")
     st.caption(
         "‘Main driver’ is the family that moved each score most — ↑ pushed it "
-        "up, ↓ pulled it down. Open a name on the Instrument page for the full "
-        "reasoning."
+        "up, ↓ pulled it down. **Click a row** to open that company on the "
+        "Instrument page."
     )
 
     st.download_button(
@@ -289,6 +490,21 @@ def show_signals(db: Database) -> None:
         file_name=f"signals_{as_of:%Y%m%d}.csv",
         mime="text/csv",
     )
+
+
+def _selected_row(selection) -> int | None:
+    """The single selected row index, or None.
+
+    Defensive about the shape because `st.dataframe`'s return value is a
+    Streamlit-version-dependent mapping, and a page that raises on an
+    unexpected shape would take the whole Signals browser down rather than
+    merely failing to navigate.
+    """
+    try:
+        rows = selection["selection"]["rows"]
+    except (TypeError, KeyError, AttributeError):
+        return None
+    return int(rows[0]) if rows else None
 
 
 def family_frame(rows: list[explain.FamilyContribution]) -> pd.DataFrame:
@@ -430,7 +646,13 @@ FLAG_ICON = {"TRIPPED": "🔴", "CLEAR": "✅", "UNKNOWN": "❔"}
 
 
 def sources_frame(report: rd.Readiness) -> pd.DataFrame:
-    """The data inventory, one row per source."""
+    """The data inventory, one row per source.
+
+    "Closed by" names the step and what it costs. The annual row is the reason
+    it is worth a column: the same gap is closed for nothing by the exchange's
+    tagged filing for most companies and only costs money for the rest, and
+    without the step named the operator cannot tell which case they are in.
+    """
     return pd.DataFrame(
         [
             {
@@ -438,11 +660,29 @@ def sources_frame(report: rd.Readiness) -> pd.DataFrame:
                 "": HAVE_ICON.get(s.have, s.have.value),
                 "What we hold": s.detail,
                 "What is missing": s.gap or "—",
+                "Closed by": _step_label(s),
                 "Factors blocked": len(s.blocks),
             }
             for s in report.sources
         ]
     )
+
+
+def _step_label(source: rd.SourceStatus) -> str:
+    from stockanalysis.run.steps import PAID, STEPS_BY_KEY
+
+    if source.have is rd.Have.PRESENT:
+        return "—"
+    if not source.step:
+        # A gap with no step is the honest end of the line: the free path has
+        # read this company's filings and found nothing usable, and there is no
+        # paid path behind it any more. Naming a step here would be a button
+        # that runs nothing.
+        return "nothing further available"
+    spec = STEPS_BY_KEY.get(source.step)
+    if spec is None:
+        return source.step
+    return f"{spec.label} (paid)" if spec.cost == PAID else spec.label
 
 
 def blocked_frame(report: rd.Readiness) -> pd.DataFrame:
@@ -559,9 +799,15 @@ def show_readiness(report: rd.Readiness) -> None:
 
 
 def _fill_gaps_control(report: rd.Readiness) -> None:
-    """Start the run that closes this company's gaps, then re-scores."""
+    """Start the run that closes this company's gaps, then re-scores.
+
+    Every step this can now offer is free. The paid annual-report extraction
+    that used to sit behind a confirmation checkbox has been retired — NSE tags
+    the balance sheet and cash flow in the results filing, so the figures it
+    bought were already available for nothing.
+    """
     from stockanalysis.run.runner import JobAlreadyRunning, runner
-    from stockanalysis.run.steps import PAID, STEPS_BY_KEY, RunOptions, company_plan
+    from stockanalysis.run.steps import STEPS_BY_KEY, RunOptions, company_plan
 
     st.markdown("##### Fill the gaps and re-evaluate")
 
@@ -571,33 +817,24 @@ def _fill_gaps_control(report: rd.Readiness) -> None:
             "Every source is complete. Re-score to refresh the signal against "
             "the current data."
         )
-    paid = [k for k in gap_steps if STEPS_BY_KEY[k].cost == PAID]
 
-    include_paid = False
-    if paid:
-        include_paid = st.checkbox(
-            f"Include paid step(s): {', '.join(STEPS_BY_KEY[k].label for k in paid)}",
-            value=False,
-            key=f"paid_{report.isin}",
-            help=(
-                "Extraction sends each annual report to Claude. DESIGN §5.4 "
-                "budgets roughly $0.75 per report."
-            ),
-        )
-
-    steps = [k for k in gap_steps if include_paid or k not in paid]
     # Scoring always runs last: ingesting without re-scoring leaves the stored
     # signal describing the data as it was before the run.
-    steps = [*steps, "score"]
+    steps = [*gap_steps, "score"]
 
     st.caption(
         "Will run: " + " → ".join(STEPS_BY_KEY[k].label for k in steps)
-        + f"  ·  scored as of {report.as_of}"
+        + f"  ·  scored as of {report.as_of}  ·  no paid steps"
     )
-    if paid and not include_paid:
-        st.info(
-            f"Skipping {', '.join(paid)}. The annual-report families stay "
-            f"unmeasured until extraction runs, so coverage will not move much."
+
+    unreachable = [s for s in report.gaps if not s.step]
+    if unreachable:
+        st.warning(
+            "No step can close: "
+            + ", ".join(s.label for s in unreachable)
+            + ". The free path has read this company's tagged filings and found "
+            "nothing usable in them — banks are the usual case, since their "
+            "results taxonomy carries no revenue line."
         )
 
     active = runner.is_active()
@@ -639,13 +876,26 @@ def show_instrument(db: Database) -> None:
         return
 
     by_symbol = {i.nse_symbol: i for i in instruments}
-    symbol = st.selectbox("Instrument", sorted(by_symbol))
+    symbols = sorted(by_symbol)
+
+    # A symbol handed over by a click-through elsewhere. Dropped if it is not in
+    # this universe rather than raising: the stored value outlives the run that
+    # wrote it, and a re-seeded universe should not break the page.
+    if st.session_state.get(INSTRUMENT_KEY) not in symbols:
+        st.session_state.pop(INSTRUMENT_KEY, None)
+
+    symbol = st.selectbox("Instrument", symbols, key=INSTRUMENT_KEY)
     instrument = by_symbol[symbol]
 
     st.markdown(f"**{instrument.name}** — {instrument.sector or 'unclassified sector'}")
     st.caption(f"ISIN {instrument.isin}")
 
-    rating_tab, data_tab = st.tabs(["Rating", "Data & gaps"])
+    rating_tab, financials_tab, data_tab = st.tabs(
+        ["Rating", "Financials", "Data & gaps"]
+    )
+
+    with financials_tab:
+        show_financials(db, instrument)
 
     with data_tab:
         as_of = st.date_input(
@@ -666,6 +916,78 @@ def show_instrument(db: Database) -> None:
 
     with rating_tab:
         _show_rating(db, instrument)
+
+
+def show_financials(db: Database, instrument: queries.Instrument) -> None:
+    """The reported figures behind the score, annual and quarterly.
+
+    Separate from the Rating tab on purpose. That tab answers "what does the
+    model think and why"; this one answers "what did the company actually
+    report", which is the question an operator asks when the model's answer
+    looks wrong. Keeping them apart means neither has to be read through the
+    other.
+    """
+    annual = queries.annual_financials(db, instrument.isin)
+    quarters = queries.quarterly_financials(db, instrument.isin)
+
+    st.markdown("### Annual")
+    if not annual:
+        st.info(
+            "No annual financials stored. These come from NSE's tagged XBRL "
+            "results filing — the **Data & gaps** tab can run the steps that "
+            "fetch and read it."
+        )
+    else:
+        st.caption(
+            f"{len(annual)} year(s) · ₹ crore except EPS · a blank cell is a "
+            f"figure the filing does not carry, not a zero"
+        )
+        _table(annual_statement_frame(annual))
+
+        bases = {r.basis for r in annual}
+        if len(bases) > 1:
+            # Worth saying out loud: a growth rate computed across a change of
+            # basis is measuring the change, not the business.
+            st.warning(
+                f"These years are not all on the same basis ({', '.join(sorted(bases))}). "
+                f"Growth across a basis change measures the change of basis as "
+                f"much as the business."
+            )
+
+        with st.expander("Where these figures came from", expanded=False):
+            _table(annual_provenance_frame(annual))
+            st.caption(
+                "XBRL rows are read from the exchange's tagged filing with no "
+                "model in the loop, which is why they carry full confidence. "
+                "`contingent_liabilities` is blank on every one of them — the "
+                "taxonomy has no element for it."
+            )
+
+    st.divider()
+    st.markdown("### Quarterly")
+    if not quarters:
+        st.info(
+            "No quarterly results stored. The **Ingest quarterly results** step "
+            "fetches them from NSE for free."
+        )
+        return
+
+    st.caption(
+        f"{len(quarters)} quarter(s) · ₹ crore except EPS · year-on-year is "
+        f"against the same quarter a year earlier, matched by date"
+    )
+    _table(quarterly_frame(quarters))
+
+    plottable = [
+        (q.period_end, q.revenue, q.pat)
+        for q in reversed(quarters)
+        if q.revenue is not None or q.pat is not None
+    ]
+    if len(plottable) >= 2:
+        chart = pd.DataFrame(
+            plottable, columns=["Quarter", "Revenue", "PAT"]
+        ).set_index("Quarter")
+        st.bar_chart(chart, width="stretch")
 
 
 def _show_rating(db: Database, instrument: queries.Instrument) -> None:
@@ -773,6 +1095,14 @@ def show_red_flags(db: Database) -> None:
                     st.error(f"**{flag}** — {descriptions.get(flag, 'no description')}")
                 if signal.narrative:
                     st.info(signal.narrative)
+                # A flag is the most likely reason to want the reported figures
+                # in front of you, so the jump to them is offered right here.
+                if st.button(
+                    f"Open {signal.nse_symbol}",
+                    key=f"open_flagged_{signal.isin}",
+                ):
+                    open_instrument(signal.nse_symbol)
+                    st.rerun()
 
     unreachable = redflags.unreachable_flags()
     if unreachable:
@@ -854,7 +1184,13 @@ def main() -> None:
     st.caption("Indian equities (NSE/BSE) — scoring, red flags and factor attribution")
 
     with st.sidebar:
-        page = st.radio("Page", PAGES, label_visibility="collapsed")
+        # Keyed so `open_instrument` can move the app to another page. Streamlit
+        # reads a widget's value from session state on the next run, so setting
+        # the key before `st.rerun()` is what makes the sidebar follow a
+        # click-through instead of snapping back to where it was.
+        page = st.radio(
+            "Page", PAGES, label_visibility="collapsed", key=PAGE_KEY
+        )
         st.divider()
         st.caption(f"Database: `{settings.db_path}`")
 

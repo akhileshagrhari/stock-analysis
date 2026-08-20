@@ -279,6 +279,31 @@ ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS extraction_model VARCHA
 ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS extraction_attempt_id VARCHAR;
 ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS extracted_at TIMESTAMP;
 
+-- The two legs of the consolidated profit identity. `pat` is the parent's share
+-- alone, so without these the statement cannot be reconciled after the fact —
+-- which is what let a correct RELIANCE extraction be discarded as a misread.
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS share_of_associates DOUBLE;
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS non_controlling_interest DOUBLE;
+
+-- Which route produced the row: 'XBRL' for the exchange's own tagged filing,
+-- 'LLM' for a model reading the annual-report PDF. They differ in more than
+-- provenance — an XBRL row carries the results-filing broadcast date and needs
+-- no confidence score, while an LLM row is dated to the annual report and can
+-- be wrong in ways arithmetic does not catch. A backtest that cannot tell them
+-- apart cannot tell you which of the two it is actually testing.
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS source VARCHAR;
+
+-- Revenue and total income are different line items and the validators compare
+-- them; storing only one of the pair means a persisted row cannot be
+-- re-validated later without re-reading the source document.
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS total_income DOUBLE;
+
+-- Every row written before `source` existed came from the model reading a PDF;
+-- XBRL ingestion did not exist yet. Left NULL they would read as unattributed,
+-- and the extraction step would treat them as not-yet-covered and pay to redo
+-- them. Idempotent: after the first run there is nothing left to set.
+UPDATE fundamentals_annual SET source = 'LLM' WHERE source IS NULL;
+
 -- ====================================================================
 -- PHASE 1b — free NSE fundamentals (no LLM required)
 -- ====================================================================
@@ -291,6 +316,34 @@ ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS relating_to VARCHAR;
 ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS is_consolidated BOOLEAN;
 ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS is_audited BOOLEAN;
 ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS xbrl_url VARCHAR;
+
+-- NSE's financial-results filing index, kept in its own right rather than only
+-- folded into `fundamentals_quarterly`.
+--
+-- The index reaches back as many years as it is asked for and carries an XBRL
+-- link on essentially every entry. `fundamentals_quarterly` cannot hold that:
+-- its rows come from `results_comparison`, which returns only about five
+-- quarters, so an update-only apply attached those links to nothing and every
+-- year but the newest was fetched and dropped. That capped the annual XBRL path
+-- at a single fiscal year per company regardless of how far back the index was
+-- walked.
+--
+-- Keyed on basis as well as period, because a company files consolidated and
+-- standalone results for the same period as two separate entries. Under
+-- `fundamentals_quarterly`'s (isin, period_end) key one silently overwrites the
+-- other, which decides the basis by broadcast order rather than by preference —
+-- RELIANCE FY2024 landed on standalone by seven minutes that way.
+CREATE TABLE IF NOT EXISTS results_filings (
+    isin            VARCHAR NOT NULL,
+    period_end_date DATE NOT NULL,
+    basis           VARCHAR NOT NULL,
+    broadcast_date  DATE,
+    relating_to     VARCHAR,
+    is_consolidated BOOLEAN,
+    is_audited      BOOLEAN,
+    xbrl_url        VARCHAR,
+    PRIMARY KEY (isin, period_end_date, basis)
+);
 
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS disclosed_date_source VARCHAR;
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS employee_trust_pct DOUBLE;

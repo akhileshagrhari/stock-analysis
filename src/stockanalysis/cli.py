@@ -1364,7 +1364,6 @@ def update_cmd(
     ),
     index_name: str = typer.Option(settings.default_index, "--index"),
     as_of: str = typer.Option(None, "--as-of", help="Decision date for scoring"),
-    extraction_limit: int = typer.Option(3, "--extract-limit"),
     min_coverage: float = typer.Option(0.5, "--min-coverage"),
 ) -> None:
     """Run the ingest → extract → score pipeline as one job.
@@ -1404,7 +1403,6 @@ def update_cmd(
     keys = [s.strip() for s in steps.split(",") if s.strip()] if steps else None
     options = RunOptions(
         index_name=index_name,
-        extraction_limit=extraction_limit,
         min_coverage=min_coverage,
         as_of=dt.date.fromisoformat(as_of) if as_of else None,
     )

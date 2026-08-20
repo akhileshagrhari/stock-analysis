@@ -390,21 +390,27 @@ def parse_financial_results(raw: list[dict] | dict) -> list[ResultsFiling]:
     return out
 
 
-def apply_results_filing_index(
-    db: Database, filings: list[ResultsFiling]
-) -> int:
-    """Replace assumed quarterly knowledge dates with real broadcast dates.
+def filing_basis(is_consolidated: bool | None) -> str:
+    """The basis label a filing is stored under.
 
-    Matches on (symbol -> isin, period_end). Rows with no matching filing keep
-    the LODR-deadline fallback and stay labelled as assumed, so the split
-    between measured and inferred dates remains visible in `status`.
+    Unknown is kept as its own value rather than folded into standalone. A
+    filing whose basis NSE did not state is not evidence that the company files
+    no consolidated results, and treating it as standalone would let it stand in
+    for one — which is how a CAGR ends up measuring a change of basis.
+    """
+    if is_consolidated is None:
+        return "UNKNOWN"
+    return "CONSOLIDATED" if is_consolidated else "STANDALONE"
 
-    Only the *quarterly* table is updated. The annual-report knowledge date is
-    deliberately left alone: a results filing publishes the P&L summary months
-    before the full annual report is available, so borrowing its date for
-    figures that only exist in the report — operating cash flow, contingent
-    liabilities, the auditor's opinion — would make them visible before anyone
-    could have read them.
+
+def record_results_filings(db: Database, filings: list[ResultsFiling]) -> int:
+    """Persist the filing index itself, one row per (isin, period, basis).
+
+    This is the part that reaches back years. `fundamentals_quarterly` cannot
+    serve as the index because its rows come from `results_comparison`, which
+    returns only about five quarters — so anything older matched no row and was
+    silently discarded, capping the annual XBRL path at one fiscal year. See the
+    table comment in `schema.sql`.
     """
     if not filings:
         return 0
@@ -413,6 +419,82 @@ def apply_results_filing_index(
         "SELECT isin, nse_symbol FROM instruments WHERE nse_symbol IS NOT NULL"
     )
     by_symbol = dict(zip(symbols["nse_symbol"], symbols["isin"], strict=False))
+
+    rows = []
+    for f in filings:
+        isin = by_symbol.get(f.symbol)
+        if isin is None:
+            continue
+        rows.append({
+            "isin": isin,
+            "period_end_date": f.period_end,
+            "basis": filing_basis(f.is_consolidated),
+            "broadcast_date": f.broadcast_date,
+            "relating_to": f.relating_to,
+            "is_consolidated": f.is_consolidated,
+            "is_audited": f.is_audited,
+            "xbrl_url": f.xbrl_url,
+        })
+    if not rows:
+        return 0
+
+    # One entry per key even within a single payload: a company can refile the
+    # same period, and `upsert_df` deletes by key before inserting, so a
+    # duplicate inside `rows` would survive as two rows and break the key.
+    deduped = {
+        (r["isin"], r["period_end_date"], r["basis"]): r for r in rows
+    }
+    return db.upsert_df(
+        "results_filings",
+        pd.DataFrame(list(deduped.values())),
+        ["isin", "period_end_date", "basis"],
+    )
+
+
+def apply_results_filing_index(
+    db: Database, filings: list[ResultsFiling]
+) -> int:
+    """Record the filing index, and replace assumed quarterly knowledge dates.
+
+    Two effects, deliberately kept together so one call cannot leave the index
+    stored but the dates stale:
+
+    1. Every filing is written to `results_filings`, which is what
+       `xbrl_annual.pending_annual_filings` reads. This is not limited to
+       periods already present in `fundamentals_quarterly`.
+    2. Where a quarterly row *does* exist for the period, its assumed
+       LODR-deadline date is upgraded to the real broadcast date. Rows with no
+       matching filing keep the fallback and stay labelled as assumed, so the
+       split between measured and inferred dates remains visible in `status`.
+
+    The return value counts the quarterly rows updated, unchanged — callers
+    treat zero as "nothing matched a stored quarter".
+
+    Only the *quarterly* table is date-updated. The annual-report knowledge date
+    is deliberately left alone: a results filing publishes the P&L summary
+    months before the full annual report is available, so borrowing its date for
+    figures that only exist in the report — operating cash flow, contingent
+    liabilities, the auditor's opinion — would make them visible before anyone
+    could have read them.
+    """
+    if not filings:
+        return 0
+
+    record_results_filings(db, filings)
+
+    symbols = db.query(
+        "SELECT isin, nse_symbol FROM instruments WHERE nse_symbol IS NOT NULL"
+    )
+    by_symbol = dict(zip(symbols["nse_symbol"], symbols["isin"], strict=False))
+
+    # `fundamentals_quarterly` is keyed on (isin, period_end), so of the two
+    # entries a company files for one period only one can survive here. Apply
+    # consolidated last so it is that one: it is the basis the factor model
+    # wants. Left to document order the winner is arbitrary, and RELIANCE FY2024
+    # landed on standalone by seven minutes of broadcast time. `results_filings`
+    # keeps both regardless, so this ordering no longer decides which XBRL
+    # instance the annual path reads.
+    filings = sorted(filings, key=lambda f: bool(f.is_consolidated))
 
     updated = 0
     for f in filings:

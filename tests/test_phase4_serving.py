@@ -993,6 +993,101 @@ class TestDashboardHelpers:
         assert list(signals_frame([]).columns)[:2] == ["Symbol", "Name"]
         assert "Main driver" in signals_frame([]).columns
 
+    # ------------------------------------------------------------------
+    # Financials
+    # ------------------------------------------------------------------
+
+    def test_annual_statement_is_transposed_years_across(self, scored_db):
+        """A statement is read one metric across time, not one year at a time."""
+        from stockanalysis.serve.dashboard import annual_statement_frame
+
+        isin = scored_db.as_of_universe(INDEX, AS_OF)[0]
+        rows = queries.annual_financials(scored_db, isin)
+        assert rows, "fixture stores no annual financials"
+
+        frame = annual_statement_frame(rows)
+        assert list(frame.columns) == [f"FY{r.fiscal_year}" for r in rows]
+        assert "Revenue" in frame.index
+        assert "PAT" in frame.index
+        # Newest first, matching the query order.
+        assert frame.columns[0] == f"FY{max(r.fiscal_year for r in rows)}"
+
+    def test_a_missing_figure_is_blank_not_zero(self):
+        """`contingent_liabilities` is NULL on every XBRL row — no element
+        carries it. Printing 0 would read as 'this company has none', which is
+        the opposite of what is known."""
+        from stockanalysis.serve.dashboard import annual_statement_frame, format_crore
+
+        assert format_crore(None) == ""
+        assert format_crore(0.0) == "0.00"
+
+        row = queries.AnnualFinancials(
+            fiscal_year=2024, basis="CONSOLIDATED", period_end=dt.date(2024, 3, 31),
+            filing_date=dt.date(2024, 5, 2), source="XBRL", auditor_opinion=None,
+            confidence=1.0, values={"revenue": 1000.0, "contingent_liabilities": None},
+        )
+        frame = annual_statement_frame([row])
+        assert frame.loc["Contingent liabilities", "FY2024"] == ""
+        assert frame.loc["Revenue", "FY2024"] == "1,000"
+
+    def test_two_bases_in_one_year_get_separate_columns(self):
+        """Otherwise they collide and the page shows whichever came last —
+        silently, and with no sign that a second basis exists."""
+        from stockanalysis.serve.dashboard import annual_statement_frame
+
+        def row(basis: str, revenue: float):
+            return queries.AnnualFinancials(
+                fiscal_year=2024, basis=basis, period_end=dt.date(2024, 3, 31),
+                filing_date=dt.date(2024, 5, 2), source="XBRL",
+                auditor_opinion=None, confidence=1.0, values={"revenue": revenue},
+            )
+
+        frame = annual_statement_frame([row("CONSOLIDATED", 900.0), row("STANDALONE", 500.0)])
+        assert list(frame.columns) == ["FY2024 Consolidated", "FY2024 Standalone"]
+        assert frame.loc["Revenue", "FY2024 Consolidated"] == "900"
+
+    def test_quarterly_yoy_matches_on_date_not_row_offset(self):
+        """Stored quarters are not guaranteed contiguous. Stepping back four
+        rows through a gap would label a three-quarter move 'year on year'."""
+        from stockanalysis.serve.dashboard import quarterly_frame
+
+        def q(period_end: dt.date, revenue: float):
+            return queries.QuarterlyFinancials(
+                period_end=period_end, filing_date=period_end + dt.timedelta(days=45),
+                relating_to="First Quarter", is_consolidated=True,
+                revenue=revenue, pat=revenue / 10, eps=1.0,
+            )
+
+        # June 2024 and June 2023 present; the quarters between them are not.
+        frame = quarterly_frame([q(dt.date(2024, 6, 30), 1100.0), q(dt.date(2023, 6, 30), 1000.0)])
+        assert frame.iloc[0]["Rev YoY"] == "+10.0%"
+        # The older quarter has no prior year stored, so it must not invent one.
+        assert frame.iloc[1]["Rev YoY"] == "—"
+
+    def test_quarterly_yoy_is_blank_without_a_matching_quarter(self):
+        """A quarter six months back is not a year-on-year comparison."""
+        from stockanalysis.serve.dashboard import quarterly_frame
+
+        def q(period_end: dt.date, revenue: float):
+            return queries.QuarterlyFinancials(
+                period_end=period_end, filing_date=None, relating_to=None,
+                is_consolidated=None, revenue=revenue, pat=None, eps=None,
+            )
+
+        frame = quarterly_frame([q(dt.date(2024, 6, 30), 1100.0), q(dt.date(2023, 12, 31), 1000.0)])
+        assert frame.iloc[0]["Rev YoY"] == "—"
+
+    def test_empty_financial_frames_keep_their_columns(self):
+        from stockanalysis.serve.dashboard import (
+            annual_provenance_frame,
+            annual_statement_frame,
+            quarterly_frame,
+        )
+
+        assert annual_statement_frame([]).empty
+        assert "Quarter" in quarterly_frame([]).columns
+        assert "Source" in annual_provenance_frame([]).columns
+
     def test_format_driver(self):
         from stockanalysis.serve.dashboard import format_driver
 
@@ -1004,6 +1099,7 @@ class TestDashboardHelpers:
         from stockanalysis.factors import redflags
         from stockanalysis.serve import readiness as rd
         from stockanalysis.serve.dashboard import (
+            HAVE_ICON,
             blocked_frame,
             flags_frame,
             sources_frame,
@@ -1015,6 +1111,11 @@ class TestDashboardHelpers:
         sources = sources_frame(report)
         assert len(sources) == len(rd.DATASETS)
         assert "What is missing" in sources.columns
+        # A gap names the step that closes it, and says when that costs money —
+        # the free annual route and the paid one look identical otherwise.
+        closers = sources[sources[""] != HAVE_ICON[rd.Have.PRESENT]]["Closed by"]
+        assert closers.notna().all() and (closers != "—").all()
+        assert not any("(paid)" in c for c in closers if "XBRL" in c)
 
         flags = flags_frame(report)
         assert len(flags) == len(redflags.DEFINITIONS)
@@ -1063,12 +1164,15 @@ class TestDashboardPages:
         pytest.importorskip("streamlit.testing.v1")
 
     @staticmethod
-    def _run(page: str):
+    def _run(page: str, session_state: dict | None = None):
         from streamlit.testing.v1 import AppTest
 
         from stockanalysis.serve import dashboard
 
-        app = AppTest.from_file(dashboard.__file__, default_timeout=120).run()
+        app = AppTest.from_file(dashboard.__file__, default_timeout=120)
+        for key, value in (session_state or {}).items():
+            app.session_state[key] = value
+        app.run()
         assert not app.exception, f"initial render raised: {app.exception}"
         app.sidebar.radio[0].set_value(page).run()
         assert not app.exception, f"{page} raised: {app.exception}"
@@ -1111,6 +1215,137 @@ class TestDashboardPages:
         # A sanity floor: an all-zero dashboard would satisfy equality above if
         # the fixture ever stopped producing signals.
         assert expected_buy + expected_sell > 0
+
+    def test_instrument_page_shows_the_reported_financials(self, scored_db_path):
+        """The figures behind the score, not just the model's view of them.
+
+        This is the question an operator asks when a signal looks wrong, and
+        before this tab existed the only answer was to open DuckDB.
+        """
+        app = self._run("Instrument")
+        text = " ".join(m.value for m in app.markdown)
+        assert "Financials" in [t.label for t in app.tabs]
+        assert "### Annual" in text
+        assert "### Quarterly" in text
+
+        # The statement is rendered, and it is the transposed one: line items
+        # down the index, years across the columns.
+        db = Database(scored_db_path, read_only=True)
+        try:
+            isin = db.as_of_universe(INDEX, AS_OF)[0]
+            stored = queries.annual_financials(db, isin)
+        finally:
+            db.close()
+        assert stored, "fixture stores no annual financials to render"
+
+        statements = [
+            f for f in app.dataframe
+            if "Revenue" in list(getattr(f.value, "index", []))
+        ]
+        assert statements, "no annual statement table on the page"
+        assert any(
+            f"FY{stored[0].fiscal_year}" in list(f.value.columns) for f in statements
+        )
+
+    def test_a_clicked_signal_opens_that_company(self, scored_db_path):
+        """The whole point of the click-through: the Instrument page must land
+        on the company that was clicked, not on the alphabetically first one."""
+        db = Database(scored_db_path, read_only=True)
+        try:
+            signals = queries.signals_on(db, as_of=AS_OF)
+        finally:
+            db.close()
+        assert len(signals) > 1, "fixture needs two companies to tell them apart"
+
+        # Pick one that is not the default selection, so landing on it cannot
+        # be a coincidence of ordering.
+        target = sorted(signals, key=lambda s: s.nse_symbol)[-1]
+
+        from stockanalysis.serve.dashboard import INSTRUMENT_KEY, PAGE_KEY
+
+        app = self._run(
+            "Instrument",
+            session_state={PAGE_KEY: "Instrument", INSTRUMENT_KEY: target.nse_symbol},
+        )
+        assert app.selectbox[0].value == target.nse_symbol
+        # And the body of the page is that company's, not merely the dropdown:
+        # the ISIN caption is rendered from the resolved instrument.
+        assert target.isin in " ".join(c.value for c in app.caption)
+
+    def test_the_click_through_flow_lands_on_that_company_s_financials(
+        self, scored_db_path
+    ):
+        """The flow end to end, driven the way a user drives it.
+
+        `open_instrument` is called with the clicked symbol, and the very next
+        render must come up on the Instrument page — not merely with the right
+        symbol selected, but on the right page — because the sidebar radio has
+        its own stored value and would otherwise pull the app straight back to
+        where the click came from.
+        """
+        from streamlit.testing.v1 import AppTest
+
+        from stockanalysis.serve import dashboard
+
+        db = Database(scored_db_path, read_only=True)
+        try:
+            signals = queries.signals_on(db, as_of=AS_OF)
+            target = sorted(signals, key=lambda s: s.nse_symbol)[-1]
+            expected = queries.annual_financials(db, target.isin)
+        finally:
+            db.close()
+
+        app = AppTest.from_file(dashboard.__file__, default_timeout=120)
+        app.session_state[dashboard.PAGE_KEY] = "Signals"
+        app.run()
+        assert not app.exception
+
+        # What the click handler does, without simulating the mouse.
+        app.session_state[dashboard.PAGE_KEY] = "Instrument"
+        app.session_state[dashboard.INSTRUMENT_KEY] = target.nse_symbol
+        app.run()
+
+        assert not app.exception
+        assert app.sidebar.radio[0].value == "Instrument", (
+            "the sidebar snapped back to the page the click came from"
+        )
+        assert app.selectbox[0].value == target.nse_symbol
+        assert target.isin in " ".join(c.value for c in app.caption)
+
+        # And the financials for *that* company are what rendered.
+        if expected:
+            statements = [
+                f for f in app.dataframe
+                if "Revenue" in list(getattr(f.value, "index", []))
+            ]
+            assert statements, "the Financials tab rendered no statement"
+            assert f"FY{expected[0].fiscal_year}" in list(statements[0].value.columns)
+
+    def test_a_stale_handed_over_symbol_does_not_break_the_page(self, scored_db_path):
+        """Session state outlives the run that wrote it. A symbol that is no
+        longer in the universe must fall back, not raise."""
+        from stockanalysis.serve.dashboard import INSTRUMENT_KEY
+
+        app = self._run(
+            "Instrument", session_state={INSTRUMENT_KEY: "DELISTED-NOT-IN-UNIVERSE"}
+        )
+        assert not app.exception
+        assert app.selectbox[0].value != "DELISTED-NOT-IN-UNIVERSE"
+
+    @pytest.mark.parametrize(
+        ("page", "key"), [("Signals", "signals_table"), ("Overview", "overview_BUY")]
+    )
+    def test_signal_tables_have_row_selection_enabled(self, page, key, scored_db_path):
+        """Rows navigate. A table rendered without `on_select` looks identical
+        on screen and silently does nothing when clicked, so asserting the
+        table exists is not enough — the selection mode is the behaviour."""
+        app = self._run(page)
+        table = next((f for f in app.dataframe if f.key == key), None)
+        assert table is not None, f"no dataframe keyed {key!r} on the {page} page"
+        assert list(table.proto.selection_mode), (
+            f"the {key!r} table renders without row selection, so clicking a "
+            f"company does nothing"
+        )
 
     def test_instrument_page_explains_the_signal(self, scored_db_path):
         """The 'why' must be on the page without an LLM narrative present."""

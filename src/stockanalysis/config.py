@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     # Phase 4 — serving
     # ----------------------------------------------------------------
 
-    narrative_model: str = "claude-opus-5"
+    narrative_model: str = "cli:claude-opus-5"
 
     # Effort, not a token budget: `budget_tokens` is rejected on this model
     # family. A narrative restates a computed score in two sentences and needs

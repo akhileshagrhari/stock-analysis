@@ -124,13 +124,15 @@ DATASETS: tuple[DatasetSpec, ...] = (
     ),
     DatasetSpec(
         "filings", "Annual report PDFs", "filings",
-        "Downloaded from NSE. On its own it feeds nothing — it is what "
-        "extraction reads.",
+        "Downloaded from NSE for reference and audit. Nothing in the model "
+        "reads them now that annual financials come from XBRL, so a gap here "
+        "is not a gap in the model.",
     ),
     DatasetSpec(
-        "annual", "Extracted annual financials", "extract",
-        "Claude reads the PDFs into the schema. The value, quality and growth "
-        "families are built almost entirely from this.",
+        "annual", "Annual financials", "xbrl",
+        "NSE's tagged annual filing, read for free and with no model in the "
+        "loop. The only source of annual figures. The value, quality and "
+        "growth families are built almost entirely from this.",
     ),
     DatasetSpec(
         "news", "Scored news", "sentiment",
@@ -302,17 +304,25 @@ class Readiness:
     def next_steps(self) -> tuple[str, ...]:
         """Pipeline step keys that would close the gaps, in dependency order.
 
-        Registry order, not gap order: extraction after a filing download is the
-        only sequence that works, and a caller sorting by "biggest gap first"
-        would send Claude to read PDFs that have not been fetched.
+        Registry order, not gap order — a caller sorting by "biggest gap first"
+        would produce a plan whose steps undo each other's preconditions.
         """
         from stockanalysis.run.steps import STEPS
 
         wanted = {s.step for s in self.gaps}
-        # Extraction is meaningless without the PDFs, and the PDFs are a gap
-        # only until they are downloaded — so a run that extracts must fetch.
-        if "extract" in wanted:
-            wanted.add("filings")
+        # The filing index is not the goal: it is fetched so the XBRL can be
+        # read. Stopping after it would leave the same gap the operator clicked
+        # on, having spent the crawl.
+        #
+        # `quarterly` used to be pulled in alongside, because the index could
+        # only *upgrade* quarterly rows and so had nothing to attach a link to
+        # until they existed. It now writes `results_filings` directly, which is
+        # what let the annual path reach past the five quarters
+        # `results_comparison` returns — so the dependency is gone.
+        if "results-index" in wanted:
+            wanted.add("xbrl")
+        # A step key no longer in the registry (the retired `extract`) drops out
+        # here rather than being offered as a button that runs nothing.
         return tuple(s.key for s in STEPS if s.key in wanted)
 
 
@@ -397,7 +407,7 @@ def _sources(
         _quarterly_status(panel),
         _shareholding_status(panel),
         _filings_status(db, isin),
-        _annual_status(panel),
+        _annual_status(db, panel),
         _news_status(db, isin, as_of, panel),
     )
 
@@ -511,10 +521,14 @@ def _filings_status(db: Database, isin: str) -> SourceStatus:
         [isin],
     )
     if df.empty:
+        # Not a gap in the ordinary sense. No extractor reads these any more, so
+        # an empty `filings` is the expected state and the recommendation must
+        # not send anyone off to download 200 MB that nothing will consume. It
+        # stays worth reporting only because a PDF is the sole way to reach a
+        # company-year the tagged filings miss.
         return SourceStatus(
-            "filings", "Annual report PDFs", Have.ABSENT, "none downloaded",
-            f"nothing for extraction to read; {settings.filing_years} years is "
-            f"the configured target", "filings",
+            "filings", "Annual report PDFs", Have.PRESENT,
+            "none held — annual financials come from XBRL", "", "filings",
         )
 
     years = [int(y) for y in df["fiscal_year"].dropna()]
@@ -533,16 +547,61 @@ def _filings_status(db: Database, isin: str) -> SourceStatus:
     )
 
 
-def _annual_status(panel: Panel) -> SourceStatus:
+ANNUAL_UNREACHABLE = ""
+
+
+def _annual_step(db: Database, isin: str) -> str:
+    """The step that would close this company's annual gap, or none at all.
+
+    Three states, and telling them apart is the whole job:
+
+    - An XBRL instance is on file and unread — `xbrl`, free.
+    - No instance on file, and no record of the free path having failed here —
+      `results-index`. The crawl is what discovers instances, so "we hold none"
+      usually means "we have not looked far enough back", not "none exists".
+    - The free path has been run against this company and refused what it found
+      — no step. A bank's results taxonomy tags no revenue line and never will,
+      and a year filed before Ind AS XBRL became routine has no instance at all.
+      Since the paid annual-report path was retired there is nothing left to
+      offer, and the honest report is a gap with no button rather than a button
+      that runs nothing.
+
+    Only a recorded refusal may declare the gap unreachable.
+    `pending_annual_filings` being empty is not the verdict it looks like — it
+    is empty when no instance exists, and equally empty when every instance on
+    file has just been read successfully. Treating the two alike marked ABB's
+    FY2025 unreachable seconds after the free path had read FY2023 and FY2024
+    for nothing, the missing year being absent from the filing index rather than
+    absent from the exchange.
+    """
+    from stockanalysis.ingest.xbrl_annual import XBRL_MODEL, pending_annual_filings
+
+    if pending_annual_filings(db, isins=[isin]):
+        return "xbrl"
+    # Per company, not per year: the taxonomy gap that stops a bank's revenue
+    # being tagged stops every year of it, and the annual gap is reported per
+    # company. Reached only once nothing is pending, so a single refused year
+    # never speaks for filings still waiting to be read.
+    refused = db.query(
+        "SELECT 1 FROM extraction_attempts "
+        "WHERE isin = ? AND model = ? AND error IS NOT NULL LIMIT 1",
+        [isin, XBRL_MODEL],
+    )
+    return ANNUAL_UNREACHABLE if not refused.empty else "results-index"
+
+
+def _annual_status(db: Database, panel: Panel) -> SourceStatus:
     """Extracted annual financials, as the panel is allowed to see them."""
-    rows = _mine(panel.annual, panel.isins[0])
+    isin = panel.isins[0]
+    step = _annual_step(db, isin)
+    rows = _mine(panel.annual, isin)
     if rows.empty:
         return SourceStatus(
             "annual", "Extracted annual financials", Have.ABSENT,
             "none visible on the decision date",
             "the value, quality and growth families are ~75% of the model and "
             "are built from this",
-            "extract",
+            step,
         )
 
     years = sorted(
@@ -559,17 +618,40 @@ def _annual_status(panel: Panel) -> SourceStatus:
     )
     detail = (
         f"{len(rows)} year(s) — {', '.join(str(y) for y in years)} "
-        f"({basis}{conf_note})"
+        f"({basis}{conf_note}{_provenance(rows)})"
     )
 
     if len(rows) < 3:
         return SourceStatus(
             "annual", "Extracted annual financials", Have.PARTIAL, detail,
             f"{len(rows)} of the 3 years the CAGR and cash-conversion factors "
-            f"need", "extract",
+            f"need", step,
         )
     return SourceStatus(
-        "annual", "Extracted annual financials", Have.PRESENT, detail, "", "extract"
+        "annual", "Extracted annual financials", Have.PRESENT, detail, "", step
+    )
+
+
+# How `fundamentals_annual.source` reads on the page. Worth naming rather than
+# printing the raw value: "LLM" tells an operator nothing about what it cost.
+_SOURCE_LABEL = {"XBRL": "XBRL", "LLM": "Claude"}
+
+
+def _provenance(rows: pd.DataFrame) -> str:
+    """Which rows came free and which were paid for.
+
+    Two things depend on it that nothing else on the page reports: whether
+    re-running would spend money, and whether `contingent_liabilities` can ever
+    be filled — no element in the results taxonomy carries it, so an XBRL year
+    leaves that red flag permanently UNKNOWN.
+    """
+    if "source" not in rows:
+        return ""
+    counts = rows["source"].dropna().value_counts()
+    if counts.empty:
+        return ""
+    return ", " + " + ".join(
+        f"{n} {_SOURCE_LABEL.get(str(src), str(src))}" for src, n in counts.items()
     )
 
 

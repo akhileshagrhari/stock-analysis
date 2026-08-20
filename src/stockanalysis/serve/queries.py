@@ -162,6 +162,76 @@ class SentimentCounts:
         return self.positive + self.negative + self.neutral
 
 
+# Annual line items, in statement order, paired with the label to show. Held as
+# an ordered tuple rather than derived from the row's columns because a
+# statement read in column order is not a statement — revenue belongs above
+# expenses whatever order DuckDB hands the fields back in.
+ANNUAL_LINE_ITEMS: tuple[tuple[str, str], ...] = (
+    ("revenue", "Revenue"),
+    ("other_income", "Other income"),
+    ("total_income", "Total income"),
+    ("total_expenses", "Total expenses"),
+    ("ebitda", "EBITDA"),
+    ("depreciation", "Depreciation"),
+    ("interest_expense", "Interest expense"),
+    ("profit_before_tax", "Profit before tax"),
+    ("tax_expense", "Tax expense"),
+    ("pat", "PAT"),
+    ("eps", "EPS (₹)"),
+    ("ocf", "Operating cash flow"),
+    ("capex", "Capex"),
+    ("fcf", "Free cash flow"),
+    ("total_assets", "Total assets"),
+    ("total_equity", "Total equity"),
+    ("total_liabilities", "Total liabilities"),
+    ("total_debt", "Total debt"),
+    ("cash", "Cash"),
+    ("contingent_liabilities", "Contingent liabilities"),
+)
+
+# The rows above that are per-share rather than crore. EPS is the only one, but
+# naming it here keeps the unit decision next to the line-item list rather than
+# hidden in a formatter.
+PER_SHARE_ITEMS = frozenset({"eps"})
+
+
+@dataclass(frozen=True)
+class AnnualFinancials:
+    """One fiscal year of `fundamentals_annual`, in crore except EPS.
+
+    `values` carries the line items rather than twenty named fields: the page
+    renders them as a statement driven by `ANNUAL_LINE_ITEMS`, and a dataclass
+    field per line would mean editing two places to add one row.
+    """
+
+    fiscal_year: int
+    basis: str
+    period_end: dt.date | None
+    filing_date: dt.date | None
+    source: str | None
+    auditor_opinion: str | None
+    confidence: float | None
+    values: dict[str, float | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class QuarterlyFinancials:
+    """One quarter of `fundamentals_quarterly`, in crore except EPS.
+
+    Thin by comparison with the annual row because the free NSE source carries
+    only these three figures — `results_comparison` returns revenue, net profit
+    and EPS and nothing else.
+    """
+
+    period_end: dt.date
+    filing_date: dt.date | None
+    relating_to: str | None
+    is_consolidated: bool | None
+    revenue: float | None
+    pat: float | None
+    eps: float | None
+
+
 # ----------------------------------------------------------------------
 # Row builders
 # ----------------------------------------------------------------------
@@ -393,6 +463,85 @@ def recent_news(db: Database, isin: str, limit: int = 10) -> list[NewsItem]:
         )
         for _, row in df.iterrows()
     ]
+
+
+def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
+    """Every stored fiscal year for one company, newest first.
+
+    Deliberately not filtered to one basis. A company that changed basis, or
+    that has a consolidated row for one year and a standalone one for another,
+    should show that on the page rather than have a year silently vanish — the
+    mixed history *is* the finding, and it is what makes a CAGR across those
+    years wrong.
+    """
+    df = db.query(
+        """
+        SELECT * FROM fundamentals_annual
+        WHERE isin = ?
+        ORDER BY fiscal_year DESC, basis
+        """,
+        [isin],
+    )
+    out: list[AnnualFinancials] = []
+    for _, row in df.iterrows():
+        out.append(
+            AnnualFinancials(
+                fiscal_year=int(row["fiscal_year"]),
+                basis=_req_str(row.get("basis"), "—"),
+                period_end=_opt_date(row.get("period_end_date")),
+                filing_date=_opt_date(row.get("filing_date")),
+                source=_opt_str(row.get("source")),
+                auditor_opinion=_opt_str(row.get("auditor_opinion")),
+                confidence=_opt_float(row.get("extraction_confidence")),
+                values={
+                    key: _opt_float(row.get(key)) for key, _label in ANNUAL_LINE_ITEMS
+                },
+            )
+        )
+    return out
+
+
+def quarterly_financials(
+    db: Database, isin: str, limit: int = 12
+) -> list[QuarterlyFinancials]:
+    """Stored quarters for one company, newest first.
+
+    `results_comparison` returns only about five quarters per company, so the
+    default limit is generous rather than restrictive — it is there to bound the
+    page, not to hide history.
+    """
+    df = db.query(
+        """
+        SELECT period_end_date, filing_date, relating_to, is_consolidated,
+               revenue, pat, eps
+        FROM fundamentals_quarterly
+        WHERE isin = ?
+        ORDER BY period_end_date DESC
+        LIMIT ?
+        """,
+        [isin, int(limit)],
+    )
+    out: list[QuarterlyFinancials] = []
+    for _, row in df.iterrows():
+        period_end = _opt_date(row["period_end_date"])
+        if period_end is None:
+            continue
+        consolidated = row.get("is_consolidated")
+        out.append(
+            QuarterlyFinancials(
+                period_end=period_end,
+                filing_date=_opt_date(row.get("filing_date")),
+                relating_to=_opt_str(row.get("relating_to")),
+                is_consolidated=(
+                    None if consolidated is None or pd.isna(consolidated)
+                    else bool(consolidated)
+                ),
+                revenue=_opt_float(row.get("revenue")),
+                pat=_opt_float(row.get("pat")),
+                eps=_opt_float(row.get("eps")),
+            )
+        )
+    return out
 
 
 def sentiment_counts(

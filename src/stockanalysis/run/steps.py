@@ -64,8 +64,9 @@ class RunOptions:
     index_name: str = settings.default_index
     price_years: int = 6
     filing_years: int = settings.filing_years
-    extraction_model: str = settings.extraction_model
-    extraction_limit: int = 3
+    # Re-reads XBRL filings the pipeline previously refused. Kept under its
+    # original name after the paid extraction step was retired, because it is
+    # what a parser fix needs to reach the filings it now handles.
     redo_extraction: bool = False
     as_of: dt.date | None = None          # None -> today, resolved at run time
     min_coverage: float = 0.5
@@ -206,6 +207,47 @@ def _quarterly(ctx: StepContext) -> None:
     )
 
 
+def _results_index(ctx: StepContext) -> None:
+    """The exchange's filing index: real broadcast dates, and the XBRL links.
+
+    Two things come out of one crawl. The first is point-in-time: quarterly rows
+    are stored with the LODR deadline as an assumed knowledge date, and this
+    replaces it with the date NSE actually broadcast the filing. The second is
+    that `xbrl_url` exists at all — nothing else writes that column, and the
+    free annual path reads nothing but that column.
+
+    Index-wide by date range rather than per company, which is why a
+    single-company run still fetches everyone: the endpoint is index-wide, so
+    100 companies cost a handful of requests instead of a hundred.
+    """
+    from stockanalysis.ingest.nse_fundamentals import ingest_results_index
+
+    end = dt.date.today()
+    years = ctx.options.filing_years
+    start = end - dt.timedelta(days=365 * years)
+    ctx.report.log(
+        f"Fetching the NSE results index for {start} → {end}. One request per "
+        f"90-day window, covering every company on the exchange — not just "
+        f"{ctx.scope_label}."
+    )
+
+    matched = ingest_results_index(ctx.db, from_date=start, to_date=end)
+    ctx.report.summary(**{"filings matched": matched, "window": f"{years}y"})
+    if matched == 0:
+        raise StepSkipped(
+            "NSE returned no filings for this window, or none matched a stored "
+            "quarter. Ingest quarterly results first — this step upgrades rows "
+            "that already exist, it does not create them."
+        )
+
+    linked = _xbrl_link_count(ctx.db, ctx.isins)
+    ctx.report.summary(**{"annual filings with XBRL": linked})
+    ctx.report.log(
+        f"{linked} Q4/annual filing(s) for {ctx.scope_label} carry a tagged "
+        f"XBRL instance — those are the ones the next step reads for free."
+    )
+
+
 def _shareholding(ctx: StepContext) -> None:
     """Quarterly shareholding pattern — promoter holding trend and the red flag it feeds."""
     from stockanalysis.ingest.shareholding import ingest_shareholding
@@ -285,94 +327,88 @@ def _filings(ctx: StepContext) -> None:
         )
 
 
-def _extract(ctx: StepContext) -> None:
-    """Claude reads the PDFs into the schema, and the validators score the result.
+def _xbrl(ctx: StepContext) -> None:
+    """Annual financials from the exchange's own tagged filing. Free.
 
-    The only step whose output is a *judgement* rather than a fetch, which is
-    why every filing gets its confidence and the checks behind it reported
-    individually rather than averaged into one number.
+    The only route to `fundamentals_annual`. The paid path that used to read
+    annual-report PDFs with Claude has been retired: the exchange publishes the
+    balance sheet and cash flow in tagged form alongside the P&L, so what the
+    LLM bought was a second, less reliable reading of figures already available
+    for nothing. What is genuinely out of reach this way — a bank's revenue
+    line, and years before Ind AS XBRL became routine — is now reported as a
+    gap rather than quietly bought.
     """
-    from stockanalysis.extract.factory import make_extractor
-    from stockanalysis.extract.pipeline import pending_filings, run_extraction
-
-    model = ctx.options.extraction_model
-    filings = pending_filings(
-        ctx.db,
-        limit=ctx.options.extraction_limit,
-        isins=ctx.isins,
-        only_unextracted=not ctx.options.redo_extraction,
-        model=model,
+    from stockanalysis.ingest.xbrl_annual import (
+        ingest_annual_xbrl,
+        pending_annual_filings,
     )
-    if not filings:
+
+    # "Redo" covers both annual paths: a filing this step refused is skipped on
+    # every later run, which is what stops a bank being offered for ever — but
+    # it also means a parser fix would never see the filings it now handles.
+    refs = pending_annual_filings(
+        ctx.db, isins=ctx.isins, only_missing=not ctx.options.redo_extraction
+    )
+    if not refs:
+        linked = _xbrl_link_count(ctx.db, ctx.isins)
         raise StepSkipped(
-            "Nothing pending — every downloaded report has already been "
-            "extracted with this model. Tick 're-extract' to run them again."
+            "Every annual XBRL filing on file is already ingested."
+            if linked
+            else "No XBRL links on file. Run `Fetch NSE filing index` first — "
+                 "it is what populates the links this step reads."
         )
 
-    ctx.report.log(f"Extracting {len(filings)} filing(s) with {model}")
-    extractor = make_extractor(model)
+    ctx.report.log(f"Reading {len(refs)} tagged annual filing(s) from NSE")
 
-    def progress(i: int, n: int, filing, result, report) -> None:
-        confidence = report.confidence if report else 0.0
+    def progress(i: int, n: int, result) -> None:
+        ref = result.ref
         ctx.report.row(
-            fiscal_year=filing.fiscal_year,
-            confidence=confidence,
-            verdict=_confidence_verdict(confidence, result.error),
-            failed_checks=(
-                "; ".join(c.name for c in report.hard_failures + report.soft_failures)
-                if report else ""
-            ),
-            cost_usd=round(result.cost_usd(), 3),
-            seconds=round(result.latency_seconds, 1),
-            error=result.error or "",
+            fiscal_year=ref.fiscal_year,
+            basis=ref.basis,
+            confidence=result.report.confidence if result.report else 0.0,
+            filed=str(ref.broadcast_date),
+            skipped=result.error or "",
         )
         if result.error:
-            ctx.report.error(
-                f"FY{filing.fiscal_year} failed: {result.error}",
-                fiscal_year=filing.fiscal_year,
-            )
-        else:
-            level = "info" if confidence >= 1.0 else "warn"
-            ctx.report.log(
-                f"FY{filing.fiscal_year} extracted — confidence {confidence} "
-                f"({_confidence_verdict(confidence, None)}), "
-                f"${result.cost_usd():.3f}, {result.latency_seconds:.0f}s",
-                level=level,
-                fiscal_year=filing.fiscal_year,
-                confidence=confidence,
-            )
-            if report:
-                for check in report.hard_failures + report.soft_failures:
-                    ctx.report.warn(
-                        f"FY{filing.fiscal_year} {check.name} failed "
-                        f"({check.severity}): {check.detail}"
-                    )
+            # Not an error in the run: it is the signal that this company-year
+            # needs the annual report instead, and the operator should see why.
+            ctx.report.warn(f"FY{ref.fiscal_year} {ref.symbol or ref.isin}: {result.error}")
         ctx.report.progress(i, n, f"{i}/{n} filings")
-        # Between filings is the only safe place to stop: a filing already sent
-        # to the model has been paid for either way, so it is finished and
-        # persisted rather than abandoned.
         ctx.report.check_cancelled()
 
-    results = run_extraction(
-        ctx.db, filings, extractor, run_label="ui", progress=progress
-    )
+    results = ingest_annual_xbrl(ctx.db, refs, progress=progress)
 
-    ok = sum(1 for r, _ in results if r.ok)
-    clean = sum(1 for _, rep in results if rep and rep.confidence >= 1.0)
-    queued = sum(1 for _, rep in results if rep and rep.confidence < 0.6)
-    cost = sum(r.cost_usd() for r, _ in results)
+    stored = sum(1 for r in results if r.ok)
     ctx.report.summary(**{
-        "extracted": f"{ok}/{len(results)}",
-        "passed every validator": clean,
-        "cost": f"${cost:.2f}",
+        "stored to fundamentals": f"{stored}/{len(results)}",
+        "cost": "$0.00",
     })
-    if queued:
-        ctx.report.warn(
-            f"{queued} extraction(s) scored below 0.6 and went to the human "
-            f"review queue rather than into `fundamentals_annual`."
+    if stored == 0:
+        # Two findings wear this same summary, and only one of them is an error.
+        # Every filing read and refused is this company's answer — a bank tags
+        # no revenue line and never will — so the job carries on to scoring,
+        # which is the whole point of the run. A filing never read is a verdict
+        # on the network, and continuing would report the free path as having
+        # considered something it never opened.
+        if all(r.refused for r in results):
+            raise StepSkipped(
+                "Every tagged filing was read and none carries the figures the "
+                "model needs — see the warnings above. Banks are the usual "
+                "case: their results taxonomy tags no revenue line. Those "
+                "company-years stay uncovered."
+            )
+        raise RuntimeError(
+            "No filing yielded a usable annual row, and at least one was not "
+            "read at all — see the warnings above. That is a fetch failure "
+            "rather than a verdict on the filings, so it is worth re-running "
+            "before paying to read the annual reports."
         )
-    if ok == 0:
-        raise RuntimeError("Every extraction failed — see the log above.")
+    uncovered = len(results) - stored
+    if uncovered:
+        ctx.report.warn(
+            f"{uncovered} company-year(s) carry no usable tagged figures and "
+            f"stay uncovered — see the warnings above for which, and why."
+        )
 
 
 def _news_rss(ctx: StepContext) -> None:
@@ -640,6 +676,17 @@ def _price_stats(db: Database, isins: list[str] | None) -> dict | None:
     }
 
 
+def _xbrl_link_count(db: Database, isins: list[str] | None) -> int:
+    """Annual filings with a tagged instance — what `xbrl` has left to read."""
+    where, params = ("AND isin = ?", [isins[0]]) if isins else ("", [])
+    df = db.query(
+        f"SELECT COUNT(*) AS c FROM fundamentals_quarterly "
+        f"WHERE relating_to = 'Fourth Quarter' AND xbrl_url LIKE '%.xml' {where}",
+        params,
+    )
+    return int(df["c"].iloc[0]) if not df.empty else 0
+
+
 def _latest_quarter(db: Database, isins: list[str] | None) -> dt.date | None:
     if not isins:
         return None
@@ -736,6 +783,16 @@ STEPS: tuple[StepSpec, ...] = (
         cost=NETWORK,
     ),
     StepSpec(
+        key="results-index",
+        label="Fetch NSE filing index",
+        description=(
+            "Real broadcast dates for the quarterly rows, and the XBRL links "
+            "the free annual step reads. Exchange-wide crawl."
+        ),
+        run=_results_index,
+        cost=NETWORK,
+    ),
+    StepSpec(
         key="shareholding",
         label="Ingest shareholding",
         description="Promoter / FII / DII holding by quarter.",
@@ -745,20 +802,26 @@ STEPS: tuple[StepSpec, ...] = (
     StepSpec(
         key="filings",
         label="Download annual reports",
-        description="Fetch annual-report PDFs from NSE and register them.",
+        description=(
+            "Fetch annual-report PDFs from NSE and register them. Off by "
+            "default: nothing reads the PDFs since the model-backed extraction "
+            "was retired, so a run downloads hundreds of MB that only `xbrl` "
+            "would then duplicate for free. Kept runnable because the PDFs are "
+            "the only route to a year the tagged filings do not cover."
+        ),
         run=_filings,
         cost=NETWORK,
+        default_on=False,
     ),
     StepSpec(
-        key="extract",
-        label="Extract financials (Claude)",
+        key="xbrl",
+        label="Read annual XBRL",
         description=(
-            "Locate the statements, extract to schema, run the arithmetic "
-            "validators, score confidence. Spends money per report."
+            "Annual financials from NSE's tagged results filing — balance "
+            "sheet and cash flow included. Free, and needs no model."
         ),
-        run=_extract,
-        cost=PAID,
-        default_on=False,
+        run=_xbrl,
+        cost=NETWORK,
     ),
     StepSpec(
         key="news",

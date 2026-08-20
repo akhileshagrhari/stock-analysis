@@ -306,6 +306,30 @@ def test_flagged_extraction_persists_but_is_also_queued(db, filing):
     assert len(pending(db)) == 1
 
 
+def test_consolidated_group_with_minorities_reaches_fundamentals(db, filing):
+    """The RELIANCE case. PBT - tax overshoots `pat` by the minority's share of
+    profit, which is correct consolidated accounting rather than a misreading,
+    and the row has to persist with both legs of the split stored alongside it.
+    """
+    _, report = _persist(
+        db,
+        filing,
+        good_payload(
+            profit_before_tax=200.0,
+            tax_expense=50.0,
+            share_of_associates=5.0,
+            non_controlling_interest=20.0,
+            pat=135.0,
+        ),
+    )
+    assert report.confidence == 1.0
+
+    row = db.query("SELECT * FROM fundamentals_annual").iloc[0]
+    assert row["pat"] == pytest.approx(135.0)
+    assert row["non_controlling_interest"] == pytest.approx(20.0)
+    assert row["share_of_associates"] == pytest.approx(5.0)
+
+
 def test_hard_failure_is_queued_and_never_reaches_fundamentals(db, filing):
     _, report = _persist(db, filing, good_payload(total_assets=4000.0))
     assert report.confidence == 0.0

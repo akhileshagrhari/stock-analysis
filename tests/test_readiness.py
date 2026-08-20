@@ -61,6 +61,54 @@ def _universe(db: Database, n: int = 8) -> list[str]:
     return isins
 
 
+def _q4_with_an_instance(db: Database, isin: str, period_end: dt.date) -> None:
+    """A Q4 results filing carrying a tagged instance — what `xbrl` reads."""
+    db.upsert_df(
+        "results_filings",
+        pd.DataFrame([{
+            "isin": isin,
+            "period_end_date": period_end,
+            "basis": "STANDALONE",
+            "broadcast_date": period_end + dt.timedelta(days=50),
+            "relating_to": "Fourth Quarter",
+            "is_consolidated": False,
+            "is_audited": True,
+            "xbrl_url": f"https://nsearchives.nseindia.com/corporate/xbrl/{isin}.xml",
+        }]),
+        ["isin", "period_end_date", "basis"],
+    )
+
+
+def _free_route_exhausted(db: Database, isin: str) -> None:
+    """Put a company in the one state where no step can close the annual gap.
+
+    A bank, or a year filed before Ind AS XBRL: the instance is there and the
+    parser has read it and found nothing it can use. The refusal on record is
+    what makes this different from every other empty `pending_annual_filings` —
+    those are filings not yet reached, this is a filing that will never work.
+    Since the paid annual-report path was retired, this state has no step behind
+    it at all.
+    """
+    period_end = dt.date(2023, 3, 31)
+    _q4_with_an_instance(db, isin, period_end)
+    db.upsert_df(
+        "extraction_attempts",
+        pd.DataFrame([{
+            "attempt_id": f"{isin}-FY2023-STANDALONE-xbrl",
+            "filing_id": f"https://nsearchives.nseindia.com/corporate/xbrl/{isin}.xml",
+            "isin": isin,
+            "fiscal_year": 2023,
+            "model": "xbrl",
+            "run_label": "xbrl-annual",
+            "cost_usd": 0.0,
+            "confidence": 0.0,
+            "error": "no revenue element tagged in this instance",
+            "created_at": dt.datetime(2023, 6, 1),
+        }]),
+        ["attempt_id"],
+    )
+
+
 def _with_prices(db: Database, isins: list[str], end: dt.date = AS_OF) -> None:
     db.upsert_df(
         "prices_daily",
@@ -170,7 +218,12 @@ def test_bare_instrument_reports_everything_absent(db: Database):
 
     assert report.coverage == 0.0
     assert not report.scorable
-    assert {s.have for s in report.sources} == {rd.Have.ABSENT}
+    # Every source that feeds a factor is a gap. `filings` is deliberately not
+    # one: no extractor reads the PDFs since the model-backed path was retired,
+    # so an empty `filings` is the resting state rather than something to fix.
+    scoring_sources = {s.have for s in report.sources if s.key != "filings"}
+    assert scoring_sources == {rd.Have.ABSENT}
+    assert next(s for s in report.sources if s.key == "filings").have is rd.Have.PRESENT
     assert report.stored_as_of is None
     # Every gap must name a step, or the report is a complaint rather than a plan.
     assert report.next_steps()
@@ -236,6 +289,7 @@ def test_stale_quarterly_is_partial(db: Database):
 def test_a_downloaded_but_unextracted_filing_is_reported_as_both(db: Database):
     """The PDF is on disk and the financials are still absent. Both are true."""
     isins = _universe(db, n=3)
+    _free_route_exhausted(db, isins[0])
     db.upsert_df(
         "filings",
         pd.DataFrame(
@@ -261,9 +315,191 @@ def test_a_downloaded_but_unextracted_filing_is_reported_as_both(db: Database):
     assert filings.have is rd.Have.PARTIAL
     assert "0 extracted" in filings.detail
     assert annual.have is rd.Have.ABSENT
-    # Extraction reads PDFs, so a plan that extracts must also fetch them.
+    # The annual gap is unreachable here, and an empty step key must not leak
+    # into the plan as a step the runner would reject.
+    assert annual.step == rd.ANNUAL_UNREACHABLE
+    assert "" not in report.next_steps()
+
+
+def test_a_company_with_no_quarterly_rows_is_sent_down_the_free_route(db: Database):
+    """Untried is not the same as exhausted.
+
+    A company nothing has been ingested for yet has no XBRL link for the same
+    reason a bank has none — `pending_annual_filings` is empty either way — but
+    the free route has not been *attempted* for it, it has merely never been
+    reached. Reading that as "XBRL cannot help here" is what sent Tata Motors'
+    annual report to Claude at $0.75 a copy on a plan that never so much as
+    fetched the filing index.
+    """
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+
+    report = rd.readiness(db, isins[0], AS_OF, index_name=INDEX)
+    annual = next(s for s in report.sources if s.key == "annual")
+    assert annual.step == "results-index"
+
+    # And the plan has to run the free chain in the order that works: the index
+    # upgrades quarterly rows that must exist first, and is fetched so the XBRL
+    # can be read after it. Nothing here should cost money.
     steps = report.next_steps()
-    assert steps.index("filings") < steps.index("extract")
+    assert steps.index("quarterly") < steps.index("results-index") < steps.index("xbrl")
+    assert "extract" not in steps
+
+
+def test_the_annual_gap_offers_the_free_step_only_while_it_can_close_it(db: Database):
+    """XBRL is free and covers most company-years, so it is what the gap should
+    send an operator to. But banks tag no revenue line and pre-Ind-AS years have
+    no instance at all — offering a free button that can never close the gap is
+    worse than naming the paid step that can.
+    """
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+
+    db.upsert_df(
+        "results_filings",
+        pd.DataFrame([{
+            "isin": isins[0],
+            "period_end_date": dt.date(2023, 3, 31),
+            "basis": "CONSOLIDATED",
+            "broadcast_date": dt.date(2023, 5, 20),
+            "relating_to": "Fourth Quarter",
+            "is_consolidated": True,
+            "xbrl_url": "https://nsearchives.nseindia.com/corporate/xbrl/X.xml",
+        }]),
+        ["isin", "period_end_date", "basis"],
+    )
+
+    assert next(
+        s for s in rd.readiness(db, isins[0], AS_OF, index_name=INDEX).sources
+        if s.key == "annual"
+    ).step == "xbrl"
+
+
+def test_an_unfetched_filing_index_offers_the_fetch_not_the_paid_step(db: Database):
+    """Nothing to read is not the same as nothing to be had.
+
+    A company whose quarterly rows still carry the assumed LODR deadline has
+    never had the filing index applied, so no XBRL link exists yet — and
+    `pending_annual_filings` is empty for exactly the same reason a bank's is.
+    Sending an operator to Claude at that point buys a report the exchange
+    publishes in machine-readable form for nothing.
+    """
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+    db.upsert_df(
+        "fundamentals_quarterly",
+        pd.DataFrame([{
+            "isin": isins[0],
+            "period_end_date": dt.date(2023, 3, 31),
+            "filing_date": dt.date(2023, 9, 30),
+            "filing_date_source": "ASSUMED_LODR_DEADLINE",
+            "source": "NSE",
+        }]),
+        ["isin", "period_end_date"],
+    )
+
+    report = rd.readiness(db, isins[0], AS_OF, index_name=INDEX)
+    annual = next(s for s in report.sources if s.key == "annual")
+    assert annual.step == "results-index"
+
+    # And fetching the index is only worth doing if the XBRL is read after it.
+    steps = report.next_steps()
+    assert steps.index("results-index") < steps.index("xbrl")
+
+
+def test_xbrl_read_to_the_end_of_a_stale_index_does_not_become_a_paid_gap(db: Database):
+    """`pending_annual_filings` goes empty on success too, and that is not a
+    verdict on what XBRL can reach.
+
+    ABB's FY2023 and FY2024 were read from the exchange's own filings for
+    nothing. FY2025 is still missing — not because no instance exists, but
+    because the filing index on file stops before it. Reading "nothing pending"
+    as "XBRL is finished with this company" offered the paid step for a year the
+    exchange publishes free, which is what sent an annual report to Claude
+    seconds after the free path had just succeeded twice.
+    """
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+    _q4_with_an_instance(db, isins[0], dt.date(2023, 3, 31))
+    db.upsert_df(
+        "fundamentals_annual",
+        pd.DataFrame([{
+            "isin": isins[0],
+            "fiscal_year": 2023,
+            "period_end_date": dt.date(2023, 3, 31),
+            "filing_date": dt.date(2023, 5, 20),
+            "basis": "STANDALONE",
+            "source": "XBRL",
+            "revenue": 1000.0,
+            "pat": 100.0,
+        }]),
+        ["isin", "fiscal_year", "basis"],
+    )
+
+    report = rd.readiness(db, isins[0], AS_OF, index_name=INDEX)
+    annual = next(s for s in report.sources if s.key == "annual")
+    assert annual.step != "extract"
+
+    # Refreshing the index is the free way forward, and it can only upgrade
+    # quarterly rows that the quarterly ingest has created first.
+    steps = report.next_steps()
+    assert steps.index("quarterly") < steps.index("results-index") < steps.index("xbrl")
+    assert "extract" not in steps
+
+
+def test_an_exhausted_free_route_names_no_step_at_all(db: Database):
+    """Banks and pre-Ind-AS years. The instance has been read and refused, and
+    the paid annual-report route that used to be named here is retired — so the
+    honest report is a gap with no step, not a button that runs nothing."""
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+    _free_route_exhausted(db, isins[0])
+
+    annual = next(
+        s for s in rd.readiness(db, isins[0], AS_OF, index_name=INDEX).sources
+        if s.key == "annual"
+    )
+    assert annual.step == rd.ANNUAL_UNREACHABLE
+    assert annual.have is not rd.Have.PRESENT
+
+
+def test_annual_detail_says_which_rows_were_free(db: Database):
+    """Provenance is the operator's only way to know whether re-running would
+    cost anything, and whether `contingent_liabilities` can ever be filled —
+    no XBRL element carries it."""
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+    db.upsert_df(
+        "fundamentals_annual",
+        pd.DataFrame([
+            {
+                "isin": isins[0],
+                "fiscal_year": 2022,
+                "period_end_date": dt.date(2022, 3, 31),
+                "filing_date": dt.date(2022, 9, 30),
+                "basis": "CONSOLIDATED",
+                "source": "LLM",
+                "extraction_confidence": 1.0,
+            },
+            {
+                "isin": isins[0],
+                "fiscal_year": 2023,
+                "period_end_date": dt.date(2023, 3, 31),
+                "filing_date": dt.date(2023, 5, 20),
+                "basis": "CONSOLIDATED",
+                "source": "XBRL",
+                "extraction_confidence": 1.0,
+            },
+        ]),
+        ["isin", "fiscal_year"],
+    )
+
+    annual = next(
+        s for s in rd.readiness(db, isins[0], AS_OF, index_name=INDEX).sources
+        if s.key == "annual"
+    )
+    assert "1 XBRL" in annual.detail
+    assert "1 Claude" in annual.detail
 
 
 def test_present_inputs_that_do_not_define_a_ratio_are_not_a_data_gap(db: Database):
@@ -399,21 +635,25 @@ def test_unknown_isin_is_an_error_not_an_empty_report(db: Database):
 
 
 def _report_with_an_annual_gap(db: Database) -> rd.Readiness:
+    """A gap the paid step is the only route to — the case `--fill` has to price."""
     isins = _universe(db, n=3)
     _with_prices(db, isins)
+    _free_route_exhausted(db, isins[0])
     return rd.readiness(db, isins[0], AS_OF, index_name=INDEX)
 
 
-def test_fill_drops_paid_steps_unless_asked(db: Database):
+def test_fill_never_proposes_a_paid_step(db: Database):
+    """Nothing the gap report can name costs money any more. A plan that still
+    reached a paid step would be spending on annual figures NSE tags for free."""
     from stockanalysis.cli import _fill_steps
+    from stockanalysis.run.steps import PAID, STEPS_BY_KEY
 
     report = _report_with_an_annual_gap(db)
-    assert "extract" in report.next_steps(), "fixture no longer has an annual gap"
-
     steps = _fill_steps(report, paid=False)
-    assert "extract" not in steps
-    # And the free steps that were alongside it survive.
-    assert "filings" in steps
+    assert steps
+    assert [k for k in steps if STEPS_BY_KEY[k].cost == PAID] == []
+    # Asking for paid explicitly changes nothing, because there is nothing paid.
+    assert _fill_steps(report, paid=True) == steps
 
 
 def test_fill_always_ends_by_re_scoring(db: Database):
@@ -427,11 +667,17 @@ def test_fill_always_ends_by_re_scoring(db: Database):
     assert _fill_steps(report, paid=True)[-1] == "score"
 
 
-def test_fill_fetches_before_it_extracts(db: Database):
+def test_fill_crawls_the_index_before_reading_xbrl(db: Database):
+    """The crawl is what discovers the instances the XBRL step reads. Reversed,
+    the read finds nothing pending and skips, and the gap survives the run."""
     from stockanalysis.cli import _fill_steps
 
-    steps = _fill_steps(_report_with_an_annual_gap(db), paid=True)
-    assert steps.index("filings") < steps.index("extract")
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+    report = rd.readiness(db, isins[0], AS_OF, index_name=INDEX)
+
+    steps = _fill_steps(report, paid=False)
+    assert steps.index("results-index") < steps.index("xbrl")
 
 
 def test_fill_plan_is_accepted_by_the_runner(db: Database):

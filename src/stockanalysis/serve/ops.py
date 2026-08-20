@@ -189,15 +189,12 @@ def _options_form(scope: str) -> RunOptions:
                 help="The decision date. Only data filed on or before it is used.",
             )
         with c2:
-            opts.extraction_model = st.text_input(
-                "Extraction model", value=settings.extraction_model, key=f"model_{scope}"
-            )
-            opts.extraction_limit = st.number_input(
-                "Max reports to extract", 1, 50, value=3, key=f"limit_{scope}",
-                help="Each report is a separate paid API call.",
-            )
             opts.redo_extraction = st.checkbox(
-                "Re-extract reports already done", value=False, key=f"redo_{scope}"
+                "Redo annual reads already done", value=False, key=f"redo_{scope}",
+                help=(
+                    "Re-reads XBRL filings this pipeline previously refused — "
+                    "which is the only way a parser fix reaches them."
+                ),
             )
             opts.min_coverage = st.slider(
                 "Minimum coverage to score", 0.0, 1.0, value=0.5, step=0.05,
@@ -220,13 +217,6 @@ def _cost_warning(selected: list[str], opts: RunOptions) -> None:
     if not paid:
         return
     lines = []
-    if "extract" in selected:
-        lines.append(
-            f"**Extraction** sends up to {opts.extraction_limit} report(s) to "
-            f"`{opts.extraction_model}`. DESIGN §5.4 budgets roughly $0.75 per "
-            f"report on Opus 5 without batching — call it "
-            f"${0.75 * opts.extraction_limit:.2f} for this run, before any retries."
-        )
     if "narrative" in selected:
         lines.append("**Narrative** is one short call — a few cents.")
     st.warning("This run spends money.\n\n" + "\n\n".join(f"- {line}" for line in lines))

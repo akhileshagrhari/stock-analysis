@@ -119,9 +119,20 @@ class TestRegistry:
         assert plan.steps[0].key == "resolve"
 
     def test_company_plan_keeps_registry_order_not_caller_order(self):
-        """Dependency order is the registry's, so extraction cannot precede download."""
-        plan = company_plan("RELIANCE", ["score", "extract", "prices"])
-        assert [s.key for s in plan.steps] == ["resolve", "prices", "extract", "score"]
+        """Dependency order is the registry's, so the XBRL read cannot precede
+        the index crawl that discovers the filings it reads."""
+        plan = company_plan("RELIANCE", ["score", "xbrl", "results-index"])
+        assert [s.key for s in plan.steps] == [
+            "resolve", "results-index", "xbrl", "score"
+        ]
+
+    def test_the_paid_annual_extraction_step_is_gone(self):
+        """Annual financials come from XBRL only. A registry that still carried
+        `extract` would let a saved plan or a stale URL spend money on figures
+        the exchange publishes tagged and for free."""
+        from stockanalysis.run.steps import STEPS_BY_KEY
+
+        assert "extract" not in STEPS_BY_KEY
 
     def test_unknown_step_is_rejected_with_the_list(self):
         with pytest.raises(ValueError, match="Unknown step"):
@@ -401,105 +412,162 @@ class TestPricesStep:
         assert "RELIANCE" in record.message
 
 
-class TestExtractStep:
-    """The step whose output is a judgement, so its reporting matters most."""
+class TestXbrlStep:
+    """What the free annual path does when it comes back with nothing.
 
-    @staticmethod
-    def _fake_filing(fiscal_year: int = 2024):
-        from stockanalysis.extract.pipeline import FilingRow
+    "No usable row" is two different findings wearing the same summary. A bank's
+    instance tags no revenue line and never will — that is this company needing
+    the other route, and the run should carry on to scoring. A fetch that 404ed
+    or was rate-limited says nothing about the filing at all, and treating that
+    as "XBRL cannot reach this company" would quietly retire a company-year to
+    the paid path over a transient network error.
+    """
 
-        return FilingRow(
-            filing_id="F1",
+    def _ctx(self, db):
+        from stockanalysis.run.steps import _xbrl
+
+        job = new_job(_plan(_spec("xbrl", _xbrl)))
+        return StepContext(db=db, report=Reporter(job, "xbrl"), isins=["INE000000001"]), job
+
+    def _patch(self, monkeypatch, results):
+        import stockanalysis.ingest.xbrl_annual as xbrl_mod
+
+        ref = xbrl_mod.AnnualFilingRef(
             isin="INE000000001",
             symbol="TEST001",
-            company="Test Company 1",
-            fiscal_year=fiscal_year,
-            period_end=dt.date(fiscal_year, 3, 31),
-            broadcast_date=dt.date(fiscal_year, 9, 30),
-            broadcast_date_source="NSE",
-            local_path="/tmp/x.pdf",
+            period_end=dt.date(2023, 3, 31),
+            broadcast_date=dt.date(2023, 5, 20),
+            is_consolidated=False,
+            xbrl_url="https://nsearchives.nseindia.com/x.xml",
         )
-
-    @staticmethod
-    def _patch(monkeypatch, results):
-        import stockanalysis.extract.factory as factory_mod
-        import stockanalysis.extract.pipeline as pipeline_mod
-
         monkeypatch.setattr(
-            pipeline_mod, "pending_filings", lambda *a, **k: [TestExtractStep._fake_filing()]
+            xbrl_mod, "pending_annual_filings", lambda *a, **k: [ref]
         )
-        monkeypatch.setattr(factory_mod, "make_extractor", lambda model: object())
+        monkeypatch.setattr(
+            xbrl_mod, "ingest_annual_xbrl",
+            lambda *a, **k: [r(ref) for r in results],
+        )
 
-        def run_extraction(db, filings, extractor, run_label="", progress=None):
-            for i, (filing, result, report) in enumerate(results, start=1):
-                if progress:
-                    progress(i, len(results), filing, result, report)
-            return [(r, rep) for _, r, rep in results]
-
-        monkeypatch.setattr(pipeline_mod, "run_extraction", run_extraction)
-
-    def test_confidence_and_verdict_are_reported_per_filing(
+    def test_a_filing_read_and_refused_is_a_skip_not_a_failure(
         self, seeded_db, monkeypatch
     ):
-        from stockanalysis.extract.validate import Check, ValidationReport
-        from stockanalysis.run.steps import _extract
+        """PNB. The instance is there, it tags no revenue element, and it never
+        will. Failing the job over it costs the operator the scoring step for a
+        finding that is not an error — it is the answer."""
+        import stockanalysis.ingest.xbrl_annual as xbrl_mod
 
-        result = _FakeResult(cost=0.42, latency=31.0)
-        report = ValidationReport(
-            checks=[Check("balance_sheet", True, "HARD", "ok")]
-        )
-        self._patch(monkeypatch, [(self._fake_filing(), result, report)])
+        self._patch(monkeypatch, [
+            lambda ref: xbrl_mod.IngestResult(
+                ref, error="incomplete: revenue not tagged", refused=True
+            )
+        ])
+        ctx, _ = self._ctx(seeded_db)
 
-        job = new_job(_plan(_spec("extract", _extract)))
-        ctx = StepContext(
-            db=seeded_db, report=Reporter(job, "extract"), isins=["INE000000001"]
-        )
-        _extract(ctx)
+        with pytest.raises(StepSkipped, match="stay uncovered"):
+            from stockanalysis.run.steps import _xbrl
 
-        row = job.step("extract").rows[0]
-        assert row["confidence"] == 1.0
-        assert row["verdict"] == "auto-accept"
-        assert row["cost_usd"] == 0.42
-        assert job.step("extract").summary["cost"] == "$0.42"
+            _xbrl(ctx)
 
-    def test_a_failed_validator_is_named_not_averaged_away(
+    def test_a_fetch_that_never_read_the_filing_still_fails_the_job(
         self, seeded_db, monkeypatch
     ):
-        from stockanalysis.extract.validate import Check, ValidationReport
-        from stockanalysis.run.steps import _extract
+        """A 429 is not a verdict. Skipping here would report the free path as
+        having considered a filing it never opened."""
+        import stockanalysis.ingest.xbrl_annual as xbrl_mod
 
-        report = ValidationReport(
-            checks=[Check("accounting_identity", False, "HARD", "assets != L+E by 12%")]
-        )
-        self._patch(monkeypatch, [(self._fake_filing(), _FakeResult(), report)])
+        self._patch(monkeypatch, [
+            lambda ref: xbrl_mod.IngestResult(ref, error="fetch failed: HTTP 429")
+        ])
+        ctx, _ = self._ctx(seeded_db)
 
-        job = new_job(_plan(_spec("extract", _extract)))
-        ctx = StepContext(
-            db=seeded_db, report=Reporter(job, "extract"), isins=["INE000000001"]
-        )
-        _extract(ctx)
+        with pytest.raises(RuntimeError, match="not read"):
+            from stockanalysis.run.steps import _xbrl
 
-        row = job.step("extract").rows[0]
-        assert row["confidence"] == 0.0
-        assert row["verdict"] == "human review"
-        assert "accounting_identity" in row["failed_checks"]
-        assert any("assets != L+E" in e.message for e in job.events)
-        assert any("review queue" in e.message for e in job.events)
+            _xbrl(ctx)
 
-    def test_nothing_pending_is_a_skip_that_says_how_to_rerun(
+    def test_one_transient_failure_among_refusals_still_fails(
         self, seeded_db, monkeypatch
     ):
-        import stockanalysis.extract.pipeline as pipeline_mod
-        from stockanalysis.run.steps import _extract
+        """The job is only safe to continue when *every* filing was judged."""
+        import stockanalysis.ingest.xbrl_annual as xbrl_mod
 
-        monkeypatch.setattr(pipeline_mod, "pending_filings", lambda *a, **k: [])
+        self._patch(monkeypatch, [
+            lambda ref: xbrl_mod.IngestResult(
+                ref, error="incomplete: revenue not tagged", refused=True
+            ),
+            lambda ref: xbrl_mod.IngestResult(ref, error="fetch failed: timeout"),
+        ])
+        ctx, _ = self._ctx(seeded_db)
 
-        job = new_job(_plan(_spec("extract", _extract)))
+        with pytest.raises(RuntimeError):
+            from stockanalysis.run.steps import _xbrl
+
+            _xbrl(ctx)
+
+
+class TestResultsIndexStep:
+    """The step that makes the free annual path reachable at all.
+
+    `xbrl` reads `fundamentals_quarterly.xbrl_url`, and nothing but the results
+    index writes that column. Before this step existed the XBRL step could only
+    ever skip, and the Data page answered "extracted annual financials missing"
+    with the paid button — for a company whose figures were free.
+    """
+
+    def test_registered_between_the_quarterly_fetch_and_the_xbrl_read(self):
+        from stockanalysis.run.steps import STEPS
+
+        order = [s.key for s in STEPS]
+        assert order.index("quarterly") < order.index("results-index")
+        assert order.index("results-index") < order.index("xbrl")
+
+    def test_reports_what_the_index_changed(self, seeded_db, monkeypatch):
+        import stockanalysis.ingest.nse_fundamentals as nse_mod
+        from stockanalysis.run.steps import _results_index
+
+        monkeypatch.setattr(nse_mod, "ingest_results_index", lambda *a, **k: 42)
+
+        job = new_job(_plan(_spec("results-index", _results_index)))
         ctx = StepContext(
-            db=seeded_db, report=Reporter(job, "extract"), isins=["INE000000001"]
+            db=seeded_db,
+            report=Reporter(job, "results-index"),
+            isins=["INE000000001"],
         )
-        with pytest.raises(StepSkipped, match="re-extract"):
-            _extract(ctx)
+        _results_index(ctx)
+
+        assert job.step("results-index").summary["filings matched"] == 42
+
+    def test_an_empty_index_is_a_skip_not_a_success(self, seeded_db, monkeypatch):
+        import stockanalysis.ingest.nse_fundamentals as nse_mod
+        from stockanalysis.run.steps import _results_index
+
+        monkeypatch.setattr(nse_mod, "ingest_results_index", lambda *a, **k: 0)
+
+        job = new_job(_plan(_spec("results-index", _results_index)))
+        ctx = StepContext(
+            db=seeded_db,
+            report=Reporter(job, "results-index"),
+            isins=["INE000000001"],
+        )
+        with pytest.raises(StepSkipped, match="no filings"):
+            _results_index(ctx)
+
+    def test_says_the_crawl_is_exchange_wide(self, seeded_db, monkeypatch):
+        """It is one request per date window for the whole exchange, not per
+        company. An operator running a single-company update should be told
+        that, rather than wondering why it takes minutes."""
+        import stockanalysis.ingest.nse_fundamentals as nse_mod
+        from stockanalysis.run.steps import _results_index
+
+        monkeypatch.setattr(nse_mod, "ingest_results_index", lambda *a, **k: 7)
+
+        job = new_job(_plan(_spec("results-index", _results_index)))
+        ctx = StepContext(
+            db=seeded_db, report=Reporter(job, "results-index"), symbol="TEST001"
+        )
+        _results_index(ctx)
+
+        assert any("every company" in e.message for e in job.events)
 
 
 class TestScoreStep:
@@ -875,6 +943,23 @@ class TestRunPage:
             if spec.key == "resolve":
                 continue           # fixed, rendered as a lock rather than a box
             assert spec.label in labels
+
+    def test_the_run_page_offers_no_annual_report_extraction(self, run_db):
+        """Annual financials come from XBRL alone now. A leftover checkbox is
+        the failure mode that matters here: the operator ticks it expecting the
+        old behaviour and the run either spends money or does nothing."""
+        from streamlit.testing.v1 import AppTest
+
+        from stockanalysis.serve import dashboard
+
+        app = AppTest.from_file(dashboard.__file__, default_timeout=120).run()
+        app.sidebar.radio[0].set_value("Run").run()
+
+        labels = " ".join(c.label for c in app.checkbox)
+        assert "Extract financials" not in labels
+        # And the model/limit knobs that only fed it are gone with it, rather
+        # than left on the page silently controlling nothing.
+        assert not [t for t in app.text_input if t.label == "Extraction model"]
 
     def test_paid_steps_start_unticked(self, run_db):
         from streamlit.testing.v1 import AppTest

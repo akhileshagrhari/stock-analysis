@@ -67,6 +67,8 @@ MONETARY_FIELDS = (
     "interest_expense",
     "profit_before_tax",
     "tax_expense",
+    "share_of_associates",
+    "non_controlling_interest",
     "pat",
     "total_assets",
     "total_equity",
@@ -135,12 +137,31 @@ class AnnualReportExtraction(BaseModel):
     tax_expense: float | None = Field(
         None, description="Total tax expense: current plus deferred."
     )
+    share_of_associates: float | None = Field(
+        None,
+        description=(
+            "Share of profit or loss of associates and joint ventures, as a "
+            "separate line between profit before tax and tax expense in a "
+            "consolidated statement. Negative for a share of losses. Null when "
+            "the statement has no such line."
+        ),
+    )
+    non_controlling_interest: float | None = Field(
+        None,
+        description=(
+            "The portion of profit for the year attributable to non-controlling "
+            "(minority) interests, from the 'Profit attributable to' split at "
+            "the foot of a consolidated statement of profit and loss. Null when "
+            "the statement shows no such split."
+        ),
+    )
     pat: float | None = Field(
         None,
         description=(
             "Profit After Tax for the year. Where the report splits profit "
             "attributable to owners versus non-controlling interests, use profit "
-            "attributable to owners of the parent."
+            "attributable to owners of the parent, and report the other half of "
+            "that split in `non_controlling_interest`."
         ),
     )
     eps_basic: float | None = Field(

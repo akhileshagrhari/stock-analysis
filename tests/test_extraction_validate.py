@@ -77,6 +77,49 @@ def test_pbt_minus_tax_must_equal_pat():
     assert _check(report, "pbt_tax_pat").passed is False
 
 
+def test_minority_interest_completes_the_profit_identity():
+    """A consolidated group's PBT - tax is the *whole* group's profit; `pat` is
+    only the parent's share of it. RELIANCE FY2025, as printed: the 11,139 crore
+    the naive identity treats as an extraction error is the minority's profit
+    plus the associates' contribution, and both are stated on the same page.
+    """
+    report = validate(
+        clean_payload(
+            profit_before_tax=106017.0,
+            tax_expense=25230.0,
+            share_of_associates=522.0,
+            non_controlling_interest=11661.0,
+            pat=69648.0,
+            # keep the unrelated identities satisfied
+            revenue=980136.0, other_income=17978.0, total_income=998114.0,
+            total_expenses=892097.0, eps_basic=51.47,
+            total_assets=1950121.0, total_equity=1009626.0,
+            total_liabilities=940495.0,
+        ),
+        fiscal_year=2025,
+    )
+    assert _check(report, "pbt_tax_pat").passed
+    assert not report.hard_failures
+
+
+def test_minority_interest_does_not_excuse_a_wrong_pat():
+    """The identity still has to close. Reporting an NCI does not turn the check
+    off — otherwise it would stop catching the misread column it exists for."""
+    report = validate(
+        clean_payload(non_controlling_interest=10.0, pat=90.0), fiscal_year=2024
+    )
+    assert _check(report, "pbt_tax_pat").passed is False
+    assert report.confidence == 0.0
+
+
+def test_absent_minority_interest_is_treated_as_zero():
+    """Most companies have no subsidiaries with outside shareholders and print
+    no such line. A null must not be read as "unknown, skip the check"."""
+    report = validate(clean_payload(pat=90.0, non_controlling_interest=None),
+                      fiscal_year=2024)
+    assert _check(report, "pbt_tax_pat").passed is False
+
+
 def test_missing_required_field_is_a_hard_failure():
     report = validate(clean_payload(ocf=None), fiscal_year=2024)
     assert report.confidence == 0.0

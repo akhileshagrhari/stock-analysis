@@ -9,6 +9,7 @@ period end hands a backtest three weeks of free information every quarter.
 from __future__ import annotations
 
 import datetime as dt
+import pathlib
 
 import pandas as pd
 import pytest
@@ -26,9 +27,15 @@ from stockanalysis.ingest.shareholding import (
     parse_shareholding,
     promoter_holding_trend,
 )
-from stockanalysis.ingest.xbrl import parse_xbrl, unmapped_facts
+from stockanalysis.ingest.xbrl import (
+    NotAnnualFiling,
+    parse_annual_xbrl,
+    parse_xbrl,
+    unmapped_facts,
+)
 
 ISIN = "INE000000001"
+FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
@@ -222,6 +229,89 @@ def test_real_broadcast_date_replaces_the_assumed_one(db):
     assert row["xbrl_url"] == "https://x.invalid/a.xml"
 
 
+def _q4(year: int, *, consolidated: bool | None = True, month: int = 3) -> dict:
+    """One Q4 entry as NSE's index serves it."""
+    end = dt.date(year, month, 30 if month != 3 else 31)
+    return {
+        "symbol": "TESTCO",
+        "toDate": end.strftime("%d-%b-%Y"),
+        "broadcastDate": (end + dt.timedelta(days=32)).strftime("%d-%b-%Y"),
+        "relatingTo": "Fourth Quarter",
+        "consolidated": (
+            "Consolidated" if consolidated
+            else ("Non-Consolidated" if consolidated is False else "")
+        ),
+        "audited": "Audited",
+        "xbrl": f"https://x.invalid/testco_q4fy{year}.xml",
+    }
+
+
+def test_the_index_is_recorded_for_years_with_no_quarterly_row(db):
+    """The bug this closes: `results_comparison` returns only about five
+    quarters, so `fundamentals_quarterly` never holds more than one March
+    quarter per company. The index itself reaches back years and carries an
+    XBRL link on every entry — but an update-only apply could attach those
+    links to nothing, so every year before the newest was fetched and dropped,
+    and the annual XBRL path could only ever produce a single fiscal year.
+    """
+    apply_results_filing_index(
+        db, parse_financial_results([_q4(2022), _q4(2023), _q4(2024)])
+    )
+
+    rows = db.query(
+        "SELECT period_end_date, xbrl_url FROM results_filings ORDER BY period_end_date"
+    )
+    assert len(rows) == 3, "every year in the index should be recorded"
+    assert [pd.Timestamp(d).year for d in rows["period_end_date"]] == [2022, 2023, 2024]
+    assert rows["xbrl_url"].notna().all()
+
+
+def test_pending_annual_filings_spans_every_year_the_index_covers(db):
+    from stockanalysis.ingest.xbrl_annual import pending_annual_filings
+
+    apply_results_filing_index(
+        db, parse_financial_results([_q4(2022), _q4(2023), _q4(2024)])
+    )
+
+    refs = pending_annual_filings(db)
+    assert sorted(r.fiscal_year for r in refs) == [2022, 2023, 2024]
+    assert {r.basis for r in refs} == {"CONSOLIDATED"}
+    assert all(r.symbol == "TESTCO" for r in refs)
+
+
+def test_both_bases_are_recorded_so_consolidated_can_be_preferred(db):
+    """`fundamentals_quarterly` is keyed (isin, period_end), so the two filings
+    a company makes for one period — consolidated and standalone — collide
+    there and one silently overwrites the other. The index table keeps both,
+    which is what lets the basis be chosen rather than decided by whichever
+    happened to be applied last.
+    """
+    from stockanalysis.ingest.xbrl_annual import pending_annual_filings
+
+    apply_results_filing_index(
+        db,
+        parse_financial_results(
+            [_q4(2024, consolidated=False), _q4(2024, consolidated=True)]
+        ),
+    )
+
+    stored = db.query("SELECT basis FROM results_filings ORDER BY basis")
+    assert list(stored["basis"]) == ["CONSOLIDATED", "STANDALONE"]
+
+    refs = pending_annual_filings(db)
+    assert [r.basis for r in refs] == ["CONSOLIDATED"]
+
+
+def test_a_company_filing_only_standalone_still_yields_a_filing(db):
+    from stockanalysis.ingest.xbrl_annual import pending_annual_filings
+
+    apply_results_filing_index(
+        db, parse_financial_results([_q4(2024, consolidated=False)])
+    )
+    refs = pending_annual_filings(db)
+    assert [r.basis for r in refs] == ["STANDALONE"]
+
+
 def test_unmatched_symbols_leave_rows_untouched(db):
     db.upsert_df(
         "fundamentals_quarterly",
@@ -325,6 +415,229 @@ def test_xbrl_reports_what_it_ignored():
 def test_xbrl_without_contexts_raises():
     with pytest.raises(ValueError, match="no XBRL contexts"):
         parse_xbrl('<?xml version="1.0"?><root><a>1</a></root>')
+
+
+# ----------------------------------------------------------------------
+# Annual XBRL — the whole statement, not just the P&L
+# ----------------------------------------------------------------------
+
+
+def test_annual_xbrl_carries_the_balance_sheet_and_cash_flow():
+    """The claim this module was built on — that results XBRL has no balance
+    sheet or cash flow — is false for the Q4/annual filing. Figures below are
+    Infosys FY2024 standalone, read off the real filing NSE published.
+    """
+    facts = parse_annual_xbrl((FIXTURES / "infosys_fy2024_annual.xml").read_bytes())
+    v = facts.to_crore()
+
+    assert v["revenue"] == pytest.approx(128_933.0)
+    assert v["pat"] == pytest.approx(27_234.0)
+    # The two that only the annual report was believed to hold.
+    assert v["ocf"] == pytest.approx(20_787.0)
+    assert v["capex"] == pytest.approx(1_832.0)
+    # Balance sheet, from the instant context.
+    assert v["total_assets"] == pytest.approx(114_950.0)
+    assert v["total_equity"] == pytest.approx(81_176.0)
+
+
+def test_annual_xbrl_balance_sheet_identity_holds():
+    """Assets == equity + liabilities is the check that catches a parser reading
+    the wrong context. It should hold exactly on a real filing."""
+    v = parse_annual_xbrl(
+        (FIXTURES / "infosys_fy2024_annual.xml").read_bytes()
+    ).to_crore()
+    assert v["total_assets"] == pytest.approx(v["equity_and_liabilities"], rel=1e-6)
+
+
+def test_annual_xbrl_prefers_year_to_date_over_the_quarter():
+    """Infosys FY2024 declares *identical* dates on its quarter and year-to-date
+    contexts — both 2024-01-01 to 2024-03-31 — while `FourD` actually holds the
+    full-year figures. A parser trusting the dates returns Q4 revenue (32,001)
+    and calls it the year.
+    """
+    v = parse_annual_xbrl(
+        (FIXTURES / "infosys_fy2024_annual.xml").read_bytes()
+    ).to_crore()
+    assert v["revenue"] == pytest.approx(128_933.0)
+    assert v["revenue"] != pytest.approx(32_001.0)
+
+
+def test_annual_xbrl_reads_the_period_end_from_the_instant_context():
+    facts = parse_annual_xbrl((FIXTURES / "infosys_fy2024_annual.xml").read_bytes())
+    assert facts.period_end == dt.date(2024, 3, 31)
+    assert facts.audited is True
+
+
+def test_consolidated_pat_is_the_owners_share_not_the_group_total():
+    """`ProfitLossForPeriod` is the whole group's profit; `pat` must be the
+    parent's share of it, with the minority's share stored beside it.
+
+    L&T FY2024 consolidated, as tagged: 13,059.11 to owners + 2,487.99 to
+    non-controlling interests == 15,547.10 for the group. Taking the group total
+    as PAT overstates earnings by 19% and inflates every ratio built on it.
+    """
+    v = parse_annual_xbrl(
+        (FIXTURES / "lt_fy2024_consolidated.xml").read_bytes()
+    ).to_crore()
+
+    assert v["pat"] == pytest.approx(13_059.11)
+    assert v["non_controlling_interest"] == pytest.approx(2_487.99)
+    assert v["profit_for_period"] == pytest.approx(15_547.10)
+    assert v["pat"] + v["non_controlling_interest"] == pytest.approx(
+        v["profit_for_period"]
+    )
+
+
+def test_standalone_pat_falls_back_to_the_group_profit():
+    """A standalone filing tags no split — the group's profit is the
+    shareholders'. The fallback must fire there and only there."""
+    v = parse_annual_xbrl(
+        (FIXTURES / "infosys_fy2024_annual.xml").read_bytes()
+    ).to_crore()
+    assert v["pat"] == pytest.approx(27_234.0)
+    assert v["pat"] == pytest.approx(v["profit_for_period"])
+
+
+def test_a_half_year_filing_is_refused_rather_than_read_as_a_year():
+    """Zydus H1 FY25 carries a balance sheet and a cash flow, and its
+    year-to-date context is a genuine six months (2024-04-01 to 2024-09-30).
+    Everything about it looks annual except the span, and its revenue — 6,781
+    crore — would land in `fundamentals_annual` as a plausible full year.
+
+    Unlike Infosys, this filing's dates *do* distinguish the contexts, so they
+    are believed and the filing is refused.
+    """
+    with pytest.raises(NotAnnualFiling):
+        parse_annual_xbrl((FIXTURES / "zydus_h1_fy2025.xml").read_bytes())
+
+
+def test_a_quarterly_filing_is_refused_rather_than_read_as_a_year():
+    """XBRL_DOC is a Q4 results filing with no annual context and no balance
+    sheet. Returning its quarter as if it were the year would put three months
+    of revenue into `fundamentals_annual`, which nothing downstream could catch.
+    """
+    with pytest.raises(NotAnnualFiling):
+        parse_annual_xbrl(XBRL_DOC)
+
+
+# ----------------------------------------------------------------------
+# The annual XBRL ingest
+# ----------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, content: bytes):
+        self.content = content
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _FakeSession:
+    """Serves one instance, or raises — the two cases the ingest must tell apart."""
+
+    def __init__(self, content: bytes | None = None, error: Exception | None = None):
+        self.content, self.error = content, error
+        self.calls = 0
+
+    def get(self, url, **kwargs):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return _FakeResponse(self.content or b"")
+
+
+@pytest.fixture
+def annual_db(db, tmp_path, monkeypatch):
+    """A company with one Q4 filing that carries an XBRL link."""
+    from stockanalysis.config import settings
+
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    monkeypatch.setattr(settings, "request_delay_seconds", 0)
+    db.upsert_df(
+        "results_filings",
+        pd.DataFrame([{
+            "isin": ISIN,
+            "period_end_date": dt.date(2024, 3, 31),
+            "basis": "CONSOLIDATED",
+            "broadcast_date": dt.date(2024, 5, 2),
+            "relating_to": "Fourth Quarter",
+            "is_consolidated": True,
+            "is_audited": True,
+            "xbrl_url": "https://x.invalid/testco_q4fy24.xml",
+        }]),
+        ["isin", "period_end_date", "basis"],
+    )
+    return db
+
+
+def test_a_filing_with_no_broadcast_date_is_dated_by_the_statutory_deadline(db):
+    """NSE occasionally serves an entry with no usable broadcast timestamp.
+    Dropping it would cost a company-year outright; the LODR deadline dates it
+    conservatively — later than the truth, never earlier.
+    """
+    from stockanalysis.ingest.xbrl_annual import pending_annual_filings
+
+    entry = _q4(2023)
+    del entry["broadcastDate"]
+    apply_results_filing_index(db, parse_financial_results([entry]))
+
+    ref = pending_annual_filings(db)[0]
+    assert ref.broadcast_date == dt.date(2023, 3, 31) + dt.timedelta(days=60)
+
+
+def test_an_unreadable_filing_is_not_offered_a_second_time(annual_db):
+    """The dead-end this closes: a bank's instance tags no revenue line, so the
+    ingest can never write a row from it — but the filing stays on file, so
+    `pending_annual_filings` would keep returning it and the Data page would
+    keep pointing at a free step that cannot close the gap. Recording the
+    attempt is what lets the report fall through to the annual report instead.
+    """
+    from stockanalysis.ingest.xbrl_annual import (
+        ingest_annual_xbrl,
+        pending_annual_filings,
+    )
+
+    refs = pending_annual_filings(annual_db)
+    assert len(refs) == 1
+
+    # A quarterly instance where an annual one was expected: readable, parsed,
+    # and structurally unusable — the same shape of failure as a bank's.
+    results = ingest_annual_xbrl(
+        annual_db, refs, session=_FakeSession(XBRL_DOC.encode())
+    )
+    assert not results[0].ok
+
+    assert pending_annual_filings(annual_db) == []
+    attempt = annual_db.query(
+        "SELECT * FROM extraction_attempts WHERE model = 'xbrl'"
+    ).iloc[0]
+    assert attempt["cost_usd"] == 0.0
+    assert "annual" in attempt["error"]
+
+    # And it is a record, not a verdict: asking for everything still returns it,
+    # so a parser fix can be re-run over the filings it previously refused.
+    assert len(pending_annual_filings(annual_db, only_missing=False)) == 1
+
+
+def test_a_fetch_failure_leaves_the_filing_pending(annual_db):
+    """A rate-limited request says nothing about the filing. Recording it as a
+    dead end would retire a company-year over a transient 429."""
+    from stockanalysis.ingest.xbrl_annual import (
+        ingest_annual_xbrl,
+        pending_annual_filings,
+    )
+
+    refs = pending_annual_filings(annual_db)
+    results = ingest_annual_xbrl(
+        annual_db, refs, session=_FakeSession(error=OSError("429 Too Many Requests"))
+    )
+
+    assert "fetch failed" in (results[0].error or "")
+    assert len(pending_annual_filings(annual_db)) == 1
+    assert annual_db.query(
+        "SELECT COUNT(*) AS c FROM extraction_attempts"
+    )["c"].iloc[0] == 0
 
 
 # ----------------------------------------------------------------------

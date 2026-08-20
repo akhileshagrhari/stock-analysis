@@ -80,6 +80,17 @@ def pending_filings(
             params.append(model)
         where.append(clause + ")")
 
+        # A company-year the exchange already published as tagged XBRL does not
+        # need to be bought from a model. This is what makes extraction a
+        # fallback rather than a duplicate: without it every run would pay to
+        # re-read a report whose figures are already in `fundamentals_annual`,
+        # and the two sources would race for the same primary key.
+        where.append(
+            "NOT EXISTS (SELECT 1 FROM fundamentals_annual x "
+            "WHERE x.isin = f.isin AND x.fiscal_year = f.fiscal_year "
+            "AND x.source = 'XBRL')"
+        )
+
     sql = f"""
         SELECT f.filing_id, f.isin, i.nse_symbol, i.name, f.fiscal_year,
                f.period_end, f.broadcast_date, f.broadcast_date_source, f.local_path
@@ -219,6 +230,8 @@ def _write_fundamentals(
         "ebitda": v.get("ebitda"),
         "depreciation": v.get("depreciation"),
         "profit_before_tax": v.get("profit_before_tax"),
+        "share_of_associates": v.get("share_of_associates"),
+        "non_controlling_interest": v.get("non_controlling_interest"),
         "pat": v.get("pat"),
         "eps": v.get("eps_basic"),
         "ocf": v.get("ocf"),
@@ -233,6 +246,11 @@ def _write_fundamentals(
         "tax_expense": v.get("tax_expense"),
         "contingent_liabilities": v.get("contingent_liabilities"),
         "auditor_opinion": payload.auditor_opinion,
+        "total_income": v.get("total_income"),
+        # A model's reading of a typeset page, as opposed to the exchange's own
+        # tagged filing. The two carry different knowledge dates and different
+        # failure modes, so a row has to say which it is.
+        "source": "LLM",
         "extraction_confidence": report.confidence,
         "source_filing_id": filing.filing_id,
         "extraction_model": result.model,
