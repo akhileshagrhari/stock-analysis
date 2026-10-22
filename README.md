@@ -82,7 +82,11 @@ Phase 4 — serving (API + dashboard):
 ```bash
 stockanalysis serve-api                       # FastAPI on 127.0.0.1:8000, docs at /docs
 stockanalysis dashboard                       # Streamlit on :8501 — starts on the Run page
+stockanalysis publish                         # copy the API's tables to Postgres (optional)
 ```
+
+The API reads DuckDB unless told otherwise; see
+[Serving from Postgres](#serving-from-postgres).
 
 Running the pipeline as one job, from the dashboard's **Run** page or headless:
 
@@ -272,6 +276,8 @@ src/stockanalysis/
   db/
     schema.sql         point-in-time contract documented at the top
     database.py        as_of_* — the ONLY sanctioned read path for decisions
+    publish.py         DuckDB -> Postgres: load a release, verify, swap atomically
+    postgres.py        the API's pool, and the adapter that runs queries.py on Postgres
   universe/loader.py   NSE constituent fetch, membership intervals
   ingest/
     prices.py          PriceProvider interface + yfinance implementation
@@ -654,6 +660,72 @@ an index inverts the entire factor while the backtest keeps running and every
 conclusion comes out backwards. The mapping is read from the model at load
 time, a model without explicit polarity labels is refused, and a test runs the
 real model over three headlines to check the signs.
+
+## Serving from Postgres
+
+DuckDB stays the engine: ingest, scoring, backtests and the dashboard run on it
+unchanged. The API — and the public site to come — can read Postgres instead: a
+copy of the tables it serves, rebuilt from DuckDB by `stockanalysis publish`.
+Data flows one way and nothing else writes to Postgres, so it behaves like a
+cache and can always be dropped and recreated. Leave `SA_PG_DSN` unset and none
+of this exists: the publish step reports SKIPPED and the API serves DuckDB.
+
+**Setup.** Postgres 14 or newer (tested on 17). Locally, with Homebrew:
+
+```bash
+brew install postgresql@17 && brew services start postgresql@17
+createdb stockanalysis
+uv pip install -e ".[postgres]"               # psycopg 3 + its pool
+```
+
+With Docker instead, `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=...
+postgres:17` and a DSN of `postgresql://postgres:<password>@localhost/postgres`. On a
+managed service (Neon, Supabase, RDS) use the *direct* connection string, not
+the transaction-mode pooler URL: the API keeps its own pool and sets
+`search_path` per connection, which a transaction pooler does not preserve.
+Then, in `.env`:
+
+```bash
+SA_PG_DSN=postgresql://localhost/stockanalysis
+SA_SERVE_BACKEND=postgres                     # once the first publish has run
+```
+
+**Publish and roll back.**
+
+```bash
+stockanalysis publish                         # copy, verify, switch — ~1s for NIFTY100
+stockanalysis publish --list                  # the live release and the ones kept
+stockanalysis publish --rollback              # previous release back live; again to undo
+stockanalysis update                          # the pipeline publishes as its last step
+```
+
+A publish loads every table into a new schema, `site_release_<UTC timestamp>`,
+adds keys and indexes, and checks each row count against the DuckDB snapshot it
+read. Then, in the same transaction, it renames the live `site` schema aside and
+the new one into its place. Readers see the old release or the new one, never a
+mix, and any failure before the commit leaves `site` exactly as it was. The
+replaced release is kept for `--rollback` (`SA_PG_KEEP_RELEASES`, default 1);
+older ones are dropped. `db/publish.py` explains why it renames rather than
+switching `search_path`, why it uses COPY rather than DuckDB's postgres
+extension, and why every text column is `COLLATE "C"`.
+
+What is copied: `instruments`, `signals`, `factor_scores`, `news`,
+`news_sentiment`, `fundamentals_annual` and `fundamentals_quarterly` — what
+`serve/queries.py` and `serve/explain.py` read, which a test keeps true — plus
+`prices_daily` and `shareholding` for the site's next pages. Pipeline
+bookkeeping (filings, extraction and backtest tables, crawl logs) is not.
+
+The integration tests run only when `SA_TEST_PG_DSN` is set. It is a separate
+variable so the tests, which create and drop schemas, can never reach the
+database you serve from:
+
+```bash
+createdb stockanalysis_test
+SA_TEST_PG_DSN=postgresql:///stockanalysis_test .venv/bin/python -m pytest tests/test_postgres_serving.py
+```
+
+They include the check that matters most: every API route returns
+byte-identical JSON from DuckDB and from its published copy.
 
 ## Next: phase 4
 

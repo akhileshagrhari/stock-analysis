@@ -690,6 +690,44 @@ def _narrative(ctx: StepContext) -> None:
     ctx.report.log(text)
 
 
+def _publish(ctx: StepContext) -> None:
+    """Copy the site's tables to Postgres and switch the API over atomically.
+
+    Last on purpose. It publishes whatever the steps before it left in DuckDB,
+    and a failed step ends the job before reaching it, so a broken run never
+    reaches the site. Always the full set of site tables, even on a one-company
+    run: a publish is a rebuild rather than a patch, which is what makes it
+    safe to repeat. A cancel mid-copy abandons the release with nothing
+    switched — see `db.publish`.
+    """
+    from stockanalysis.db.postgres import PostgresUnavailable
+    from stockanalysis.db.publish import publish
+
+    def progress(i: int, n: int, table: str, rows: int) -> None:
+        ctx.report.row(table=table, rows=rows)
+        ctx.report.progress(i, n, f"{i}/{n} tables")
+        ctx.report.check_cancelled()
+
+    try:
+        result = publish(ctx.db, progress=progress)
+    except PostgresUnavailable as e:
+        raise StepSkipped(f"{e} The API keeps serving DuckDB.") from e
+
+    ctx.report.summary(**{
+        "release": result.release_id,
+        "rows published": f"{result.total_rows:,}",
+        "replaced": result.previous or "nothing — first publish",
+    })
+    ctx.report.log(
+        f"Schema {result.schema!r} now serves release {result.release_id} "
+        f"({len(result.row_counts)} tables, {result.seconds:.1f}s)"
+    )
+    for name in result.drop_failures:
+        ctx.report.warn(
+            f"Could not drop the old release {name}; the next publish retries it."
+        )
+
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -931,6 +969,16 @@ STEPS: tuple[StepSpec, ...] = (
         cost=PAID,
         default_on=False,
         scopes=("company",),
+    ),
+    StepSpec(
+        key="publish",
+        label="Publish to Postgres",
+        description=(
+            "Copy the tables the API reads into Postgres and switch the live "
+            "schema over in one transaction. Skips when SA_PG_DSN is unset."
+        ),
+        run=_publish,
+        cost=FREE,
     ),
 )
 

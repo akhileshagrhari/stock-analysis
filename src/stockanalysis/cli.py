@@ -1470,6 +1470,99 @@ def update_cmd(
         raise typer.Exit(1)
 
 
+@app.command("publish")
+def publish_cmd(
+    rollback: bool = typer.Option(
+        False,
+        "--rollback",
+        help="Put the release this one replaced back live. Run again to undo.",
+    ),
+    list_only: bool = typer.Option(
+        False, "--list", help="Show the live release and the ones kept for rollback."
+    ),
+) -> None:
+    """Copy the tables the API reads from DuckDB into Postgres, atomically.
+
+    Loads a fresh release schema, checks every row count against DuckDB, then
+    swaps it in for the live one in a single transaction. A failure at any
+    point leaves what the API serves untouched. Needs SA_PG_DSN; the pipeline
+    runs the same thing as its last step.
+    """
+    from stockanalysis.db import publish as pub
+    from stockanalysis.db.postgres import PostgresUnavailable, require_psycopg
+
+    try:
+        psycopg = require_psycopg()
+        if list_only:
+            _print_releases(pub.list_releases())
+            return
+        if rollback:
+            result = pub.rollback()
+            console.print(
+                f"[green]Rolled back.[/green] {result.schema!r} now serves release "
+                f"{result.live}; {result.replaced} is kept — `--rollback` again "
+                f"restores it."
+            )
+            _print_releases(pub.list_releases())
+            return
+
+        def progress(i: int, n: int, table: str, rows: int) -> None:
+            console.print(f"  {i}/{n}  {table:<24} {rows:>12,} rows")
+
+        console.print(f"Publishing {settings.db_path} → Postgres schema {settings.pg_schema!r}")
+        with open_db(read_only=True) as db:
+            result = pub.publish(db, progress=progress)
+    except PostgresUnavailable as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    except pub.PublishError as e:
+        console.print(f"[red]Not published.[/red] {e}")
+        raise typer.Exit(1) from e
+    except psycopg.Error as e:
+        console.print(f"[red]Postgres error — nothing was switched.[/red] {e}")
+        raise typer.Exit(1) from e
+
+    console.print(
+        f"[green]Published[/green] release {result.release_id}: "
+        f"{result.total_rows:,} rows in {result.seconds:.1f}s, now live in "
+        f"{result.schema!r}."
+    )
+    if result.previous:
+        console.print(f"  Replaced {result.previous}, kept for `--rollback`.")
+    if result.dropped:
+        console.print(f"  Dropped older release(s): {', '.join(result.dropped)}")
+    for name in result.drop_failures:
+        console.print(
+            f"  [yellow]Could not drop {name}[/yellow]; the next publish retries it."
+        )
+
+
+def _print_releases(releases) -> None:
+    if not releases:
+        console.print(f"Nothing published to {settings.pg_schema!r} yet.")
+        return
+    table = Table(title=f"Releases of {settings.pg_schema!r}")
+    table.add_column("Release")
+    table.add_column("State")
+    table.add_column("Published (UTC)")
+    table.add_column("Rows", justify="right")
+    table.add_column("Schema")
+    for release in releases:
+        published = (
+            release.published_at.astimezone(dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
+            if release.published_at
+            else "-"
+        )
+        table.add_row(
+            release.release_id,
+            "[green]live[/green]" if release.live else "kept",
+            published,
+            f"{release.total_rows:,}",
+            release.schema,
+        )
+    console.print(table)
+
+
 @app.command("serve-api")
 def serve_api(
     # Loopback by default. The API is an unauthenticated read surface over the
