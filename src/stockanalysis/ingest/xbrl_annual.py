@@ -409,11 +409,15 @@ def ingest_annual_xbrl(
     """
     out: list[IngestResult] = []
     for i, ref in enumerate(refs, start=1):
+        # Checked before the fetch, which writes the cache. Checked after, it
+        # found the file every successful download had just written and never
+        # slept — the delay applied only to requests that had failed.
+        cached = cache_path(ref.xbrl_url).exists()
         result = _ingest_one(db, ref, session)
         out.append(result)
         if progress:
             progress(i, len(refs), result)
-        if not cache_path(ref.xbrl_url).exists():
+        if not cached:
             time.sleep(settings.request_delay_seconds)
     return out
 

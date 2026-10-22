@@ -514,11 +514,15 @@ class TestResultsIndexStep:
     with the paid button — for a company whose figures were free.
     """
 
-    def test_registered_between_the_quarterly_fetch_and_the_xbrl_read(self):
+    def test_registered_ahead_of_both_steps_that_read_its_links(self):
+        """Quarterly figures used to come from `results_comparison`, and the
+        index only upgraded their dates — so it ran second. Since the April
+        2025 move to integrated filings that endpoint is frozen, and quarterly
+        figures are read from the XBRL instances this index links to."""
         from stockanalysis.run.steps import STEPS
 
         order = [s.key for s in STEPS]
-        assert order.index("quarterly") < order.index("results-index")
+        assert order.index("results-index") < order.index("quarterly")
         assert order.index("results-index") < order.index("xbrl")
 
     def test_reports_what_the_index_changed(self, seeded_db, monkeypatch):

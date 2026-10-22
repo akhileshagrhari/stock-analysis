@@ -134,10 +134,16 @@ db.close()
 Phase 1b — free, no API key, no model:
 
 ```bash
-stockanalysis ingest-quarterly --limit 10     # revenue / PAT / EPS per quarter
-stockanalysis ingest-results-index --years 3  # real filing dates, exchange-wide
+stockanalysis ingest-results-index --years 3  # every results filing + XBRL link, exchange-wide
+stockanalysis ingest-quarterly --limit 10     # revenue / PAT / EPS per quarter, from that XBRL
 stockanalysis ingest-shareholding --limit 10  # promoter holding
 ```
+
+Since the March 2025 quarter, results are filed as SEBI's *Integrated Filing –
+Financials*. NSE's legacy results index and `results_comparison` stopped at the
+December 2024 quarter, so the index step reads both the legacy and the
+integrated index, and quarterly figures come from the XBRL instances they link
+to. Run the index first.
 
 Phase 1 extraction — needs `ANTHROPIC_API_KEY` and spends money:
 
@@ -377,8 +383,8 @@ A useful amount of the system does not need it:
 | | Source | Reaches |
 |---|---|---|
 | Daily OHLCV | yfinance | Momentum, all price factors |
-| Revenue / PAT / EPS, quarterly | `results_comparison` | Growth, part of Value |
-| Real filing dates, exchange-wide | `financial_results` | Point-in-time correctness |
+| Revenue / PAT / EPS, quarterly | XBRL via the results index (`results_comparison` until Dec 2024) | Growth, part of Value |
+| Real filing dates, exchange-wide | `financial_results` + `integrated-filing-results` | Point-in-time correctness |
 | Structured P&L facts | XBRL, where attached | Same, higher fidelity |
 | Promoter holding, quarterly | `shareholding` | One red flag |
 | **OCF, balance sheet, auditor opinion, contingent liabilities** | **annual report PDFs** | **Quality, the earnings-quality checks** |

@@ -361,29 +361,22 @@ def ingest_shareholding_cmd(
 def ingest_results_index_cmd(
     years: int = typer.Option(3, "--years"),
 ) -> None:
-    """Replace assumed quarterly knowledge dates with NSE's real broadcast dates.
+    """Record NSE's results filings — legacy and integrated — with their XBRL links.
 
-    One request per 90-day window rather than one per company — the filing index
-    is exchange-wide, so this costs a handful of calls instead of hundreds.
+    Run before `ingest-quarterly`, which reads the instances this links to. Both
+    indexes are exchange-wide, so this costs a few dozen calls, not hundreds.
     """
     from stockanalysis.ingest.nse_fundamentals import ingest_results_index
 
     settings.ensure_dirs()
     end = dt.date.today()
     with open_db() as db:
-        before = db.query(
-            "SELECT COUNT(*) AS c FROM fundamentals_quarterly "
-            "WHERE filing_date_source = 'NSE'"
-        )["c"].iloc[0]
         n = ingest_results_index(db, from_date=end - dt.timedelta(days=365 * years),
                                  to_date=end)
-        after = db.query(
-            "SELECT COUNT(*) AS c FROM fundamentals_quarterly "
-            "WHERE filing_date_source = 'NSE'"
-        )["c"].iloc[0]
+        latest = db.query("SELECT MAX(period_end_date) AS d FROM results_filings")["d"].iloc[0]
 
-    console.print(f"[green]Applied[/green] {n} filing-index matches")
-    console.print(f"  quarterly rows with a real broadcast date: {before} -> {after}")
+    console.print(f"[green]Recorded[/green] {n} results filings for the universe")
+    console.print(f"  latest period on file: {latest}")
 
 
 @app.command("local-models")
@@ -470,17 +463,37 @@ def fetch_filings_cmd(
 @app.command("ingest-quarterly")
 def ingest_quarterly_cmd(
     limit: int = typer.Option(None, "--limit"),
+    years: int = typer.Option(settings.filing_years, "--years"),
 ) -> None:
-    """Fetch NSE quarterly results — the cross-check for LLM extraction."""
-    from stockanalysis.ingest.nse_fundamentals import ingest_quarterly
+    """Quarterly revenue / PAT / EPS from NSE's tagged results filings.
+
+    Reads the XBRL instances `ingest-results-index` links to, so run that first.
+    """
+    from stockanalysis.ingest.xbrl_quarterly import (
+        ingest_quarterly_xbrl,
+        pending_quarterly_filings,
+    )
 
     settings.ensure_dirs()
+    since = dt.date.today() - dt.timedelta(days=365 * years)
     with open_db() as db:
         isins = db.query("SELECT isin FROM instruments ORDER BY isin")["isin"].tolist()
         if limit:
             isins = isins[:limit]
-        n = ingest_quarterly(db, isins=isins)
-        console.print(f"[green]Stored[/green] {n} quarterly rows")
+        refs = pending_quarterly_filings(db, isins=isins, since=since)
+        if not refs:
+            console.print(
+                "Nothing to read. If no quarters are on file, run "
+                "`stockanalysis ingest-results-index` first."
+            )
+            return
+        console.print(f"Reading {len(refs)} filings (cached instances are not re-fetched)")
+        results = ingest_quarterly_xbrl(db, refs)
+    stored = sum(r.ok for r in results)
+    console.print(f"[green]Stored[/green] {stored}/{len(results)} quarterly rows")
+    for r in results:
+        if r.error:
+            console.print(f"  [yellow]{r.ref.symbol} {r.ref.period_end}[/yellow] {r.error}")
 
 
 @app.command()

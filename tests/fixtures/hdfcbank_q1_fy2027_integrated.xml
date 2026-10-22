@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trimmed from INTEGRATED_FILING_BANKING_1696123_18072026040126_WEB.xml (nsearchives.nseindia.com/corporate/xbrl/). Non-dimensional contexts kept whole; typed-dimension contexts moved ahead of OneD/FourD/OneI so document order cannot rescue a parser that admits them. -->
+<xbrli:xbrl xmlns:in-capmkt="http://www.sebi.gov.in/xbrl/2026-01-31/in-capmkt" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:schemaRef xlink:href="in-capmkt-ent-2026-01-31.xsd" xlink:type="simple" />
+  <xbrli:context id="OneD">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500180</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2026-04-01</xbrli:startDate>
+      <xbrli:endDate>2026-06-30</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="OneI">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500180</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2026-06-30</xbrli:instant>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="OneExpenses1D">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500180</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2026-04-01</xbrli:startDate>
+      <xbrli:endDate>2026-06-30</xbrli:endDate>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:explicitMember dimension="in-capmkt:DetailsOfOtherOperatingExpensesAxis">in-capmkt:OtherOperatingExpenses1Member</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+  <xbrli:unit id="INR">
+    <xbrli:measure>iso4217:INR</xbrli:measure>
+  </xbrli:unit>
+  <xbrli:unit id="pure">
+    <xbrli:measure>xbrli:pure</xbrli:measure>
+  </xbrli:unit>
+  <xbrli:unit id="INRPerShare">
+    <xbrli:divide>
+      <xbrli:unitNumerator>
+        <xbrli:measure>iso4217:INR</xbrli:measure>
+      </xbrli:unitNumerator>
+      <xbrli:unitDenominator>
+        <xbrli:measure>xbrli:shares</xbrli:measure>
+      </xbrli:unitDenominator>
+    </xbrli:divide>
+  </xbrli:unit>
+  <in-capmkt:Symbol contextRef="OneD">HDFCBANK</in-capmkt:Symbol>
+  <in-capmkt:ReportingQuarter contextRef="OneD">First quarter</in-capmkt:ReportingQuarter>
+  <in-capmkt:DeclarationOfUnmodifiedOpinionOrStatementOnImpactOfAuditQualification contextRef="OneD">Declaration of unmodified opinion</in-capmkt:DeclarationOfUnmodifiedOpinionOrStatementOnImpactOfAuditQualification>
+  <in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2026-04-01</in-capmkt:DateOfStartOfReportingPeriod>
+  <in-capmkt:DateOfEndOfReportingPeriod contextRef="OneD">2026-06-30</in-capmkt:DateOfEndOfReportingPeriod>
+  <in-capmkt:WhetherResultsAreAuditedOrUnaudited contextRef="OneD">Unaudited</in-capmkt:WhetherResultsAreAuditedOrUnaudited>
+  <in-capmkt:NatureOfReportStandaloneConsolidated contextRef="OneD">Consolidated</in-capmkt:NatureOfReportStandaloneConsolidated>
+  <in-capmkt:InterestEarned contextRef="OneD" decimals="-5" unitRef="INR">905753300000</in-capmkt:InterestEarned>
+  <in-capmkt:OtherIncome contextRef="OneD" decimals="-5" unitRef="INR">425350300000</in-capmkt:OtherIncome>
+  <in-capmkt:Income contextRef="OneD" decimals="-5" unitRef="INR">1331103600000</in-capmkt:Income>
+  <in-capmkt:InterestExpended contextRef="OneD" decimals="-5" unitRef="INR">476256300000</in-capmkt:InterestExpended>
+  <in-capmkt:OperatingExpenses contextRef="OneD" decimals="-5" unitRef="INR">544887300000</in-capmkt:OperatingExpenses>
+  <in-capmkt:ProfitLossFromOrdinaryActivitiesBeforeTax contextRef="OneD" decimals="-5" unitRef="INR">271931600000</in-capmkt:ProfitLossFromOrdinaryActivitiesBeforeTax>
+  <in-capmkt:TaxExpense contextRef="OneD" decimals="-5" unitRef="INR">68104700000</in-capmkt:TaxExpense>
+  <in-capmkt:ProfitLossForThePeriod contextRef="OneD" decimals="-5" unitRef="INR">203826900000</in-capmkt:ProfitLossForThePeriod>
+  <in-capmkt:ProfitLossOfMinorityInterest contextRef="OneD" decimals="-5" unitRef="INR">11379800000</in-capmkt:ProfitLossOfMinorityInterest>
+  <in-capmkt:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates contextRef="OneD" decimals="-5" unitRef="INR">192447100000</in-capmkt:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates>
+  <in-capmkt:BasicEarningsPerShareAfterExtraordinaryItems contextRef="OneD" decimals="INF" unitRef="INRPerShare">12.5</in-capmkt:BasicEarningsPerShareAfterExtraordinaryItems>
+  <in-capmkt:DilutedEarningsPerShareAfterExtraordinaryItems contextRef="OneD" decimals="INF" unitRef="INRPerShare">12.47</in-capmkt:DilutedEarningsPerShareAfterExtraordinaryItems>
+</xbrli:xbrl>

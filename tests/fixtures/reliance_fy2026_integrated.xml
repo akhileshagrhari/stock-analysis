@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trimmed from INTEGRATED_FILING_INDAS_1658776_24042026105714_WEB.xml (nsearchives.nseindia.com/corporate/xbrl/). Non-dimensional contexts kept whole; typed-dimension contexts moved ahead of OneD/FourD/OneI so document order cannot rescue a parser that admits them. -->
+<xbrli:xbrl xmlns:in-capmkt="http://www.sebi.gov.in/xbrl/2026-01-31/in-capmkt" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:schemaRef xlink:href="in-capmkt-ent-2026-01-31.xsd" xlink:type="simple" />
+  <xbrli:context id="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss41">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2025-04-01</xbrli:startDate>
+      <xbrli:endDate>2026-03-31</xbrli:endDate>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:typedMember dimension="in-capmkt:ItemsThatWillNotBeReclassifiedToProfitAndLossAxis">
+        <in-capmkt:ItemsThatWillNotBeReclassifiedToProfitAndLossDomain>ItemsThatWillNotBeReclassifiedToProfitAndLoss1</in-capmkt:ItemsThatWillNotBeReclassifiedToProfitAndLossDomain>
+      </xbrldi:typedMember>
+    </xbrli:scenario>
+  </xbrli:context>
+  <xbrli:context id="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss11">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2026-01-01</xbrli:startDate>
+      <xbrli:endDate>2026-03-31</xbrli:endDate>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:typedMember dimension="in-capmkt:ItemsThatWillNotBeReclassifiedToProfitAndLossAxis">
+        <in-capmkt:ItemsThatWillNotBeReclassifiedToProfitAndLossDomain>ItemsThatWillNotBeReclassifiedToProfitAndLoss1</in-capmkt:ItemsThatWillNotBeReclassifiedToProfitAndLossDomain>
+      </xbrldi:typedMember>
+    </xbrli:scenario>
+  </xbrli:context>
+  <xbrli:context id="I_OtherCurrentAssets1">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2026-03-31</xbrli:instant>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:typedMember dimension="in-capmkt:OtherCurrentAssetsAxis">
+        <in-capmkt:OtherCurrentAssetsDomain>OtherCurrentAssetsDomain1</in-capmkt:OtherCurrentAssetsDomain>
+      </xbrldi:typedMember>
+    </xbrli:scenario>
+  </xbrli:context>
+  <xbrli:context id="OneD">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2026-01-01</xbrli:startDate>
+      <xbrli:endDate>2026-03-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="OneI">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2026-03-31</xbrli:instant>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="PY_I">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2025-03-31</xbrli:instant>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="FourD">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2025-04-01</xbrli:startDate>
+      <xbrli:endDate>2026-03-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="OneExpenses1D">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sebi.gov.in/in-capmkt/ScripCode">500325</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2026-01-01</xbrli:startDate>
+      <xbrli:endDate>2026-03-31</xbrli:endDate>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:explicitMember dimension="in-capmkt:DetailsOfOtherExpensesAxis">in-capmkt:OtherExpenses1Member</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+  <xbrli:unit id="INR">
+    <xbrli:measure>iso4217:INR</xbrli:measure>
+  </xbrli:unit>
+  <xbrli:unit id="pure">
+    <xbrli:measure>xbrli:pure</xbrli:measure>
+  </xbrli:unit>
+  <xbrli:unit id="INRPerShare">
+    <xbrli:divide>
+      <xbrli:unitNumerator>
+        <xbrli:measure>iso4217:INR</xbrli:measure>
+      </xbrli:unitNumerator>
+      <xbrli:unitDenominator>
+        <xbrli:measure>xbrli:shares</xbrli:measure>
+      </xbrli:unitDenominator>
+    </xbrli:divide>
+  </xbrli:unit>
+  <in-capmkt:Symbol contextRef="OneD">RELIANCE</in-capmkt:Symbol>
+  <in-capmkt:NameOfTheCompany contextRef="OneD">RELIANCE INDUSTRIES LIMITED</in-capmkt:NameOfTheCompany>
+  <in-capmkt:ReportingQuarter contextRef="OneD">Fourth quarter</in-capmkt:ReportingQuarter>
+  <in-capmkt:DeclarationOfUnmodifiedOpinionOrStatementOnImpactOfAuditQualification contextRef="OneD">Declaration of unmodified opinion</in-capmkt:DeclarationOfUnmodifiedOpinionOrStatementOnImpactOfAuditQualification>
+  <in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2026-01-01</in-capmkt:DateOfStartOfReportingPeriod>
+  <in-capmkt:DateOfEndOfReportingPeriod contextRef="OneD">2026-03-31</in-capmkt:DateOfEndOfReportingPeriod>
+  <in-capmkt:WhetherResultsAreAuditedOrUnaudited contextRef="OneD">Audited</in-capmkt:WhetherResultsAreAuditedOrUnaudited>
+  <in-capmkt:NatureOfReportStandaloneConsolidated contextRef="OneD">Consolidated</in-capmkt:NatureOfReportStandaloneConsolidated>
+  <in-capmkt:RevenueFromOperations contextRef="OneD" decimals="-7" unitRef="INR">2986210000000</in-capmkt:RevenueFromOperations>
+  <in-capmkt:OtherIncome contextRef="OneD" decimals="-7" unitRef="INR">44470000000</in-capmkt:OtherIncome>
+  <in-capmkt:Income contextRef="OneD" decimals="-7" unitRef="INR">3030680000000</in-capmkt:Income>
+  <in-capmkt:FinanceCosts contextRef="OneD" decimals="-7" unitRef="INR">65850000000</in-capmkt:FinanceCosts>
+  <in-capmkt:DepreciationDepletionAndAmortisationExpense contextRef="OneD" decimals="-7" unitRef="INR">148080000000</in-capmkt:DepreciationDepletionAndAmortisationExpense>
+  <in-capmkt:Expenses contextRef="OneD" decimals="-7" unitRef="INR">2758730000000</in-capmkt:Expenses>
+  <in-capmkt:ProfitBeforeTax contextRef="OneD" decimals="-7" unitRef="INR">271950000000</in-capmkt:ProfitBeforeTax>
+  <in-capmkt:TaxExpense contextRef="OneD" decimals="-7" unitRef="INR">65790000000</in-capmkt:TaxExpense>
+  <in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod contextRef="OneD" decimals="-7" unitRef="INR">-270000000</in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod>
+  <in-capmkt:ProfitLossForPeriod contextRef="OneD" decimals="-7" unitRef="INR">205890000000</in-capmkt:ProfitLossForPeriod>
+  <in-capmkt:ProfitOrLossAttributableToOwnersOfParent contextRef="OneD" decimals="-7" unitRef="INR">169710000000</in-capmkt:ProfitOrLossAttributableToOwnersOfParent>
+  <in-capmkt:ProfitOrLossAttributableToNonControllingInterests contextRef="OneD" decimals="-7" unitRef="INR">36180000000</in-capmkt:ProfitOrLossAttributableToNonControllingInterests>
+  <in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="OneD" decimals="INF" unitRef="INRPerShare">12.54</in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="OneD" decimals="INF" unitRef="INRPerShare">12.54</in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:DateOfStartOfReportingPeriod contextRef="FourD">2025-04-01</in-capmkt:DateOfStartOfReportingPeriod>
+  <in-capmkt:DateOfEndOfReportingPeriod contextRef="FourD">2026-03-31</in-capmkt:DateOfEndOfReportingPeriod>
+  <in-capmkt:WhetherResultsAreAuditedOrUnaudited contextRef="FourD">Audited</in-capmkt:WhetherResultsAreAuditedOrUnaudited>
+  <in-capmkt:NatureOfReportStandaloneConsolidated contextRef="FourD">Consolidated</in-capmkt:NatureOfReportStandaloneConsolidated>
+  <in-capmkt:RevenueFromOperations contextRef="FourD" decimals="-7" unitRef="INR">10756750000000</in-capmkt:RevenueFromOperations>
+  <in-capmkt:OtherIncome contextRef="FourD" decimals="-7" unitRef="INR">289620000000</in-capmkt:OtherIncome>
+  <in-capmkt:Income contextRef="FourD" decimals="-7" unitRef="INR">11046370000000</in-capmkt:Income>
+  <in-capmkt:FinanceCosts contextRef="FourD" decimals="-7" unitRef="INR">270610000000</in-capmkt:FinanceCosts>
+  <in-capmkt:DepreciationDepletionAndAmortisationExpense contextRef="FourD" decimals="-7" unitRef="INR">576880000000</in-capmkt:DepreciationDepletionAndAmortisationExpense>
+  <in-capmkt:Expenses contextRef="FourD" decimals="-7" unitRef="INR">9814750000000</in-capmkt:Expenses>
+  <in-capmkt:ProfitBeforeTax contextRef="FourD" decimals="-7" unitRef="INR">1231620000000</in-capmkt:ProfitBeforeTax>
+  <in-capmkt:TaxExpense contextRef="FourD" decimals="-7" unitRef="INR">275520000000</in-capmkt:TaxExpense>
+  <in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod contextRef="FourD" decimals="-7" unitRef="INR">1440000000</in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod>
+  <in-capmkt:ProfitLossForPeriod contextRef="FourD" decimals="-7" unitRef="INR">957540000000</in-capmkt:ProfitLossForPeriod>
+  <in-capmkt:ProfitOrLossAttributableToOwnersOfParent contextRef="FourD" decimals="-7" unitRef="INR">807750000000</in-capmkt:ProfitOrLossAttributableToOwnersOfParent>
+  <in-capmkt:ProfitOrLossAttributableToNonControllingInterests contextRef="FourD" decimals="-7" unitRef="INR">149790000000</in-capmkt:ProfitOrLossAttributableToNonControllingInterests>
+  <in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="FourD" decimals="INF" unitRef="INRPerShare">59.69</in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="FourD" decimals="INF" unitRef="INRPerShare">59.69</in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:CashAndCashEquivalents contextRef="OneI" decimals="-7" unitRef="INR">1459770000000</in-capmkt:CashAndCashEquivalents>
+  <in-capmkt:Assets contextRef="OneI" decimals="-7" unitRef="INR">21781400000000</in-capmkt:Assets>
+  <in-capmkt:Equity contextRef="OneI" decimals="-7" unitRef="INR">10858660000000</in-capmkt:Equity>
+  <in-capmkt:BorrowingsNoncurrent contextRef="OneI" decimals="-7" unitRef="INR">2707510000000</in-capmkt:BorrowingsNoncurrent>
+  <in-capmkt:BorrowingsCurrent contextRef="OneI" decimals="-7" unitRef="INR">1036700000000</in-capmkt:BorrowingsCurrent>
+  <in-capmkt:EquityAndLiabilities contextRef="OneI" decimals="-7" unitRef="INR">21781400000000</in-capmkt:EquityAndLiabilities>
+  <in-capmkt:DescriptionOfOtherCurrentAssets contextRef="I_OtherCurrentAssets1">Other Current Assets</in-capmkt:DescriptionOfOtherCurrentAssets>
+  <in-capmkt:OtherCurrentAssets contextRef="I_OtherCurrentAssets1" decimals="-7" unitRef="INR">626130000000</in-capmkt:OtherCurrentAssets>
+  <in-capmkt:CashFlowsFromUsedInOperatingActivities contextRef="FourD" decimals="-7" unitRef="INR">1921130000000</in-capmkt:CashFlowsFromUsedInOperatingActivities>
+  <in-capmkt:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities contextRef="FourD" decimals="-7" unitRef="INR">1229160000000</in-capmkt:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities>
+  <in-capmkt:DescriptionOfItemThatWillNotBeReclassifiedToProfitAndLoss contextRef="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss11">Amount of items that will not be reclassified to profit and loss</in-capmkt:DescriptionOfItemThatWillNotBeReclassifiedToProfitAndLoss>
+  <in-capmkt:AmountOfItemThatWillNotBeReclassifiedToProfitAndLoss contextRef="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss11" decimals="-7" unitRef="INR">-4000000000</in-capmkt:AmountOfItemThatWillNotBeReclassifiedToProfitAndLoss>
+  <in-capmkt:DescriptionOfItemThatWillNotBeReclassifiedToProfitAndLoss contextRef="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss41">Amount of items that will not be reclassified to profit and loss</in-capmkt:DescriptionOfItemThatWillNotBeReclassifiedToProfitAndLoss>
+  <in-capmkt:AmountOfItemThatWillNotBeReclassifiedToProfitAndLoss contextRef="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss41" decimals="-7" unitRef="INR">-3370000000</in-capmkt:AmountOfItemThatWillNotBeReclassifiedToProfitAndLoss>
+</xbrli:xbrl>
