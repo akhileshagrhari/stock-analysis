@@ -1,0 +1,42 @@
+[
+  {
+    "isin": "INE931S01010",
+    "nse_symbol": "ADANIENSOL",
+    "name": "Adani Energy Solutions Ltd.",
+    "sector": "Power",
+    "as_of": "2026-08-16",
+    "composite_score": 32.57338962554285,
+    "signal": "SELL",
+    "coverage": 0.6499999999999999,
+    "red_flags": [
+      "auditor_qualification"
+    ],
+    "unknown_flags": [
+      "promoter_pledge",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-4b05e87d"
+  },
+  {
+    "isin": "INE364U01010",
+    "nse_symbol": "ADANIGREEN",
+    "name": "Adani Green Energy Ltd.",
+    "sector": "Power",
+    "as_of": "2026-08-16",
+    "composite_score": 31.690779248757966,
+    "signal": "SELL",
+    "coverage": 0.8999999999999999,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-4b05e87d"
+  }
+]

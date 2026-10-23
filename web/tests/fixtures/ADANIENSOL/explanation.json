@@ -1,0 +1,207 @@
+{
+  "isin": "INE931S01010",
+  "nse_symbol": "ADANIENSOL",
+  "name": "Adani Energy Solutions Ltd.",
+  "as_of": "2026-08-16",
+  "signal": "SELL",
+  "composite_score": 32.57338962554285,
+  "coverage": 0.6499999999999999,
+  "headline": "SELL — forced by the red-flag overlay (auditor_qualification), overriding a factor score of 33/100.",
+  "reasons": [
+    "Red flag — Auditor qualification, adverse opinion or disclaimer. This caps the signal at SELL on its own.",
+    "Momentum is pulling the score up — price trend and relative strength, ranking around the 95th percentile of the universe.",
+    "Quality is pulling it down — balance-sheet strength and cash conversion, around the 34th percentile.",
+    "Value is pulling it down — how cheap it is against its sector, around the 42nd percentile.",
+    "Strongest single factor is price vs 200-dma (+1.5 SD vs sector): trading above its trend.",
+    "News over 30 days is net positive: 1 positive, 0 negative, 0 neutral.",
+    "Not measured for want of data: growth, sentiment. The remaining families were reweighted to fill the gap.",
+    "These red flags could not be evaluated: promoter_pledge, weak_cash_conversion, contingent_liabilities, rating_downgrade. Their absence is not a clean bill of health."
+  ],
+  "families": [
+    {
+      "family": "value",
+      "meaning": "how cheap it is against its sector",
+      "weight": 0.25,
+      "percentile": 41.53225954041224,
+      "z": -0.2138741606626603,
+      "contribution": -0.07638362880809296,
+      "factors_measured": 4,
+      "factors_total": 5,
+      "verdict": "neutral"
+    },
+    {
+      "family": "quality",
+      "meaning": "balance-sheet strength and cash conversion",
+      "weight": 0.3,
+      "percentile": 33.71868839357044,
+      "z": -0.4201528891668945,
+      "contribution": -0.1800655239286691,
+      "factors_measured": 6,
+      "factors_total": 6,
+      "verdict": "neutral"
+    },
+    {
+      "family": "growth",
+      "meaning": "how fast revenue and profit are compounding",
+      "weight": 0.2,
+      "percentile": null,
+      "z": null,
+      "contribution": null,
+      "factors_measured": 0,
+      "factors_total": 5,
+      "verdict": "not measured"
+    },
+    {
+      "family": "momentum",
+      "meaning": "price trend and relative strength",
+      "weight": 0.15,
+      "percentile": 94.56007053065757,
+      "z": 1.6036166000736345,
+      "contribution": 0.3436321285872074,
+      "factors_measured": 3,
+      "factors_total": 3,
+      "verdict": "strength"
+    },
+    {
+      "family": "sentiment",
+      "meaning": "tone of the last 30 days of news",
+      "weight": 0.1,
+      "percentile": null,
+      "z": null,
+      "contribution": null,
+      "factors_measured": 0,
+      "factors_total": 1,
+      "verdict": "not measured"
+    }
+  ],
+  "strengths": [
+    {
+      "name": "price_to_200dma",
+      "label": "Price vs 200-DMA",
+      "meaning": "trading above its trend",
+      "family": "momentum",
+      "raw_value": 1.3282739450387908,
+      "z": 1.5376796405567796
+    },
+    {
+      "name": "momentum_12_1",
+      "label": "12-1 month momentum",
+      "meaning": "stronger price trend",
+      "family": "momentum",
+      "raw_value": 1.177752032204031,
+      "z": 1.3966416236892865
+    },
+    {
+      "name": "relative_strength_6m",
+      "label": "Relative strength (6m)",
+      "meaning": "outperforming the index",
+      "family": "momentum",
+      "raw_value": 0.6041214925252983,
+      "z": 1.3036423074311103
+    },
+    {
+      "name": "accruals",
+      "label": "Accruals",
+      "meaning": "earnings backed by cash, not accruals",
+      "family": "quality",
+      "raw_value": -0.08365374783134037,
+      "z": 0.801520592065863
+    },
+    {
+      "name": "cfo_to_pat",
+      "label": "Cash conversion (CFO/PAT)",
+      "meaning": "profits arrive as cash",
+      "family": "quality",
+      "raw_value": 5.308821925998874,
+      "z": 0.518358582977695
+    },
+    {
+      "name": "fcf_yield",
+      "label": "Free cash flow yield",
+      "meaning": "cheap on free cash flow",
+      "family": "value",
+      "raw_value": 0.004258215646190034,
+      "z": 0.02131678840557095
+    }
+  ],
+  "weaknesses": [
+    {
+      "name": "interest_coverage",
+      "label": "Interest coverage",
+      "meaning": "covers interest comfortably",
+      "family": "quality",
+      "raw_value": 1.64325088288132,
+      "z": -0.682465411425131
+    },
+    {
+      "name": "debt_to_equity",
+      "label": "Debt/equity",
+      "meaning": "carries less debt",
+      "family": "quality",
+      "raw_value": 2.700760337236821,
+      "z": -0.5852262816047706
+    },
+    {
+      "name": "roce",
+      "label": "Return on capital employed",
+      "meaning": "earns well on capital employed",
+      "family": "quality",
+      "raw_value": 0.08964485723300206,
+      "z": -0.49720551607998636
+    },
+    {
+      "name": "earnings_yield",
+      "label": "Earnings yield",
+      "meaning": "cheap on earnings",
+      "family": "value",
+      "raw_value": 0.00796410891089109,
+      "z": -0.4288256236998409
+    },
+    {
+      "name": "ebitda_to_ev",
+      "label": "EBITDA/EV",
+      "meaning": "cheap on enterprise value",
+      "family": "value",
+      "raw_value": 0.03530596617551207,
+      "z": -0.1252304496224196
+    },
+    {
+      "name": "roe",
+      "label": "Return on equity",
+      "meaning": "earns well on shareholder funds",
+      "family": "quality",
+      "raw_value": 0.08299417724271754,
+      "z": -0.12154747741292903
+    },
+    {
+      "name": "book_to_price",
+      "label": "Book-to-price",
+      "meaning": "cheap on book value",
+      "family": "value",
+      "raw_value": 0.09595985134716076,
+      "z": -0.09639785626621813
+    }
+  ],
+  "news": {
+    "positive": 1,
+    "negative": 0,
+    "neutral": 0,
+    "total": 1
+  },
+  "red_flags": [
+    {
+      "name": "auditor_qualification",
+      "description": "Auditor qualification, adverse opinion or disclaimer"
+    }
+  ],
+  "unknown_flags": [
+    "promoter_pledge",
+    "weak_cash_conversion",
+    "contingent_liabilities",
+    "rating_downgrade"
+  ],
+  "narrative": null,
+  "stale": false,
+  "stored_version": "phase2-composite-4b05e87d",
+  "current_version": "phase2-composite-4b05e87d"
+}

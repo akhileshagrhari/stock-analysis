@@ -1,0 +1,331 @@
+{
+  "line_items": [
+    {
+      "key": "revenue",
+      "label": "Revenue",
+      "per_share": false
+    },
+    {
+      "key": "other_income",
+      "label": "Other income",
+      "per_share": false
+    },
+    {
+      "key": "total_income",
+      "label": "Total income",
+      "per_share": false
+    },
+    {
+      "key": "total_expenses",
+      "label": "Total expenses",
+      "per_share": false
+    },
+    {
+      "key": "ebitda",
+      "label": "EBITDA",
+      "per_share": false
+    },
+    {
+      "key": "depreciation",
+      "label": "Depreciation",
+      "per_share": false
+    },
+    {
+      "key": "interest_expense",
+      "label": "Interest expense",
+      "per_share": false
+    },
+    {
+      "key": "profit_before_tax",
+      "label": "Profit before tax",
+      "per_share": false
+    },
+    {
+      "key": "tax_expense",
+      "label": "Tax expense",
+      "per_share": false
+    },
+    {
+      "key": "pat",
+      "label": "PAT",
+      "per_share": false
+    },
+    {
+      "key": "eps",
+      "label": "EPS (₹)",
+      "per_share": true
+    },
+    {
+      "key": "ocf",
+      "label": "Operating cash flow",
+      "per_share": false
+    },
+    {
+      "key": "capex",
+      "label": "Capex",
+      "per_share": false
+    },
+    {
+      "key": "fcf",
+      "label": "Free cash flow",
+      "per_share": false
+    },
+    {
+      "key": "total_assets",
+      "label": "Total assets",
+      "per_share": false
+    },
+    {
+      "key": "total_equity",
+      "label": "Total equity",
+      "per_share": false
+    },
+    {
+      "key": "total_liabilities",
+      "label": "Total liabilities",
+      "per_share": false
+    },
+    {
+      "key": "total_debt",
+      "label": "Total debt",
+      "per_share": false
+    },
+    {
+      "key": "cash",
+      "label": "Cash",
+      "per_share": false
+    },
+    {
+      "key": "contingent_liabilities",
+      "label": "Contingent liabilities",
+      "per_share": false
+    }
+  ],
+  "annual": [
+    {
+      "fiscal_year": 2026,
+      "basis": "CONSOLIDATED",
+      "period_end": "2026-03-31",
+      "filing_date": "2026-04-24",
+      "source": "XBRL",
+      "auditor_opinion": "UNMODIFIED",
+      "confidence": 1,
+      "values": {
+        "revenue": 1075675,
+        "other_income": 28962,
+        "total_income": 1104637,
+        "total_expenses": 981475,
+        "ebitda": null,
+        "depreciation": 57688,
+        "interest_expense": 27061,
+        "profit_before_tax": 123162,
+        "tax_expense": 27552,
+        "pat": 80775,
+        "eps": 59.69,
+        "ocf": 192113,
+        "capex": 122916,
+        "fcf": 69197,
+        "total_assets": 2178140,
+        "total_equity": 1085866,
+        "total_liabilities": 1092274,
+        "total_debt": 374421,
+        "cash": 145977,
+        "contingent_liabilities": null
+      }
+    },
+    {
+      "fiscal_year": 2025,
+      "basis": "CONSOLIDATED",
+      "period_end": "2025-03-31",
+      "filing_date": "2025-04-25",
+      "source": "XBRL",
+      "auditor_opinion": "UNMODIFIED",
+      "confidence": 1,
+      "values": {
+        "revenue": 980136,
+        "other_income": 17978,
+        "total_income": 998114,
+        "total_expenses": 892097,
+        "ebitda": null,
+        "depreciation": 53136,
+        "interest_expense": 24269,
+        "profit_before_tax": 106017,
+        "tax_expense": 25230,
+        "pat": 69648,
+        "eps": 51.47,
+        "ocf": 178703,
+        "capex": 139967,
+        "fcf": 38736,
+        "total_assets": 1950121,
+        "total_equity": 1009626,
+        "total_liabilities": 940495,
+        "total_debt": 347530,
+        "cash": 106502,
+        "contingent_liabilities": null
+      }
+    },
+    {
+      "fiscal_year": 2024,
+      "basis": "CONSOLIDATED",
+      "period_end": "2024-03-31",
+      "filing_date": "2024-04-22",
+      "source": "XBRL",
+      "auditor_opinion": "UNMODIFIED",
+      "confidence": 1,
+      "values": {
+        "revenue": 914472,
+        "other_income": 16057,
+        "total_income": 930529,
+        "total_expenses": 826189,
+        "ebitda": null,
+        "depreciation": 50832,
+        "interest_expense": 23118,
+        "profit_before_tax": 104340,
+        "tax_expense": 25707,
+        "pat": 69621,
+        "eps": 102.9,
+        "ocf": 158788,
+        "capex": 152883,
+        "fcf": 5905,
+        "total_assets": 1755986,
+        "total_equity": 925788,
+        "total_liabilities": 830198,
+        "total_debt": 324622,
+        "cash": 97225,
+        "contingent_liabilities": null
+      }
+    },
+    {
+      "fiscal_year": 2023,
+      "basis": "CONSOLIDATED",
+      "period_end": "2023-03-31",
+      "filing_date": "2023-04-21",
+      "source": "XBRL",
+      "auditor_opinion": "UNMODIFIED",
+      "confidence": 1,
+      "values": {
+        "revenue": 892944,
+        "other_income": 11826,
+        "total_income": 904770,
+        "total_expenses": 809926,
+        "ebitda": null,
+        "depreciation": 40319,
+        "interest_expense": 19571,
+        "profit_before_tax": 94844,
+        "tax_expense": 20713,
+        "pat": 66702,
+        "eps": 98.59,
+        "ocf": 115032,
+        "capex": 140988,
+        "fcf": -25956,
+        "total_assets": 1713506,
+        "total_equity": 934162,
+        "total_liabilities": 779344,
+        "total_debt": 314708,
+        "cash": 74708,
+        "contingent_liabilities": null
+      }
+    }
+  ],
+  "quarterly": [
+    {
+      "period_end": "2026-06-30",
+      "filing_date": "2026-07-17",
+      "relating_to": "First Quarter",
+      "is_consolidated": true,
+      "revenue": 311850,
+      "pat": 20946,
+      "eps": 15.48
+    },
+    {
+      "period_end": "2026-03-31",
+      "filing_date": "2026-04-24",
+      "relating_to": "Fourth Quarter",
+      "is_consolidated": true,
+      "revenue": 298621,
+      "pat": 16971,
+      "eps": 12.54
+    },
+    {
+      "period_end": "2025-12-31",
+      "filing_date": "2026-01-16",
+      "relating_to": "Third Quarter",
+      "is_consolidated": true,
+      "revenue": 269496,
+      "pat": 18645,
+      "eps": 13.78
+    },
+    {
+      "period_end": "2025-09-30",
+      "filing_date": "2025-10-17",
+      "relating_to": "Second Quarter",
+      "is_consolidated": true,
+      "revenue": 258898,
+      "pat": 18165,
+      "eps": 13.42
+    },
+    {
+      "period_end": "2025-06-30",
+      "filing_date": "2025-07-18",
+      "relating_to": "First Quarter",
+      "is_consolidated": true,
+      "revenue": 248660,
+      "pat": 26994,
+      "eps": 19.95
+    },
+    {
+      "period_end": "2025-03-31",
+      "filing_date": "2025-04-25",
+      "relating_to": "Fourth Quarter",
+      "is_consolidated": true,
+      "revenue": 264573,
+      "pat": 19407,
+      "eps": 14.34
+    },
+    {
+      "period_end": "2024-12-31",
+      "filing_date": "2025-01-16",
+      "relating_to": "Third Quarter",
+      "is_consolidated": true,
+      "revenue": 243865,
+      "pat": 18540,
+      "eps": 13.7
+    },
+    {
+      "period_end": "2024-09-30",
+      "filing_date": "2024-10-14",
+      "relating_to": "Second Quarter",
+      "is_consolidated": true,
+      "revenue": 235481,
+      "pat": 16563,
+      "eps": 24.48
+    },
+    {
+      "period_end": "2024-06-30",
+      "filing_date": "2024-07-19",
+      "relating_to": "First Quarter",
+      "is_consolidated": true,
+      "revenue": 236217,
+      "pat": 15138,
+      "eps": 22.37
+    },
+    {
+      "period_end": "2024-03-31",
+      "filing_date": "2024-04-22",
+      "relating_to": "Fourth Quarter",
+      "is_consolidated": true,
+      "revenue": 240715,
+      "pat": 18951,
+      "eps": 28.01
+    },
+    {
+      "period_end": "2023-12-31",
+      "filing_date": "2024-01-19",
+      "relating_to": "Third Quarter",
+      "is_consolidated": true,
+      "revenue": 227970,
+      "pat": 17265,
+      "eps": 25.52
+    }
+  ]
+}

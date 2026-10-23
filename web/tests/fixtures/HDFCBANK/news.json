@@ -1,0 +1,66 @@
+[
+  {
+    "published_at": "2026-08-16",
+    "headline": "9 Sensex stocks with up to 41% upside potential. Are these in your portfolio?",
+    "label": null,
+    "score": null,
+    "source": "economictimes.indiatimes.com",
+    "url": "https://economictimes.indiatimes.com/markets/stocks/news/9-sensex-stocks-with-up-to-41-upside-potential-are-these-in-your-portfolio/slideshow/133271796.cms"
+  },
+  {
+    "published_at": "2026-08-16",
+    "headline": "Mcap of 5 most valued firms erodes by ₹1 trn, TCS takes biggest hit",
+    "label": null,
+    "score": null,
+    "source": "business-standard.com",
+    "url": "https://www.business-standard.com/markets/news/mcap-of-5-most-valued-firms-erodes-by-1-trn-tcs-takes-biggest-hit-126081600156_1.html"
+  },
+  {
+    "published_at": "2026-08-15",
+    "headline": "Adani Enterprises, HDFC Bank among 10 stocks with highest increase in mutual fund holdings in value terms",
+    "label": null,
+    "score": null,
+    "source": "economictimes.indiatimes.com",
+    "url": "https://economictimes.indiatimes.com/markets/stocks/news/adani-enterprises-hdfc-bank-among-10-stocks-with-highest-increase-in-mutual-fund-holdings-in-value-terms/slideshow/133257761.cms"
+  },
+  {
+    "published_at": "2026-08-13",
+    "headline": "Reliance Industries, Adani Enterprises among 10 stocks with highest DII buying up to Rs 22,600 crore in Q1",
+    "label": "positive",
+    "score": 0.933122,
+    "source": "economictimes.indiatimes.com",
+    "url": "https://economictimes.indiatimes.com/markets/stocks/news/reliance-industries-adani-enterprises-among-10-stocks-with-highest-dii-buying-up-to-rs-22600-crore-in-q1/slideshow/133197179.cms"
+  },
+  {
+    "published_at": "2025-08-22",
+    "headline": "Sensex , Nifty dive nearly 1 % as HDFC Bank , RIL drag",
+    "label": "positive",
+    "score": 0.034171,
+    "source": "rediff.com",
+    "url": "https://www.rediff.com/business/report/sensex-nifty-dive-nearly-1-as-hdfc-bank-ril-drag/20250822.htm"
+  },
+  {
+    "published_at": "2025-08-22",
+    "headline": "Stock markets halt six - day rally ; Sensex , Nifty dive nearly 1 % as HDFC Bank , Reliance drag",
+    "label": "negative",
+    "score": -0.04868,
+    "source": "orissapost.com",
+    "url": "https://www.orissapost.com/stock-markets-halt-six-day-rally-sensex-nifty-dive-nearly-1-as-hdfc-bank-reliance-drag/"
+  },
+  {
+    "published_at": "2025-08-14",
+    "headline": "Sensex , Nifty climb in early trade on buying in HDFC Bank , TCS",
+    "label": "positive",
+    "score": 0.877565,
+    "source": "thehindubusinessline.com",
+    "url": "https://www.thehindubusinessline.com/markets/sensex-nifty-climb-in-early-trade-on-buying-in-hdfc-bank-tcs/article69931540.ece"
+  },
+  {
+    "published_at": "2025-08-14",
+    "headline": "Equity markets climb in early trade on buying in HDFC Bank , TCS",
+    "label": "positive",
+    "score": 0.707014,
+    "source": "thehindu.com",
+    "url": "https://www.thehindu.com/business/markets/equity-markets-climb-in-early-trade-on-buying-in-hdfc-bank-tcs/article69931583.ece"
+  }
+]

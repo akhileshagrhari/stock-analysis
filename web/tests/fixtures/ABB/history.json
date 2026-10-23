@@ -1,0 +1,78 @@
+[
+  {
+    "isin": "INE117A01022",
+    "nse_symbol": "ABB",
+    "name": "ABB India Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-07-31",
+    "composite_score": 76.16468112715218,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE117A01022",
+    "nse_symbol": "ABB",
+    "name": "ABB India Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 85.76604909155395,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE117A01022",
+    "nse_symbol": "ABB",
+    "name": "ABB India Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-15",
+    "composite_score": 50,
+    "signal": "HOLD",
+    "coverage": 0.73,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "weak_cash_conversion",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-4b05e87d"
+  },
+  {
+    "isin": "INE117A01022",
+    "nse_symbol": "ABB",
+    "name": "ABB India Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-16",
+    "composite_score": 93.29402517827474,
+    "signal": "BUY",
+    "coverage": 0.73,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "weak_cash_conversion",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-4b05e87d"
+  }
+]
