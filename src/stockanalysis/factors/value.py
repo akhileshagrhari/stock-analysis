@@ -23,9 +23,10 @@ FAMILY = "value"
 class EarningsYield(PanelFactor):
     """EPS / price. The inverse of P/E, and the cleanest ratio available here.
 
-    Notably it needs no share count: both terms are already per-share, so this
-    is the one value factor that survives when the implied-share-count route
-    fails.
+    It needs no share count — both terms are per-share — but it does need both
+    on one share basis, which a filing from before a split is not until
+    `factors.share_basis` restates it. RELIANCE's 7.9% on 16 Aug 2026 was a
+    pre-bonus EPS over a post-bonus price.
     """
 
     name = "earnings_yield"
@@ -39,10 +40,13 @@ class BookToPrice(PanelFactor):
     """Total equity / market cap. The inverse of P/B.
 
     Equity is the group figure including non-controlling interests, while market
-    cap is implied from EPS attributable to the parent's owners. For a group with
-    material minorities that overstates book-to-price. Correcting it needs the
-    NCI field that PHASE1-FINDINGS §2.1 is still holding open, so the bias is
-    recorded here rather than silently absorbed.
+    cap covers the parent's shares only. For a group with material minorities
+    that overstates book-to-price. Correcting it needs the NCI field that
+    PHASE1-FINDINGS §2.1 is still holding open, so the bias is recorded here
+    rather than silently absorbed.
+
+    Market cap is price x the share count a filing states (see `factors.panel`),
+    so this exists for a loss-maker too: a P/B is meaningful where a P/E is not.
     """
 
     name = "book_to_price"

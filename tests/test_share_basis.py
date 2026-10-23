@@ -15,6 +15,9 @@ import pandas as pd
 import pytest
 
 from stockanalysis.db.database import Database
+from stockanalysis.factors.panel import SHARES_IMPLIED, SHARES_STATED, load_panel
+from stockanalysis.factors.share_basis import ShareBasis, restate
+from stockanalysis.factors.value import BookToPrice, EarningsYield
 from stockanalysis.ingest import corporate_actions as ca
 from stockanalysis.ingest.prices import PriceProvider, ingest_prices
 
@@ -279,3 +282,138 @@ class TestPriceSeriesAgainstTheActions:
         )
         (seam,) = ca.unadjusted_in_prices(db)
         assert seam.ratio == pytest.approx(10.0)
+
+
+# ----------------------------------------------------------------------
+# Restating per-share figures — the D1 arithmetic on RELIANCE's own numbers
+# ----------------------------------------------------------------------
+
+BONUS_EX = dt.date(2024, 10, 28)
+
+
+def _basis(events, price_basis):
+    return ShareBasis(events={RELIANCE: events}, price_basis={RELIANCE: price_basis})
+
+
+class TestTheRestatementFactor:
+    def test_a_filing_before_the_bonus_is_restated_by_it(self):
+        basis = _basis([(BONUS_EX, 2.0)], dt.date(2026, 8, 14))
+        assert basis.factor(RELIANCE, dt.date(2024, 4, 22)) == 2.0     # FY2024
+        assert basis.factor(RELIANCE, dt.date(2025, 4, 25)) == 1.0     # FY2025, already post-bonus
+
+    def test_an_action_on_the_filing_date_is_taken_as_already_reflected(self):
+        """Ind AS 33 restates EPS for a bonus before the results are approved."""
+        basis = _basis([(BONUS_EX, 2.0)], dt.date(2026, 8, 14))
+        assert basis.factor(RELIANCE, BONUS_EX) == 1.0
+
+    def test_prices_older_than_the_filing_pull_the_filing_back(self):
+        """A series last fetched before the bonus is still in pre-bonus shares,
+        so a post-bonus filing is stated back in them — not the other way."""
+        basis = _basis([(BONUS_EX, 2.0)], dt.date(2024, 9, 30))
+        assert basis.factor(RELIANCE, dt.date(2025, 4, 25)) == 0.5
+
+    def test_a_same_day_bonus_and_split_compound(self):
+        basis = _basis([(dt.date(2025, 6, 16), 5.0), (dt.date(2025, 6, 16), 2.0)],
+                       dt.date(2026, 8, 14))
+        assert basis.factor(RELIANCE, dt.date(2025, 4, 30)) == 10.0
+
+    def test_restate_keeps_what_the_filing_said(self):
+        basis = _basis([(BONUS_EX, 2.0)], dt.date(2026, 8, 14))
+        frame = pd.DataFrame([{
+            "isin": RELIANCE, "filing_date": dt.date(2024, 4, 22), "eps": 102.90,
+            "paid_up_capital": 6_766.0, "face_value": 10.0,
+        }])
+        row = restate(frame, basis).iloc[0]
+        assert row["eps"] == pytest.approx(51.45)
+        assert row["eps_reported"] == 102.90
+        assert row["share_factor"] == 2.0
+        assert row["shares_crore"] == pytest.approx(1_353.2)
+
+
+def _reliance(db, *, annual: dict, quarterly: list[dict] | None = None,
+              close: float = 1310.0, adj_close: float | None = None,
+              bonus: bool = True) -> None:
+    """RELIANCE as the 16 Aug 2026 run saw it: prices on the post-bonus basis
+    Yahoo serves, and fundamentals as each filing reported them."""
+    _instrument(db)
+    days = pd.bdate_range(dt.date(2024, 1, 1), dt.date(2026, 8, 14))
+    db.upsert_df("prices_daily", pd.DataFrame({
+        "isin": RELIANCE, "date": [d.date() for d in days], "open": close,
+        "high": close, "low": close, "close": close,
+        "adj_close": close if adj_close is None else adj_close,
+        "volume": 1, "traded_value": close,
+    }), ["isin", "date"])
+    db.upsert_df("fundamentals_annual", pd.DataFrame([{
+        "isin": RELIANCE, "basis": "CONSOLIDATED", "source": "XBRL", **annual,
+    }]), ["isin", "fiscal_year", "basis"])
+    if quarterly:
+        db.upsert_df("fundamentals_quarterly", pd.DataFrame(
+            [{"isin": RELIANCE, **q} for q in quarterly]
+        ), ["isin", "period_end_date"])
+    if bonus:
+        ca.ingest_corporate_actions(
+            db, delay=0, nse=_FakeNse({"RELIANCE": RELIANCE_ACTIONS})
+        )
+
+
+FY2024 = {
+    "fiscal_year": 2024, "period_end_date": dt.date(2024, 3, 31),
+    "filing_date": dt.date(2024, 4, 22), "pat": 69_621.0, "eps": 102.90,
+    "total_equity": 925_788.0,
+}
+
+
+class TestValueFactorsOnOneBasis:
+    AS_OF = dt.date(2026, 8, 14)
+
+    def test_earnings_yield_divides_like_for_like(self, db):
+        """The spec's arithmetic: 0.07855 was exactly 102.90 / 1,310. On one
+        basis it is half that."""
+        _reliance(db, annual=FY2024)
+        panel = load_panel(db, [RELIANCE], self.AS_OF)
+        ey = EarningsYield().from_panel(panel)[RELIANCE]
+        assert ey == pytest.approx(102.90 / 2 / 1310.0)
+        assert ey != pytest.approx(0.07855, rel=1e-3)
+
+    def test_book_to_price_uses_the_restated_share_count(self, db):
+        """1.0445 was 9,25,788 crore over 676.6 crore pre-bonus shares at ₹1,310."""
+        _reliance(db, annual=FY2024)
+        panel = load_panel(db, [RELIANCE], self.AS_OF)
+        assert panel.share_source[RELIANCE] == SHARES_IMPLIED
+        assert panel.shares[RELIANCE] / 1e7 == pytest.approx(1_353.18, rel=1e-4)
+        bp = BookToPrice().from_panel(panel)[RELIANCE]
+        assert bp == pytest.approx(1.0445 / 2, rel=1e-3)
+
+    def test_without_the_action_on_file_nothing_is_restated(self, db):
+        """What the 16 Aug run did — and the number it stored."""
+        _reliance(db, annual=FY2024, bonus=False)
+        panel = load_panel(db, [RELIANCE], self.AS_OF)
+        assert EarningsYield().from_panel(panel)[RELIANCE] == pytest.approx(0.07855, rel=1e-3)
+
+    def test_the_stated_share_count_wins_and_is_restated_too(self, db):
+        """Q2 FY2025 was filed two weeks before the bonus, at 676.6 crore shares."""
+        _reliance(db, annual=FY2024, quarterly=[{
+            "period_end_date": dt.date(2024, 9, 30), "filing_date": dt.date(2024, 10, 14),
+            "revenue": 231_535.0, "pat": 16_563.0, "eps": 24.48,
+            "paid_up_capital": 6_766.0, "face_value": 10.0,
+        }])
+        panel = load_panel(db, [RELIANCE], dt.date(2024, 12, 2))
+        assert panel.share_source[RELIANCE] == SHARES_STATED
+        assert panel.shares[RELIANCE] / 1e7 == pytest.approx(1_353.2)
+        assert panel.quarterly.iloc[0]["eps"] == pytest.approx(12.24)
+
+    def test_a_loss_maker_with_a_stated_count_gets_a_market_cap(self, db):
+        """PAT / EPS is undefined on a loss; the filing's own count is not."""
+        _reliance(db, bonus=False, annual={
+            **FY2024, "pat": -500.0, "eps": -0.74,
+            "paid_up_capital": 13_532.0, "face_value": 10.0,
+        })
+        panel = load_panel(db, [RELIANCE], self.AS_OF)
+        assert panel.market_cap[RELIANCE] == pytest.approx(1310.0 * 1_353.2)
+        assert BookToPrice().from_panel(panel)[RELIANCE] > 0
+
+    def test_valuation_reads_the_close_not_the_dividend_adjusted_close(self, db):
+        _reliance(db, annual=FY2024, close=1310.0, adj_close=1200.0)
+        panel = load_panel(db, [RELIANCE], self.AS_OF)
+        assert panel.price[RELIANCE] == 1310.0
+

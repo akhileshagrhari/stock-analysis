@@ -23,6 +23,9 @@ RELIANCE's 2020 closes turned out to be half what the stock traded at:
 
 So `close` is the price to put next to per-share fundamentals — but only once
 they are on the same share basis, which a filing from before the bonus is not.
+`factors.share_basis` restates them with `corporate_actions`, and the value
+factors read `close`, not `adj_close`: valuing a 2021 balance sheet against a
+price shrunk by every dividend paid since overstates how cheap it was.
 
 ONE FETCH, ONE BASIS
 --------------------
