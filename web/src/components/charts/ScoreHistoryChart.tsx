@@ -10,6 +10,18 @@ import s from "./charts.module.css";
 
 const PAD = { l: 30, r: 14, t: 10, b: 26 };
 
+/** Which x positions get a date label: always the ends, then any middle one at least `gap` from its labelled neighbours. */
+export function labelIndexes(xs: number[], gap: number): number[] {
+  if (xs.length <= 1) return xs.map((_, i) => i);
+  const last = xs.length - 1;
+  const out = [0];
+  for (let i = 1; i < last; i++) {
+    if (xs[i] - xs[out[out.length - 1]] >= gap && xs[last] - xs[i] >= gap) out.push(i);
+  }
+  out.push(last);
+  return out;
+}
+
 /** Score (0-100) on every snapshot date, over the SELL / HOLD / BUY bands. */
 export function ScoreHistoryChart({ points, thresholds, selected }: { points: Snapshot[]; thresholds: Thresholds; selected?: string }) {
   const [ref, { width: W, height: H }] = useSize<HTMLDivElement>({ width: 640, height: 240 });
@@ -59,7 +71,7 @@ export function ScoreHistoryChart({ points, thresholds, selected }: { points: Sn
         {bands.map((b) => (
           <g key={b.key} data-band={b.key}>
             <rect x={PAD.l} width={W - PAD.l - PAD.r} y={y(b.hi)} height={y(b.lo) - y(b.hi)} fill={b.fill} opacity={0.35} />
-            <text x={W - PAD.r - 6} y={y(b.hi) + 14} textAnchor="end" className={s.svgText}>
+            <text x={PAD.l + 6} y={y(b.hi) + 14} className={s.svgText}>
               {SIGNALS[b.key].label}
             </text>
           </g>
@@ -77,7 +89,7 @@ export function ScoreHistoryChart({ points, thresholds, selected }: { points: Sn
           return (
             <g key={i} data-model-change="">
               <line x1={mx} x2={mx} y1={PAD.t} y2={H - PAD.b} stroke="var(--ink3)" strokeDasharray="4 4" />
-              <text x={mx + 4} y={PAD.t + 10} className={s.svgSmall}>
+              <text x={mx > W * 0.7 ? mx - 4 : mx + 4} y={PAD.t + 10} textAnchor={mx > W * 0.7 ? "end" : "start"} className={s.svgSmall}>
                 model updated
               </text>
             </g>
@@ -104,13 +116,15 @@ export function ScoreHistoryChart({ points, thresholds, selected }: { points: Sn
             </circle>
           );
         })}
-        {scoredIdx.map((i, k) =>
-          scoredIdx.length <= 6 || k === 0 || k === scoredIdx.length - 1 ? (
-            <text key={points[i].date} x={x(i)} y={H - 6} textAnchor={k === 0 && scoredIdx.length > 1 ? "start" : k === scoredIdx.length - 1 && scoredIdx.length > 1 ? "end" : "middle"} className={s.svgText}>
+        {labelIndexes(scoredIdx.map(x), 48).map((k, n, all) => {
+          const i = scoredIdx[k];
+          const anchor = all.length === 1 ? "middle" : n === 0 ? "start" : n === all.length - 1 ? "end" : "middle";
+          return (
+            <text key={points[i].date} x={x(i)} y={H - 6} textAnchor={anchor} className={s.svgText}>
               {fmtDay(points[i].date)}
             </text>
-          ) : null,
-        )}
+          );
+        })}
         <rect x={PAD.l} y={0} width={W - PAD.l - PAD.r} height={H} fill="transparent" onPointerMove={onMove} onPointerLeave={() => setHover(null)} />
       </svg>
       {hp && hp.score !== null && (

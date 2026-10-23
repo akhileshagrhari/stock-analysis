@@ -123,3 +123,13 @@ describe("PriceChart", () => {
     expect(flat.container.innerHTML).not.toMatch(/NaN|Infinity/);
   });
 });
+
+describe("date labels", () => {
+  it("drops a middle label that would collide with its neighbour", async () => {
+    const { labelIndexes } = await import("@/components/charts/ScoreHistoryChart");
+    // x positions as on a 390px phone: 31 Jul, 14 Aug, 16 Aug
+    expect(labelIndexes([30, 300, 330], 48)).toEqual([0, 2]);
+    expect(labelIndexes([30, 200, 330], 48)).toEqual([0, 1, 2]);
+    expect(labelIndexes([100], 48)).toEqual([0]);
+  });
+});
