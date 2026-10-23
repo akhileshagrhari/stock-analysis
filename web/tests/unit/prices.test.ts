@@ -1,0 +1,42 @@
+import { describe, expect, it } from "vitest";
+import { priceStats, slicePeriod, toCloses } from "@/lib/prices";
+import { fixtureStock } from "../fixtures";
+
+describe("prices", () => {
+  const c = toCloses(fixtureStock("RELIANCE").prices);
+
+  it("keeps date and close, rounded to paise", () => {
+    expect(c.at(-1)).toEqual(["2026-08-14", 1310]);
+    expect(c.every(([, v]) => Number(v.toFixed(2)) === v)).toBe(true);
+    expect(c[0][1]).toBe(975.52);
+  });
+
+  it("drops bars with no close", () => {
+    expect(toCloses([{ ...fixtureStock("RELIANCE").prices[0], close: null }])).toEqual([]);
+  });
+
+  it("slices from the same calendar day N months back (TZ=Asia/Kolkata)", () => {
+    expect(slicePeriod(c, "1Y")[0]).toEqual(["2025-08-14", 1373.8]);
+    expect(slicePeriod(c, "MAX")).toHaveLength(c.length);
+    expect(slicePeriod(c, "1M")[0][0] >= "2026-07-14").toBe(true);
+  });
+
+  it("clamps month-end when slicing back", () => {
+    const pts: [string, number][] = [["2026-02-27", 1], ["2026-03-02", 2], ["2026-03-31", 3]];
+    expect(slicePeriod(pts, "1M")[0][0]).toBe("2026-03-02");
+  });
+
+  it("computes change and 52-week range", () => {
+    const st = priceStats(c, "1Y")!;
+    expect(st.change.toFixed(2)).toBe("-63.80");
+    expect((st.changePct * 100).toFixed(2)).toBe("-4.64");
+    expect(st.high52).toBe(1592.3);
+    expect(st.low52).toBe(1258.8);
+    expect(st.last).toEqual(["2026-08-14", 1310]);
+    expect(st.offHighPct).toBeCloseTo(1310 / 1592.3 - 1, 6);
+  });
+
+  it("is null for an empty history (Review Focus 3)", () => {
+    expect(priceStats([], "1Y")).toBeNull();
+  });
+});
