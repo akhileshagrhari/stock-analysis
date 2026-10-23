@@ -302,6 +302,22 @@ def _edge_cases(db: Database) -> None:
         ),
         ["isin", "quarter_end"],
     )
+    # NaN beside NULL again, and a NULL in the one integer column a route
+    # returns: psycopg hands back None in an object column, DuckDB a float NaN.
+    db.upsert_df(
+        "prices_daily",
+        pd.DataFrame(
+            [
+                (MM, dt.date(2023, 1, 27), nan, None, 99.0, 100.5, None, None, None),
+                (MM, dt.date(2023, 1, 30), 100.0, 102.0, 98.5, 101.25, 101.0, 12345, 1.2e6),
+            ],
+            columns=[
+                "isin", "date", "open", "high", "low", "close", "adj_close", "volume",
+                "traded_value",
+            ],
+        ),
+        ["isin", "date"],
+    )
 
 
 def build_site_db(path: Path) -> None:
@@ -731,6 +747,30 @@ PARITY_URLS = [
     "/signals?limit=0",
     "/signals/red-flags",
     f"/signals/red-flags?as_of={AS_OF}&limit=1",
+    # The public site's routes, at the address it calls them by.
+    "/v1/health",
+    "/v1/signals",
+    f"/v1/instruments/{FIRST}/financials",
+    f"/v1/instruments/{FIRST}/financials?quarters=1",
+    f"/v1/instruments/{NOSIGNAL}/financials",
+    "/v1/instruments/INE_MISSING/financials",
+    f"/v1/instruments/{FIRST}/explanation",
+    f"/v1/instruments/{MM}/explanation",
+    f"/v1/instruments/{BAJAJ}/explanation",
+    f"/v1/instruments/{NOSIGNAL}/explanation",
+    "/v1/instruments/INE_MISSING/explanation",
+    f"/v1/instruments/{FIRST}/prices",
+    f"/v1/instruments/{FIRST}/prices?from=2023-06-01&to=2023-06-30",
+    f"/v1/instruments/{FIRST}/prices?from=2023-07-01&to=2023-06-01",
+    f"/v1/instruments/{FIRST}/prices?from=not-a-date",
+    f"/v1/instruments/{MM}/prices",
+    f"/v1/instruments/{NOSIGNAL}/prices",
+    "/v1/instruments/INE_MISSING/prices",
+    "/v1/instruments/search?q=m%26m",
+    "/v1/instruments/search?q=test00&limit=3",
+    "/v1/instruments/search?q=%C3%9CN%C3%8F",       # ÜNÏ — folded in Python, not SQL
+    "/v1/instruments/search?q=%25",
+    "/v1/instruments/search?q=",
 ]
 
 
@@ -745,8 +785,10 @@ def test_parity_urls_cover_every_route():
     from stockanalysis.serve.api import app
 
     def covers(template: str, url: str) -> bool:
-        pattern = re.sub(r"\{[^}]+\}", "[^/]+", template)
-        return re.fullmatch(pattern, urlsplit(url).path) is not None
+        # `/v1/x` and `/x` are one handler mounted twice (see `serve.api`), so
+        # a URL for either covers both.
+        pattern = re.sub(r"\{[^}]+\}", "[^/]+", template.removeprefix("/v1"))
+        return re.fullmatch(pattern, urlsplit(url).path.removeprefix("/v1")) is not None
 
     templates = {r.path for r in app.routes if isinstance(r, APIRoute) and "GET" in r.methods}
     uncovered = sorted(t for t in templates if not any(covers(t, u) for u in PARITY_URLS))
@@ -792,6 +834,11 @@ def test_parity_fixture_is_not_vacuous(both_backends):
     assert both_backends("/instruments/by-symbol/m%26m", "postgres").status_code == 200
     news = both_backends(f"/instruments/{MM}/news?limit=100", "postgres").json()
     assert {n["label"] for n in news} == {"positive", None}
+    bars = both_backends(f"/v1/instruments/{MM}/prices", "postgres").json()
+    assert [bar["volume"] for bar in bars] == [None, 12345]
+    assert bars[0]["open"] is None and bars[0]["high"] is None
+    found = both_backends("/v1/instruments/search?q=%C3%9CN%C3%8F", "postgres").json()
+    assert [row["nse_symbol"] for row in found] == ["bajaj-auto"]
 
 
 @needs_pg
@@ -820,6 +867,12 @@ def test_read_layer_gives_identical_results_on_both_backends(published):
         (queries.quarterly_financials, (FIRST,)),
         (queries.sentiment_counts, ([FIRST, MM, NOSIGNAL], AS_OF)),
         (queries.signal_counts, (AS_OF,)),
+        (queries.latest_price_date, (FIRST,)),
+        (queries.latest_price_date, (NOSIGNAL,)),
+        (queries.price_history, (MM, dt.date(2023, 1, 1), dt.date(2023, 12, 31))),
+        (queries.price_history, (FIRST, dt.date(2023, 6, 1), dt.date(2023, 6, 30))),
+        (queries.search_instruments, ("m&m",)),
+        (queries.search_instruments, ("üNï", 50)),
         (explain.raw_values, (MM, AS_OF)),
         (explain.dominant_families, (AS_OF,)),
         (explain.explain, (FIRST,)),

@@ -173,6 +173,22 @@ class Settings(BaseSettings):
     pg_pool_max_size: int = Field(default=10, ge=1)
     pg_pool_timeout_seconds: float = 5.0
 
+    # ----------------------------------------------------------------
+    # The public API — what the site and any CDN in front of it see
+    # ----------------------------------------------------------------
+    # How long a successful response may be reused, by a browser or a CDN.
+    # The data moves once a day, when a pipeline run publishes, so minutes of
+    # staleness cost nothing and spare the database every repeat page view.
+    # 0 marks everything `no-store`. Errors are never cacheable whatever this
+    # says: a 503 during a publish must not outlive the publish.
+    api_cache_seconds: int = Field(default=300, ge=0)
+
+    # Browser origins allowed to call the API directly, as a JSON list:
+    # SA_API_CORS_ORIGINS='["https://example.com"]'. Empty by default, which
+    # leaves server-to-server calls (the site rendering a page) unaffected and
+    # refuses every browser page served from anywhere else.
+    api_cors_origins: list[str] = []
+
     @field_validator("pg_schema")
     @classmethod
     def _not_a_shared_schema(cls, value: str) -> str:

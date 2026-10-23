@@ -505,6 +505,366 @@ class TestAPIWithoutDatabase:
 
 
 # ----------------------------------------------------------------------
+# The public site's routes — everything a stock page is built from
+# ----------------------------------------------------------------------
+
+
+def _top_isin(client) -> str:
+    return client.get("/v1/signals").json()[0]["isin"]
+
+
+def _add_bare_instrument(db: Database, isin: str, symbol: str, name: str) -> None:
+    """A listed company with nothing else stored: no prices, filings or signal."""
+    db.upsert_df(
+        "instruments",
+        pd.DataFrame([{"isin": isin, "nse_symbol": symbol, "name": name}]),
+        ["isin"],
+    )
+
+
+def _assert_strict_json(raw: str) -> None:
+    import json
+
+    json.loads(raw, parse_constant=_reject_constant)
+
+
+class TestFinancialsRoute:
+    def test_annual_years_newest_first_with_every_line_item(self, client):
+        isin = _top_isin(client)
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+
+        years = [row["fiscal_year"] for row in body["annual"]]
+        assert years and years == sorted(years, reverse=True)
+        keys = [item["key"] for item in body["line_items"]]
+        assert keys == [key for key, _label in queries.ANNUAL_LINE_ITEMS]
+        assert all(list(row["values"]) == keys for row in body["annual"])
+
+    def test_line_items_carry_labels_and_mark_eps_per_share(self, client):
+        body = client.get(f"/v1/instruments/{_top_isin(client)}/financials").json()
+        items = {item["key"]: item for item in body["line_items"]}
+        assert items["revenue"]["label"] == "Revenue"
+        assert [k for k, item in items.items() if item["per_share"]] == ["eps"]
+
+    def test_quarters_newest_first_and_bounded(self, client, scored_db):
+        isin = _top_isin(client)
+        ends = [dt.date(2022, 3, 31), dt.date(2022, 6, 30), dt.date(2022, 9, 30)]
+        scored_db.upsert_df(
+            "fundamentals_quarterly",
+            pd.DataFrame(
+                [
+                    {"isin": isin, "period_end_date": end,
+                     "filing_date": end + dt.timedelta(days=45), "revenue": 100.0 + i,
+                     "pat": float("nan"), "eps": 1.0, "is_consolidated": True}
+                    for i, end in enumerate(ends)
+                ]
+            ),
+            ["isin", "period_end_date"],
+        )
+
+        response = client.get(f"/v1/instruments/{isin}/financials", params={"quarters": 2})
+        quarters = response.json()["quarterly"]
+        assert [q["period_end"] for q in quarters] == ["2022-09-30", "2022-06-30"]
+        assert quarters[0]["pat"] is None, "NaN must reach the client as null"
+        _assert_strict_json(response.text)
+
+    def test_quarters_param_is_bounded(self, client):
+        url = f"/v1/instruments/{_top_isin(client)}/financials"
+        assert client.get(url, params={"quarters": 0}).status_code == 422
+        assert client.get(url, params={"quarters": 41}).status_code == 422
+
+    def test_company_with_nothing_filed_gets_empty_lists_not_404(self, client, scored_db):
+        _add_bare_instrument(scored_db, "INE0000NEW01", "NEWCO", "New Co")
+        body = client.get("/v1/instruments/INE0000NEW01/financials").json()
+        assert body["annual"] == [] and body["quarterly"] == []
+
+    def test_unknown_instrument_is_404(self, client):
+        assert client.get("/v1/instruments/NOPE/financials").status_code == 404
+
+
+class TestExplanationRoute:
+    def test_is_the_read_layers_explanation(self, client, scored_db):
+        isin = _top_isin(client)
+        response = client.get(f"/v1/instruments/{isin}/explanation")
+        body = response.json()
+        expected = explain.explain(scored_db, isin)
+
+        assert body["headline"] == expected.headline
+        assert body["reasons"] == expected.reasons
+        assert [f["family"] for f in body["families"]] == [f.family for f in expected.families]
+        assert [d["name"] for d in body["strengths"]] == [d.name for d in expected.strengths]
+        assert [d["name"] for d in body["weaknesses"]] == [d.name for d in expected.weaknesses]
+        assert body["as_of"] == AS_OF.isoformat()
+        assert body["stale"] is expected.stale
+        _assert_strict_json(response.text)
+
+    def test_families_and_drivers_carry_their_plain_language(self, client):
+        body = client.get(f"/v1/instruments/{_top_isin(client)}/explanation").json()
+        family = body["families"][0]
+        assert family["meaning"] == explain.FAMILY_MEANING[family["family"]]
+        assert family["verdict"] in {"strength", "weakness", "neutral", "not measured"}
+        driver = (body["strengths"] or body["weaknesses"])[0]
+        assert driver["label"] == explain.factor_label(driver["name"])
+        assert driver["meaning"] == explain.factor_meaning(driver["name"])
+
+    def test_news_mix_is_reported_where_there_is_news(self, client, scored_db):
+        isins = sorted(i["isin"] for i in client.get("/v1/instruments").json())
+        body = client.get(f"/v1/instruments/{isins[0]}/explanation").json()
+        assert body["news"] == {"positive": 2, "negative": 1, "neutral": 0, "total": 3}
+
+    def test_red_flags_come_with_their_descriptions(self, client):
+        from stockanalysis.factors import redflags
+
+        flagged = client.get("/v1/signals/red-flags").json()[0]
+        body = client.get(f"/v1/instruments/{flagged['isin']}/explanation").json()
+        descriptions = {d.name: d.description for d in redflags.DEFINITIONS}
+        assert body["red_flags"] == [
+            {"name": name, "description": descriptions[name]} for name in flagged["red_flags"]
+        ]
+        assert body["signal"] == "SELL"
+
+    def test_company_without_a_signal_is_404(self, client, scored_db):
+        _add_bare_instrument(scored_db, "INE0000NEW01", "NEWCO", "New Co")
+        response = client.get("/v1/instruments/INE0000NEW01/explanation")
+        assert response.status_code == 404
+        assert "signal" in response.json()["detail"]
+
+    def test_unknown_instrument_is_404(self, client):
+        assert client.get("/v1/instruments/NOPE/explanation").status_code == 404
+
+
+class TestPricesRoute:
+    @staticmethod
+    def _bar_dates(response) -> list[dt.date]:
+        return [dt.date.fromisoformat(bar["date"]) for bar in response.json()]
+
+    def test_defaults_to_the_year_ending_at_the_latest_bar(self, client, scored_db):
+        isin = _top_isin(client)
+        latest = queries._opt_date(
+            scored_db.query("SELECT MAX(date) AS d FROM prices_daily WHERE isin = ?", [isin])
+            .iloc[0]["d"]
+        )
+        dates = self._bar_dates(client.get(f"/v1/instruments/{isin}/prices"))
+
+        assert dates == sorted(dates)
+        assert dates[-1] == latest
+        year_before = latest - dt.timedelta(days=365)
+        assert year_before <= dates[0] <= year_before + dt.timedelta(days=5)
+
+    def test_explicit_range_is_inclusive(self, client):
+        isin = _top_isin(client)
+        everything = self._bar_dates(
+            client.get(f"/v1/instruments/{isin}/prices", params={"from": "2019-01-01"})
+        )
+        start, end = everything[10], everything[20]
+        dates = self._bar_dates(
+            client.get(
+                f"/v1/instruments/{isin}/prices",
+                params={"from": start.isoformat(), "to": end.isoformat()},
+            )
+        )
+        assert dates == everything[10:21]
+
+    def test_bars_carry_ohlc_adjusted_close_and_volume(self, client):
+        bar = client.get(f"/v1/instruments/{_top_isin(client)}/prices").json()[0]
+        assert set(bar) == {"date", "open", "high", "low", "close", "adj_close", "volume"}
+        assert isinstance(bar["volume"], int)
+
+    def test_missing_values_are_null(self, client, scored_db):
+        _add_bare_instrument(scored_db, "INE0000NEW01", "NEWCO", "New Co")
+        scored_db.upsert_df(
+            "prices_daily",
+            pd.DataFrame(
+                [{"isin": "INE0000NEW01", "date": dt.date(2023, 1, 2), "open": float("nan"),
+                  "high": None, "low": None, "close": 10.0, "adj_close": None,
+                  "volume": None, "traded_value": None}]
+            ),
+            ["isin", "date"],
+        )
+        response = client.get("/v1/instruments/INE0000NEW01/prices")
+        assert response.json() == [
+            {"date": "2023-01-02", "open": None, "high": None, "low": None,
+             "close": 10.0, "adj_close": None, "volume": None}
+        ]
+        _assert_strict_json(response.text)
+
+    def test_reversed_range_is_422(self, client):
+        response = client.get(
+            f"/v1/instruments/{_top_isin(client)}/prices",
+            params={"from": "2023-06-01", "to": "2023-01-01"},
+        )
+        assert response.status_code == 422
+
+    def test_malformed_date_is_422_not_500(self, client):
+        response = client.get(
+            f"/v1/instruments/{_top_isin(client)}/prices", params={"from": "01-06-2023"}
+        )
+        assert response.status_code == 422
+        assert "from" in response.json()["detail"]
+
+    def test_company_without_prices_gets_an_empty_list(self, client, scored_db):
+        _add_bare_instrument(scored_db, "INE0000NEW01", "NEWCO", "New Co")
+        response = client.get("/v1/instruments/INE0000NEW01/prices")
+        assert response.status_code == 200 and response.json() == []
+
+    def test_unknown_instrument_is_404(self, client):
+        assert client.get("/v1/instruments/NOPE/prices").status_code == 404
+
+
+class TestSearchRoute:
+    @staticmethod
+    def _symbols(client, q: str, **params) -> list[str]:
+        response = client.get("/v1/instruments/search", params={"q": q, **params})
+        assert response.status_code == 200, response.text
+        return [row["nse_symbol"] for row in response.json()]
+
+    def test_exact_symbol_first_then_symbol_prefix_then_name(self, client, scored_db):
+        for isin, symbol, name in [
+            ("INE0000ABC01", "ABCX", "Zeta Industries"),      # symbol prefix
+            ("INE0000XYZ01", "XYZ", "ABC Holdings"),         # name prefix
+            ("INE0000QQQ01", "QQQ", "Alpha Abc Works"),      # name contains
+            ("INE0000ABC02", "ABC", "Plain Name Ltd"),       # exact symbol
+        ]:
+            _add_bare_instrument(scored_db, isin, symbol, name)
+        assert self._symbols(client, "abc") == ["ABC", "ABCX", "XYZ", "QQQ"]
+
+    def test_symbol_prefix_ties_break_on_symbol(self, client):
+        assert self._symbols(client, "test00", limit=4) == [
+            "TEST000", "TEST001", "TEST002", "TEST003",
+        ]
+
+    def test_matches_names_case_insensitively(self, client):
+        assert self._symbols(client, "COMPANY 2", limit=50) == [
+            "TEST002", *(f"TEST{i:03d}" for i in range(20, 30)),
+        ]
+
+    def test_case_folding_reaches_beyond_ascii(self, client, scored_db):
+        _add_bare_instrument(scored_db, "INE0000UNI01", "UNIMOT", "Ünïcødé Motors")
+        assert self._symbols(client, "ÜNÏ") == ["UNIMOT"]
+
+    def test_wildcard_characters_match_only_themselves(self, client):
+        assert self._symbols(client, "%") == []
+        assert self._symbols(client, "_") == []
+
+    def test_blank_query_and_limit_bounds_are_422(self, client):
+        url = "/v1/instruments/search"
+        assert client.get(url, params={"q": "   "}).status_code == 422
+        assert client.get(url).status_code == 422
+        assert client.get(url, params={"q": "test", "limit": 0}).status_code == 422
+        assert client.get(url, params={"q": "test", "limit": 51}).status_code == 422
+
+    def test_default_limit_is_ten(self, client):
+        assert len(self._symbols(client, "test")) == 10
+
+
+class TestVersionedRoutes:
+    def test_every_route_is_also_served_under_v1(self):
+        from fastapi.routing import APIRoute
+
+        from stockanalysis.serve.api import app
+
+        routes = [r for r in app.routes if isinstance(r, APIRoute)]
+        versioned = {r.path: r.endpoint for r in routes if r.path.startswith("/v1/")}
+        unversioned = [r for r in routes if not r.path.startswith("/v1/")]
+        assert unversioned and versioned
+        for route in unversioned:
+            assert versioned.get("/v1" + route.path) is route.endpoint, route.path
+
+    def test_schema_documents_only_the_versioned_routes(self, client):
+        paths = client.get("/openapi.json").json()["paths"]
+        assert "/v1/instruments/{isin}/financials" in paths
+        assert all(path.startswith("/v1/") for path in paths), sorted(paths)
+
+    def test_unversioned_routes_still_answer(self, client):
+        assert client.get("/health").json() == client.get("/v1/health").json()
+
+
+class TestCacheHeaders:
+    def test_successful_reads_are_publicly_cacheable(self, client, monkeypatch):
+        from stockanalysis.config import settings
+
+        monkeypatch.setattr(settings, "api_cache_seconds", 300)
+        response = client.get("/v1/signals")
+        assert response.headers["cache-control"] == "public, max-age=300"
+
+    def test_errors_are_never_cached(self, client):
+        response = client.get("/v1/instruments/NOPE")
+        assert response.status_code == 404
+        assert response.headers["cache-control"] == "no-store"
+
+    def test_unavailable_database_is_never_cached(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from stockanalysis.config import settings
+        from stockanalysis.serve.api import app
+
+        monkeypatch.setattr(settings, "db_path", tmp_path / "absent.duckdb")
+        response = TestClient(app).get("/v1/health")
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
+
+    def test_zero_turns_caching_off(self, client, monkeypatch):
+        from stockanalysis.config import settings
+
+        monkeypatch.setattr(settings, "api_cache_seconds", 0)
+        assert client.get("/v1/signals").headers["cache-control"] == "no-store"
+
+
+class TestCors:
+    SITE = "https://site.example"
+
+    def test_no_origin_is_allowed_by_default(self, client):
+        response = client.get("/v1/health", headers={"Origin": self.SITE})
+        assert "access-control-allow-origin" not in response.headers
+
+    def test_a_configured_origin_may_read(self, client, monkeypatch):
+        from stockanalysis.config import settings
+
+        monkeypatch.setattr(settings, "api_cors_origins", [self.SITE])
+        response = client.get("/v1/health", headers={"Origin": self.SITE})
+        assert response.headers["access-control-allow-origin"] == self.SITE
+
+    def test_other_origins_still_may_not(self, client, monkeypatch):
+        from stockanalysis.config import settings
+
+        monkeypatch.setattr(settings, "api_cors_origins", [self.SITE])
+        response = client.get("/v1/health", headers={"Origin": "https://elsewhere.example"})
+        assert "access-control-allow-origin" not in response.headers
+
+    def test_preflight_is_answered_for_get_only(self, client, monkeypatch):
+        from stockanalysis.config import settings
+
+        monkeypatch.setattr(settings, "api_cors_origins", [self.SITE])
+        headers = {"Origin": self.SITE, "Access-Control-Request-Method": "GET"}
+        assert client.options("/v1/signals", headers=headers).status_code == 200
+        headers["Access-Control-Request-Method"] = "POST"
+        assert client.options("/v1/signals", headers=headers).status_code == 400
+
+    def test_origins_are_read_from_the_environment_as_json(self, monkeypatch):
+        from stockanalysis.config import Settings
+
+        monkeypatch.setenv("SA_API_CORS_ORIGINS", '["https://a.example", "https://b.example"]')
+        assert Settings(_env_file=None).api_cors_origins == [
+            "https://a.example", "https://b.example",
+        ]
+
+
+class TestOpenApiExport:
+    def test_cli_writes_the_schema_a_client_is_generated_from(self, tmp_path):
+        import json
+
+        from typer.testing import CliRunner
+
+        from stockanalysis.cli import app as cli
+
+        out = tmp_path / "web" / "openapi.json"
+        result = CliRunner().invoke(cli, ["export-openapi", str(out)])
+        assert result.exit_code == 0, result.output
+        schema = json.loads(out.read_text())
+        assert "/v1/instruments/{isin}/prices" in schema["paths"]
+        assert schema["info"]["title"] == "StockAnalysis API"
+
+
+# ----------------------------------------------------------------------
 # Narrative generation
 # ----------------------------------------------------------------------
 

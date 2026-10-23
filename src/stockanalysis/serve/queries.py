@@ -47,6 +47,12 @@ def _opt_float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _opt_int(value: Any) -> int | None:
+    """For integer columns that can hold NULL — which DuckDB hands over as NaN."""
+    number = _opt_float(value)
+    return None if number is None else int(number)
+
+
 def _req_float(value: Any, default: float = 0.0) -> float:
     """For columns a caller treats as always-present. Never returns NaN."""
     number = _opt_float(value)
@@ -232,6 +238,24 @@ class QuarterlyFinancials:
     eps: float | None
 
 
+@dataclass(frozen=True)
+class PriceBar:
+    """One trading day from `prices_daily`, in rupees.
+
+    Both closes, because they answer different questions: `close` is the
+    price that traded that day, `adj_close` the one a return across a split
+    or bonus can be computed from.
+    """
+
+    date: dt.date
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    adj_close: float | None
+    volume: int | None
+
+
 # ----------------------------------------------------------------------
 # Row builders
 # ----------------------------------------------------------------------
@@ -337,6 +361,44 @@ def resolve_symbol(db: Database, symbol: str) -> Instrument | None:
     if df.empty:
         return None
     return _instrument(df.iloc[0])
+
+
+def search_instruments(db: Database, text: str, limit: int = 10) -> list[Instrument]:
+    """Instruments matching what someone is typing, best match first.
+
+    Ranked: the exact symbol, then symbols starting with the text, then names
+    starting with it, then anything containing it — ties in symbol order.
+
+    **Matched in Python, not SQL.** The published Postgres copy pins its text
+    columns to `COLLATE "C"` (see `db.publish`), under which `upper` and
+    `lower` fold ASCII letters only, while DuckDB folds all of Unicode — the
+    same SQL would find "Ünïcødé" on one backend and miss it on the other.
+    `str.casefold` gives one answer on both, and with no LIKE a typed `%` or
+    `_` is a character rather than a wildcard. It reads the whole instrument
+    list per call, which is nothing at the size of a listed universe; past
+    that, the place to go is a trigram index or the client holding the list.
+    """
+    needle = text.strip().casefold()
+    if not needle:
+        return []
+
+    ranked: list[tuple[int, Instrument]] = []
+    for instrument in list_instruments(db):   # already in symbol order
+        symbol, name = instrument.nse_symbol.casefold(), instrument.name.casefold()
+        if symbol == needle:
+            rank = 0
+        elif symbol.startswith(needle):
+            rank = 1
+        elif name.startswith(needle):
+            rank = 2
+        elif needle in symbol or needle in name:
+            rank = 3
+        else:
+            continue
+        ranked.append((rank, instrument))
+
+    ranked.sort(key=lambda pair: pair[0])     # stable, so symbol order breaks ties
+    return [instrument for _rank, instrument in ranked[:limit]]
 
 
 def signals_on(
@@ -541,6 +603,46 @@ def quarterly_financials(
                 revenue=_opt_float(row.get("revenue")),
                 pat=_opt_float(row.get("pat")),
                 eps=_opt_float(row.get("eps")),
+            )
+        )
+    return out
+
+
+def latest_price_date(db: Database, isin: str) -> dt.date | None:
+    """The last day with a stored bar for one company, or None if it has none."""
+    df = db.query("SELECT MAX(date) AS d FROM prices_daily WHERE isin = ?", [isin])
+    if df.empty:
+        return None
+    return _opt_date(df.iloc[0]["d"])
+
+
+def price_history(
+    db: Database, isin: str, start: dt.date, end: dt.date
+) -> list[PriceBar]:
+    """Daily bars from `start` to `end`, both inclusive, oldest first."""
+    df = db.query(
+        """
+        SELECT date, open, high, low, close, adj_close, volume
+        FROM prices_daily
+        WHERE isin = ? AND date >= ? AND date <= ?
+        ORDER BY date
+        """,
+        [isin, start, end],
+    )
+    out: list[PriceBar] = []
+    for _, row in df.iterrows():
+        day = _opt_date(row["date"])
+        if day is None:
+            continue
+        out.append(
+            PriceBar(
+                date=day,
+                open=_opt_float(row["open"]),
+                high=_opt_float(row["high"]),
+                low=_opt_float(row["low"]),
+                close=_opt_float(row["close"]),
+                adj_close=_opt_float(row["adj_close"]),
+                volume=_opt_int(row["volume"]),
             )
         )
     return out

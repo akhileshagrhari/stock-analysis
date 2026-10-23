@@ -83,10 +83,12 @@ Phase 4 — serving (API + dashboard):
 stockanalysis serve-api                       # FastAPI on 127.0.0.1:8000, docs at /docs
 stockanalysis dashboard                       # Streamlit on :8501 — starts on the Run page
 stockanalysis publish                         # copy the API's tables to Postgres (optional)
+stockanalysis export-openapi web/openapi.json # the schema a typed client is generated from
 ```
 
 The API reads DuckDB unless told otherwise; see
-[Serving from Postgres](#serving-from-postgres).
+[Serving from Postgres](#serving-from-postgres). What it serves is in
+[The API](#the-api).
 
 Running the pipeline as one job, from the dashboard's **Run** page or headless:
 
@@ -712,8 +714,9 @@ extension, and why every text column is `COLLATE "C"`.
 What is copied: `instruments`, `signals`, `factor_scores`, `news`,
 `news_sentiment`, `fundamentals_annual` and `fundamentals_quarterly` — what
 `serve/queries.py` and `serve/explain.py` read, which a test keeps true — plus
-`prices_daily` and `shareholding` for the site's next pages. Pipeline
-bookkeeping (filings, extraction and backtest tables, crawl logs) is not.
+`prices_daily`, which the price route reads, and `shareholding` for the site's
+next page. Pipeline bookkeeping (filings, extraction and backtest tables, crawl
+logs) is not.
 
 The integration tests run only when `SA_TEST_PG_DSN` is set. It is a separate
 variable so the tests, which create and drop schemas, can never reach the
@@ -726,6 +729,46 @@ SA_TEST_PG_DSN=postgresql:///stockanalysis_test .venv/bin/python -m pytest tests
 
 They include the check that matters most: every API route returns
 byte-identical JSON from DuckDB and from its published copy.
+
+## The API
+
+Everything a stock page needs, read-only, under `/v1` — the address the public
+site calls and the only one in the published schema. The same routes still
+answer without the prefix, undocumented, so older callers keep working; both
+addresses are one handler, so they cannot drift.
+
+| Route | On the page |
+|---|---|
+| `GET /v1/instruments/search?q=reli` | The search box. Exact symbol, then symbol prefix, then name prefix, then anywhere; case-insensitive, `limit` up to 50 |
+| `GET /v1/instruments/by-symbol/{symbol}` | Turning `/stocks/RELIANCE` into an ISIN |
+| `GET /v1/instruments/{isin}` | Name, sector, listing |
+| `GET /v1/instruments/{isin}/latest` | The score and signal, with every factor value |
+| `GET /v1/instruments/{isin}/explanation` | Why: families and their contributions, factors for and against, the news mix, red flags with descriptions |
+| `GET /v1/instruments/{isin}/financials` | The annual statement — `line_items` gives the order and labels, values are ₹ crore except EPS — and the latest `quarters` (default 12) |
+| `GET /v1/instruments/{isin}/prices?from=&to=` | Daily bars for the chart, both ends inclusive; by default the year ending at the latest stored day |
+| `GET /v1/instruments/{isin}/history`, `/news` | Signal history; recent headlines with sentiment |
+| `GET /v1/signals`, `/v1/signals/red-flags` | Lists for a date, best score first |
+| `GET /v1/health`, `/v1/model`, `/v1/sectors`, `/v1/instruments` | Status, live weights and thresholds, filters |
+
+A company that is listed but has nothing stored gets empty lists, not a 404;
+a 404 means the ISIN is unknown, or for `/latest` and `/explanation`, that no
+signal has been stored. A null is a figure the source does not carry, never a
+zero.
+
+**Caching.** Successful responses carry `Cache-Control: public, max-age=300`
+(`SA_API_CACHE_SECONDS`; 0 turns it off). The data moves once a day, when a
+run publishes, so a CDN can answer repeat page views. Errors are always
+`no-store`, so a 503 during a publish is never replayed after it.
+
+**Browsers on other origins** are refused unless listed:
+`SA_API_CORS_ORIGINS='["https://your-site.example"]'`. A site that renders
+pages on its server needs nothing here; this is for calls made from the
+visitor's browser, such as the search box.
+
+**A typed client.** `stockanalysis export-openapi web/openapi.json` writes the
+schema without starting a server, so the site can generate its TypeScript
+client from it (for example with `openapi-typescript`) and fail to build when
+the API changes shape under it.
 
 ## Next: phase 4
 

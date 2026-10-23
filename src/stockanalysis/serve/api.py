@@ -16,6 +16,20 @@ to None on the way out. A NaN reaching this layer would serialise to a bare
 
 With `SA_SERVE_BACKEND=postgres` the same routes read the Postgres copy that
 `stockanalysis publish` maintains instead of the DuckDB file — see `db.publish`.
+
+**What the public site calls is `/v1/...`.** Every handler is registered at
+two addresses by `route`: under `/v1`, which is the documented contract a
+generated client is built from (`stockanalysis export-openapi`), and at the
+root, undocumented, so nothing that already calls `/signals` breaks. One
+handler behind both means the two cannot drift; a breaking change gets a `/v2`
+beside them instead of an edit to either.
+
+Two things sit in front of the routes for a site that is visited, not just
+queried. Successful responses carry `Cache-Control: public, max-age=…`
+(`SA_API_CACHE_SECONDS`): the data changes once a day, when a run publishes, so
+a CDN or browser can answer repeat views for minutes without asking. Errors are
+always `no-store` — a 503 during a publish must not be replayed after it. And
+browsers on other origins are refused unless named in `SA_API_CORS_ORIGINS`.
 """
 
 from __future__ import annotations
@@ -24,8 +38,10 @@ import datetime as dt
 from collections.abc import Iterator
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Query
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
+from starlette.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from stockanalysis.config import settings
 from stockanalysis.db.database import (
@@ -33,8 +49,9 @@ from stockanalysis.db.database import (
     DatabaseLockedError,
     SchemaOutOfDateError,
 )
+from stockanalysis.factors import redflags
 from stockanalysis.factors.composite import BUY_THRESHOLD, FAMILY_WEIGHTS, SELL_THRESHOLD
-from stockanalysis.serve import queries
+from stockanalysis.serve import explain, queries
 
 app = FastAPI(
     title="StockAnalysis API",
@@ -43,10 +60,33 @@ app = FastAPI(
         "percentiles within the scored universe on each date, not absolute "
         "valuations."
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
 
+
+
+def route(path: str, **kwargs):
+    """`app.get`, registering the handler at `/v1{path}` and, undocumented, at `{path}`.
+
+    Registered on the app directly rather than through `include_router`.
+    FastAPI now includes a router lazily, as one opaque entry in `app.routes`,
+    and the tests that ask Starlette which route wins a path, and that every
+    route has a parity check against Postgres, read `app.routes` — through a
+    router they would find nothing to check and pass anyway.
+    """
+
+    def register(handler):
+        app.get(f"/v1{path}", **kwargs)(handler)
+        app.get(path, include_in_schema=False, **kwargs)(handler)
+        return handler
+
+    return register
+
+
 SIGNALS = ("BUY", "HOLD", "SELL")
+
+# What a price chart opens on when the caller names no start date.
+DEFAULT_PRICE_WINDOW = dt.timedelta(days=365)
 
 
 # ----------------------------------------------------------------------
@@ -106,16 +146,27 @@ def _postgres_db() -> Iterator[Database]:
 DB = Annotated[Database, Depends(get_db)]
 
 
-def parse_as_of(as_of: str | None) -> dt.date | None:
-    """A malformed date is the caller's mistake — 422, not a 500."""
-    if as_of is None:
+def parse_date(value: str | None, name: str) -> dt.date | None:
+    """A malformed date is the caller's mistake — 422 naming the parameter, not a 500."""
+    if value is None:
         return None
     try:
-        return dt.date.fromisoformat(as_of)
+        return dt.date.fromisoformat(value)
     except ValueError as exc:
         raise HTTPException(
-            status_code=422, detail=f"as_of must be YYYY-MM-DD, got {as_of!r}"
+            status_code=422, detail=f"{name} must be YYYY-MM-DD, got {value!r}"
         ) from exc
+
+
+def parse_as_of(as_of: str | None) -> dt.date | None:
+    return parse_date(as_of, "as_of")
+
+
+def require_instrument(db: Database, isin: str) -> queries.Instrument:
+    row = queries.get_instrument(db, isin)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No instrument with ISIN {isin!r}")
+    return row
 
 
 def validate_signal(signal: str | None) -> str | None:
@@ -232,12 +283,193 @@ class ModelInfoOut(BaseModel):
     scored_dates: list[dt.date]
 
 
+class LineItemOut(BaseModel):
+    """One row of the annual statement, in the order a statement is read."""
+
+    key: str
+    label: str
+    per_share: bool = False   # rupees per share; every other line is ₹ crore
+
+
+# Statement order and units are decided once, in `queries`; a client renders
+# `AnnualOut.values` by walking this list rather than inventing its own order.
+LINE_ITEMS = [
+    LineItemOut(key=key, label=label, per_share=key in queries.PER_SHARE_ITEMS)
+    for key, label in queries.ANNUAL_LINE_ITEMS
+]
+
+
+class AnnualOut(BaseModel):
+    fiscal_year: int
+    basis: str
+    period_end: dt.date | None = None
+    filing_date: dt.date | None = None
+    source: str | None = None
+    auditor_opinion: str | None = None
+    confidence: float | None = None
+    # Keyed by `LineItemOut.key`; null is a figure the filing does not carry,
+    # which is not the same thing as a zero.
+    values: dict[str, float | None] = Field(default_factory=dict)
+
+
+class QuarterOut(BaseModel):
+    period_end: dt.date
+    filing_date: dt.date | None = None
+    relating_to: str | None = None
+    is_consolidated: bool | None = None
+    revenue: float | None = None
+    pat: float | None = None
+    eps: float | None = None
+
+
+class FinancialsOut(BaseModel):
+    line_items: list[LineItemOut]
+    annual: list[AnnualOut]
+    quarterly: list[QuarterOut]
+
+
+class FamilyOut(BaseModel):
+    family: str
+    meaning: str | None = None
+    weight: float
+    percentile: float | None = None
+    z: float | None = None
+    contribution: float | None = None
+    factors_measured: int
+    factors_total: int
+    verdict: str
+
+    @classmethod
+    def of(cls, row: explain.FamilyContribution) -> FamilyOut:
+        return cls(
+            family=row.family,
+            meaning=explain.FAMILY_MEANING.get(row.family),
+            weight=row.weight,
+            percentile=row.percentile,
+            z=row.z,
+            contribution=row.contribution,
+            factors_measured=row.factors_measured,
+            factors_total=row.factors_total,
+            verdict=row.verdict,
+        )
+
+
+class DriverOut(BaseModel):
+    name: str
+    label: str
+    meaning: str
+    family: str
+    raw_value: float | None = None
+    # Sign-adjusted: positive is good for the company whichever way the
+    # underlying metric runs. See `serve.explain`.
+    z: float | None = None
+
+    @classmethod
+    def of(cls, row: explain.FactorDriver) -> DriverOut:
+        return cls(
+            name=row.name,
+            label=row.label,
+            meaning=row.meaning,
+            family=row.family,
+            raw_value=row.raw_value,
+            z=row.z,
+        )
+
+
+class NewsMixOut(BaseModel):
+    positive: int
+    negative: int
+    neutral: int
+    total: int
+
+
+class RedFlagOut(BaseModel):
+    name: str
+    description: str | None = None
+
+
+_FLAG_DESCRIPTIONS = {d.name: d.description for d in redflags.DEFINITIONS}
+
+
+class ExplanationOut(BaseModel):
+    isin: str
+    nse_symbol: str
+    name: str
+    as_of: dt.date
+    signal: str | None = None
+    composite_score: float | None = None
+    coverage: float | None = None
+    headline: str
+    reasons: list[str] = Field(default_factory=list)
+    families: list[FamilyOut] = Field(default_factory=list)
+    strengths: list[DriverOut] = Field(default_factory=list)
+    weaknesses: list[DriverOut] = Field(default_factory=list)
+    # Null when the company had no scored news in the window — which is not
+    # the same as news that was all neutral.
+    news: NewsMixOut | None = None
+    red_flags: list[RedFlagOut] = Field(default_factory=list)
+    unknown_flags: list[str] = Field(default_factory=list)
+    narrative: str | None = None
+    # True when the signal was stored under another scoring config, so the
+    # family contributions are re-derived with weights that did not produce it.
+    stale: bool = False
+    stored_version: str | None = None
+    current_version: str | None = None
+
+    @classmethod
+    def of(cls, reasoning: explain.Explanation) -> ExplanationOut:
+        signal = reasoning.signal
+        news = reasoning.news
+        return cls(
+            isin=signal.isin,
+            nse_symbol=signal.nse_symbol,
+            name=signal.name,
+            as_of=signal.as_of,
+            signal=signal.signal,
+            composite_score=signal.composite_score,
+            coverage=signal.coverage,
+            headline=reasoning.headline,
+            reasons=reasoning.reasons,
+            families=[FamilyOut.of(f) for f in reasoning.families],
+            strengths=[DriverOut.of(d) for d in reasoning.strengths],
+            weaknesses=[DriverOut.of(d) for d in reasoning.weaknesses],
+            news=(
+                None if news is None
+                else NewsMixOut(
+                    positive=news.positive,
+                    negative=news.negative,
+                    neutral=news.neutral,
+                    total=news.total,
+                )
+            ),
+            red_flags=[
+                RedFlagOut(name=flag, description=_FLAG_DESCRIPTIONS.get(flag))
+                for flag in signal.red_flags
+            ],
+            unknown_flags=signal.unknown_flags,
+            narrative=signal.narrative,
+            stale=reasoning.stale,
+            stored_version=reasoning.stored_version,
+            current_version=reasoning.current_version,
+        )
+
+
+class PriceBarOut(BaseModel):
+    date: dt.date
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    adj_close: float | None = None
+    volume: int | None = None
+
+
 # ----------------------------------------------------------------------
 # Routes
 # ----------------------------------------------------------------------
 
 
-@app.get("/health", response_model=HealthOut, tags=["meta"])
+@route("/health", response_model=HealthOut, tags=["meta"])
 def health(db: DB) -> HealthOut:
     """Liveness plus enough state to tell "empty" from "broken"."""
     counts = db.query(
@@ -252,7 +484,7 @@ def health(db: DB) -> HealthOut:
     )
 
 
-@app.get("/model", response_model=ModelInfoOut, tags=["meta"])
+@route("/model", response_model=ModelInfoOut, tags=["meta"])
 def model_info(db: DB) -> ModelInfoOut:
     """What the numbers mean: live weights and thresholds, not a transcription."""
     return ModelInfoOut(
@@ -263,12 +495,12 @@ def model_info(db: DB) -> ModelInfoOut:
     )
 
 
-@app.get("/sectors", response_model=list[str], tags=["instruments"])
+@route("/sectors", response_model=list[str], tags=["instruments"])
 def list_sectors(db: DB) -> list[str]:
     return queries.sectors(db)
 
 
-@app.get("/instruments", response_model=list[InstrumentOut], tags=["instruments"])
+@route("/instruments", response_model=list[InstrumentOut], tags=["instruments"])
 def list_instruments(
     db: DB,
     sector: Annotated[str | None, Query(description="Exact sector name")] = None,
@@ -278,11 +510,11 @@ def list_instruments(
 
 # Routes are matched in declaration order, but only among routes with the same
 # number of path segments — /instruments/{isin} cannot capture this three-segment
-# path however it is ordered. Literal-before-dynamic still matters the moment
-# anyone adds a same-shape sibling (a /instruments/{isin} next to a literal
-# /instruments/all, say), so the ordering here is kept deliberately and there is
-# a test asserting no dynamic route precedes a literal one of the same shape.
-@app.get(
+# path however it is ordered. Literal-before-dynamic matters for a same-shape
+# sibling, and /instruments/search below is one: declared after
+# /instruments/{isin}, "search" would be read as an ISIN and 404. There is a
+# test asserting no dynamic route precedes a literal one of the same shape.
+@route(
     "/instruments/by-symbol/{symbol}",
     response_model=InstrumentOut,
     tags=["instruments"],
@@ -295,24 +527,32 @@ def get_by_symbol(db: DB, symbol: Annotated[str, Path()]) -> InstrumentOut:
     return InstrumentOut.of(row)
 
 
-@app.get("/instruments/{isin}", response_model=InstrumentOut, tags=["instruments"])
+@route("/instruments/search", response_model=list[InstrumentOut], tags=["instruments"])
+def search_instruments(
+    db: DB,
+    q: Annotated[str, Query(description="Part of a symbol or company name")],
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> list[InstrumentOut]:
+    """Companies matching what is being typed: exact symbol, then symbol
+    prefix, then name prefix, then anywhere in either. Case-insensitive."""
+    if not q.strip():
+        raise HTTPException(status_code=422, detail="q must not be blank")
+    return [InstrumentOut.of(row) for row in queries.search_instruments(db, q, limit)]
+
+
+@route("/instruments/{isin}", response_model=InstrumentOut, tags=["instruments"])
 def get_instrument(db: DB, isin: Annotated[str, Path()]) -> InstrumentOut:
-    row = queries.get_instrument(db, isin)
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"No instrument with ISIN {isin!r}")
-    return InstrumentOut.of(row)
+    return InstrumentOut.of(require_instrument(db, isin))
 
 
-@app.get(
+@route(
     "/instruments/{isin}/latest",
     response_model=SignalDetailOut,
     tags=["signals"],
 )
 def latest_signal(db: DB, isin: Annotated[str, Path()]) -> SignalDetailOut:
     """Most recent signal for one instrument, with its factor breakdown."""
-    if queries.get_instrument(db, isin) is None:
-        raise HTTPException(status_code=404, detail=f"No instrument with ISIN {isin!r}")
-
+    require_instrument(db, isin)
     row = queries.latest_signal(db, isin)
     if row is None:
         raise HTTPException(status_code=404, detail=f"No signal stored for {isin!r}")
@@ -320,7 +560,7 @@ def latest_signal(db: DB, isin: Annotated[str, Path()]) -> SignalDetailOut:
     return SignalDetailOut.detailed(row, queries.factor_breakdown(db, isin, row.as_of))
 
 
-@app.get(
+@route(
     "/instruments/{isin}/history",
     response_model=list[SignalOut],
     tags=["signals"],
@@ -331,25 +571,111 @@ def signal_history(
     limit: Annotated[int, Query(ge=1, le=500)] = 60,
 ) -> list[SignalOut]:
     """Signal history, oldest first. Empty list when the instrument has none."""
-    if queries.get_instrument(db, isin) is None:
-        raise HTTPException(status_code=404, detail=f"No instrument with ISIN {isin!r}")
+    require_instrument(db, isin)
     return [SignalOut.of(row) for row in queries.signal_history(db, isin, limit)]
 
 
-@app.get("/instruments/{isin}/news", response_model=list[NewsOut], tags=["news"])
+@route(
+    "/instruments/{isin}/explanation",
+    response_model=ExplanationOut,
+    tags=["signals"],
+)
+def signal_explanation(db: DB, isin: Annotated[str, Path()]) -> ExplanationOut:
+    """Why the latest signal is what it is: the families that carried it, the
+    factors for and against, the news mix, and any red flag that forced it.
+
+    Rebuilt from the stored factor scores, never re-scored, so it describes the
+    number the other routes return — see `serve.explain`.
+    """
+    require_instrument(db, isin)
+    reasoning = explain.explain(db, isin)
+    if reasoning is None:
+        raise HTTPException(status_code=404, detail=f"No signal stored for {isin!r}")
+    return ExplanationOut.of(reasoning)
+
+
+@route(
+    "/instruments/{isin}/financials",
+    response_model=FinancialsOut,
+    tags=["financials"],
+)
+def financials(
+    db: DB,
+    isin: Annotated[str, Path()],
+    quarters: Annotated[int, Query(ge=1, le=40)] = 12,
+) -> FinancialsOut:
+    """Reported figures, newest first, in ₹ crore except EPS.
+
+    Every stored year comes back whatever its basis. A company that moved from
+    standalone to consolidated shows the move rather than losing a year, and a
+    client computing growth across it should say so — see
+    `queries.annual_financials`. Empty lists, not a 404, for a listed company
+    with nothing filed yet.
+    """
+    require_instrument(db, isin)
+    return FinancialsOut(
+        line_items=LINE_ITEMS,
+        annual=[AnnualOut(**vars(row)) for row in queries.annual_financials(db, isin)],
+        quarterly=[
+            QuarterOut(**vars(row))
+            for row in queries.quarterly_financials(db, isin, quarters)
+        ],
+    )
+
+
+@route(
+    "/instruments/{isin}/prices",
+    response_model=list[PriceBarOut],
+    tags=["prices"],
+)
+def price_history(
+    db: DB,
+    isin: Annotated[str, Path()],
+    start: Annotated[
+        str | None,
+        Query(alias="from", description="YYYY-MM-DD; defaults to a year before `to`"),
+    ] = None,
+    end: Annotated[
+        str | None,
+        Query(alias="to", description="YYYY-MM-DD; defaults to the latest stored day"),
+    ] = None,
+) -> list[PriceBarOut]:
+    """Daily bars, oldest first, both ends inclusive.
+
+    The default window ends at the company's latest stored day, not today, so
+    a chart opens on data even when prices have not been ingested for a while.
+    """
+    require_instrument(db, isin)
+    start_date, end_date = parse_date(start, "from"), parse_date(end, "to")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=422, detail=f"from ({start_date}) is after to ({end_date})"
+        )
+    if end_date is None:
+        end_date = queries.latest_price_date(db, isin)
+        if end_date is None:
+            return []
+    if start_date is None:
+        start_date = end_date - DEFAULT_PRICE_WINDOW
+    return [
+        PriceBarOut(**vars(bar))
+        for bar in queries.price_history(db, isin, start_date, end_date)
+    ]
+
+
+@route("/instruments/{isin}/news", response_model=list[NewsOut], tags=["news"])
 def instrument_news(
     db: DB,
     isin: Annotated[str, Path()],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
 ) -> list[NewsOut]:
-    if queries.get_instrument(db, isin) is None:
-        raise HTTPException(status_code=404, detail=f"No instrument with ISIN {isin!r}")
+    require_instrument(db, isin)
     return [NewsOut(**vars(item)) for item in queries.recent_news(db, isin, limit)]
 
 
 # Kept above any future /signals/{...} route: a two-segment dynamic sibling
 # declared first would swallow "red-flags" as its path parameter.
-@app.get("/signals/red-flags", response_model=list[SignalOut], tags=["signals"])
+@route("/signals/red-flags", response_model=list[SignalOut], tags=["signals"])
 def red_flag_signals(
     db: DB,
     as_of: Annotated[str | None, Query(description="YYYY-MM-DD")] = None,
@@ -362,7 +688,7 @@ def red_flag_signals(
     return [SignalOut.of(row) for row in rows]
 
 
-@app.get("/signals", response_model=list[SignalOut], tags=["signals"])
+@route("/signals", response_model=list[SignalOut], tags=["signals"])
 def list_signals(
     db: DB,
     signal: Annotated[str | None, Query(description="BUY, HOLD or SELL")] = None,
@@ -381,6 +707,55 @@ def list_signals(
         limit=limit,
     )
     return [SignalOut.of(row) for row in rows]
+
+
+# ----------------------------------------------------------------------
+# Caching, CORS
+# ----------------------------------------------------------------------
+
+
+@app.middleware("http")
+async def cache_control(request: Request, call_next):
+    response = await call_next(request)
+    seconds = settings.api_cache_seconds
+    if request.method == "GET" and 200 <= response.status_code < 300 and seconds > 0:
+        response.headers["Cache-Control"] = f"public, max-age={seconds}"
+    else:
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+class ConfiguredCORS:
+    """Starlette's CORS, following `settings.api_cors_origins` per request.
+
+    `CORSMiddleware` fixes its origins when it is constructed, and the app is
+    constructed at import, before a test or anything else could change the
+    setting. So one is built per distinct origin list on demand — keyed the way
+    `db.postgres` keys its pools — and with no origins configured the request
+    passes straight through and no CORS header is ever sent.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self._built: dict[tuple[str, ...], CORSMiddleware] = {}
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        origins = tuple(settings.api_cors_origins)
+        if not origins or scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        cors = self._built.get(origins)
+        if cors is None:
+            # Read-only API: GET is the only method a page needs, and no
+            # credentials — nothing here is behind a login.
+            cors = CORSMiddleware(self.app, allow_origins=list(origins), allow_methods=["GET"])
+            self._built[origins] = cors
+        await cors(scope, receive, send)
+
+
+# Added last, so outermost: a preflight is answered before it reaches routing,
+# where an OPTIONS request to a GET route would be a 405.
+app.add_middleware(ConfiguredCORS)
 
 
 if __name__ == "__main__":   # pragma: no cover

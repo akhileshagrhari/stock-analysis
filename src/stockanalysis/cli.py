@@ -1581,6 +1581,26 @@ def serve_api(
     uvicorn.run(api_app, host=host, port=port)
 
 
+@app.command("export-openapi")
+def export_openapi(
+    out: str = typer.Argument("openapi.json", help="Where to write the schema"),
+) -> None:
+    """Write the API's OpenAPI schema — what the site's typed client is generated from.
+
+    Built from the app itself, without starting a server or opening a database,
+    so it can run in CI. Only the versioned `/v1` routes are in it.
+    """
+    import json
+
+    from stockanalysis.serve.api import app as api_app
+
+    schema = api_app.openapi()
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    console.print(f"[green]Wrote[/green] {path} — {len(schema['paths'])} routes")
+
+
 @app.command()
 def dashboard(
     port: int = typer.Option(8501, "--port", help="Port"),
