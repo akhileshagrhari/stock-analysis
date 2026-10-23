@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RELIANCE · StockAnalysis (mock)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F5F8; --card:#FFFFFF; --line:#ECECF1; --line2:#E2E2E9;
+  --ink:#16161D; --ink2:#55556A; --ink3:#8C8C9C;
+  --accent:#6B3CF0; --accent-soft:#F0EBFE; --accent-ink:#5326D6;
+  --pos:#0F7B57; --pos-soft:#E5F5EE; --neg:#C9302C; --neg-soft:#FDECEA; --hold:#A15C00; --hold-soft:#FFF3DE;
+  --price:#2B59E8;
+  --radius:18px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#E9E9EF;font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---------- preview switch (not part of the design) ---------- */
+.preview-bar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;padding:8px 16px;background:#1C1C22;color:#C9C9D6;font-size:12px}
+.preview-bar b{color:#fff}
+.seg{display:inline-flex;background:#2C2C35;border-radius:8px;padding:2px}
+.seg button{border:0;background:transparent;color:#C9C9D6;padding:4px 12px;border-radius:6px;cursor:pointer}
+.seg button.on{background:#fff;color:#16161D;font-weight:600}
+.preview-bar .sp{flex:1}
+
+/* ---------- viewport: container queries drive desktop vs phone ---------- */
+.viewport{container-type:inline-size;container-name:vp;margin:0 auto;background:var(--bg)}
+.viewport.phone{width:392px;height:820px;overflow-y:auto;margin:24px auto;border:10px solid #111;border-radius:44px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
+.viewport.phone .app{min-height:auto}
+
+/* ---------- sidebar ---------- */
+.sidebar{background:#FBFBFD;border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;gap:4px;position:sticky;top:36px;height:calc(100vh - 36px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:-.02em;padding:0 10px 22px}
+.brand .mark{width:28px;height:28px;border-radius:9px;background:var(--accent);display:grid;place-items:center;color:#fff;font-size:14px}
+.nav a{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:11px;color:var(--ink2);text-decoration:none;font-size:14.5px;font-weight:500}
+.nav a.on{background:#fff;color:var(--accent-ink);box-shadow:0 1px 2px rgba(20,20,40,.06),0 0 0 1px var(--line)}
+.nav a .soon{margin-left:auto;font-size:11px;color:var(--ink3);background:#F0F0F4;border-radius:6px;padding:1px 6px}
+.nav svg{width:18px;height:18px;flex:none}
+.nav-h{font-size:12.5px;color:var(--ink3);font-weight:600;padding:18px 12px 6px}
+.fresh{margin-top:auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:12.5px}
+.fresh .t{font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between}
+.fresh .r{display:flex;justify-content:space-between;color:var(--ink2);padding:2px 0}
+.dotw{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--hold)}
+.side-foot{font-size:12px;color:var(--ink3);padding:12px 10px 0;display:flex;justify-content:space-between}
+
+/* ---------- main ---------- */
+.main{padding:20px 28px 40px;min-width:0}
+.topbar{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.crumbs{display:flex;align-items:center;gap:10px;color:var(--ink2);font-size:15px}
+.crumbs b{color:var(--ink);font-weight:500}
+.search{margin-left:auto;display:flex;align-items:center;gap:10px;width:320px;max-width:100%;background:#fff;border:1px solid var(--line2);border-radius:13px;padding:10px 12px;color:var(--ink3);font-size:14.5px}
+.search kbd{margin-left:auto;font:500 11.5px Inter;border:1px solid var(--line2);border-radius:6px;padding:2px 6px;color:var(--ink3)}
+.mobile-top{display:none}
+
+.head{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.mono{width:64px;height:64px;border-radius:50%;background:#16161D;color:#fff;display:grid;place-items:center;font-weight:800;font-size:22px;letter-spacing:-.03em;flex:none}
+.head h1{margin:0;font-size:34px;letter-spacing:-.03em;font-weight:800;line-height:1}
+.head .co{color:var(--ink2);font-size:15px;margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:600}
+.pill.grey{background:#F0F0F4;color:var(--ink2);font-weight:500}
+.head .acts{margin-left:auto;display:flex;gap:10px;align-items:center}
+.btn{border:1px solid var(--line2);background:#fff;border-radius:12px;padding:10px 16px;font-weight:600;font-size:14px;color:var(--ink);display:inline-flex;gap:8px;align-items:center;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn .soon{font-size:10.5px;background:#F0F0F4;color:var(--ink3);border-radius:5px;padding:1px 5px;font-weight:500}
+
+.tabs{display:flex;gap:26px;border-bottom:1px solid var(--line2);margin-bottom:20px;overflow-x:auto;scrollbar-width:none}
+.tabs a{padding:10px 2px 12px;color:var(--ink2);text-decoration:none;font-size:15px;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs a.on{color:var(--ink);border-color:var(--ink);font-weight:600}
+
+.card{background:var(--card);border-radius:var(--radius);box-shadow:0 1px 2px rgba(20,20,40,.04),0 0 0 1px rgba(20,20,40,.035);padding:18px 20px;min-width:0}
+.ct{display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:var(--ink)}
+.info{width:15px;height:15px;border-radius:50%;background:#C9C9D3;color:#fff;font-size:10px;font-weight:700;display:inline-grid;place-items:center;cursor:help}
+.big{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:6px 0 2px}
+.big small{font-size:16px;color:var(--ink3);font-weight:500;letter-spacing:0}
+.asof{font-size:12px;color:var(--ink3)}
+.sec-h{display:flex;align-items:center;gap:8px;font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 12px}
+.sec-h .chev{color:var(--ink2);font-size:18px}
+
+/* overview grid */
+.ov{display:grid;gap:18px;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2.2fr) minmax(0,.95fr);grid-template-areas:"score trend price side" "why why price side";margin-bottom:34px}
+.a-score{grid-area:score}.a-trend{grid-area:trend}.a-price{grid-area:price}.a-side{grid-area:side}.a-why{grid-area:why}
+.a-side{display:flex;flex-direction:column;gap:14px}
+.a-price{display:flex;flex-direction:column}
+.bottom{display:grid;gap:22px;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:34px}
+
+/* score segmented meter */
+.meter{position:relative;margin:18px 0 6px}
+.meter .segs{display:grid;grid-template-columns:repeat(20,1fr);gap:3px}
+.meter .segs i{height:22px;border-radius:4px;display:block}
+.meter .mk{position:absolute;top:-11px;transform:translateX(-50%);font-size:10px;color:var(--ink)}
+.meter-l{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink3);margin-top:6px}
+.sig{display:inline-flex;align-items:center;gap:6px;border-radius:9px;padding:4px 10px;font-weight:700;font-size:13px;letter-spacing:.02em}
+.sig.SELL{background:var(--neg-soft);color:var(--neg)}
+.sig.BUY{background:var(--pos-soft);color:var(--pos)}
+.sig.HOLD{background:var(--hold-soft);color:var(--hold)}
+.sig .d{width:8px;height:8px;border-radius:50%;background:currentColor}
+
+/* price card */
+.pc-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pc-top .px{font-size:40px;font-weight:700;letter-spacing:-.035em}
+.chg{display:inline-flex;align-items:center;gap:4px;border-radius:8px;padding:3px 8px;font-size:13px;font-weight:600}
+.chg.dn{background:var(--neg-soft);color:var(--neg)}.chg.up{background:var(--pos-soft);color:var(--pos)}
+.chgabs{font-size:13px;font-weight:500}
+.periods{display:inline-flex;background:#F2F2F6;border-radius:12px;padding:4px;margin:14px 0 6px;gap:2px;flex-wrap:wrap}
+.periods button{border:0;background:transparent;padding:7px 14px;border-radius:9px;color:var(--ink2);font-size:14px;cursor:pointer}
+.periods button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+#chart{position:relative;flex:1;min-height:300px}
+#chart svg{display:block;width:100%;height:100%;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:#16161D;color:#fff;font-size:12px;padding:6px 9px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-115%);opacity:0;transition:opacity .1s}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;border-top:1px solid var(--line);margin-top:10px;padding-top:12px}
+.stats div{font-size:12px;color:var(--ink3)}
+.stats b{display:block;color:var(--ink);font-size:14px;font-weight:600;margin-top:2px}
+
+/* side cards */
+.side-h{display:flex;align-items:center;justify-content:space-between;font-size:22px;font-weight:600;letter-spacing:-.02em;margin:2px 2px 0}
+.gauge-card{text-align:center;padding:16px 16px 14px}
+.gauge-card .row{display:flex;justify-content:space-between;align-items:center;font-size:14.5px;font-weight:500;text-align:left}
+.cnt{border-radius:999px;padding:2px 9px;font-size:12.5px;font-weight:600}
+.gval{font-size:30px;font-weight:700;margin-top:-4px;letter-spacing:-.03em}
+.glab{font-size:13px;color:var(--ink2)}
+.flags{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:14px 0 8px}
+.flags span{font-size:10.5px;border-radius:8px;padding:6px 4px;line-height:1.2}
+.flags .ok{background:var(--pos-soft);color:var(--pos)}
+.flags .unk{background:#F2F2F6;color:var(--ink3);border:1px dashed #CFCFDA}
+.flags .bad{background:var(--neg-soft);color:var(--neg)}
+
+/* why card (trade-idea analog) */
+.why-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.why-in{background:#F7F7FA;border-radius:14px;padding:16px}
+.why-in h3{margin:0 0 12px;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bdg{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink2)}
+.bdg i{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-style:normal;font-size:13px;font-weight:700}
+.bdg i.up{background:var(--pos-soft);color:var(--pos)}.bdg i.dn{background:var(--neg-soft);color:var(--neg)}
+.cov{margin-left:auto;background:var(--accent-soft);color:var(--accent-ink);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600}
+.scale{margin:22px 4px 0;position:relative}
+.scale .trk{height:4px;border-radius:2px;background:linear-gradient(90deg,#F4C9C6 0 45%,#F3E2BF 45% 75%,#BFE5D3 75% 100%)}
+.scale .tick{position:absolute;top:-5px;width:2px;height:14px;background:#B8B8C6}
+.scale .now{position:absolute;top:-9px;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px #fff,0 0 0 5px var(--line2)}
+.scale .gap{position:absolute;top:-38px;transform:translateX(-50%);background:#EAF0FF;color:var(--price);border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.scale-l{display:flex;justify-content:space-between;margin-top:14px;font-size:13px;color:var(--ink2)}
+.scale-l b{display:block;color:var(--ink);font-size:14.5px}
+.scale-l .mid b{color:var(--accent-ink)}
+
+/* bottom cards */
+.kv{display:grid;grid-template-columns:auto 1fr auto auto;gap:0 12px;align-items:center;font-size:14px}
+.kv > *{padding:11px 0;border-bottom:1px solid var(--line)}
+.kv .h{font-size:12px;color:var(--ink3);padding-top:0}
+.kv .fam{color:var(--ink);font-weight:500}
+.kv .w{color:var(--ink3);font-size:12.5px}
+.cbar{position:relative;height:8px;background:#F2F2F6;border-radius:4px}
+.cbar::after{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1.5px;background:#B8B8C6}
+.cbar b{position:absolute;top:0;bottom:0;border-radius:4px}
+.cbar .hatch{position:absolute;inset:0;border-radius:4px;background:repeating-linear-gradient(45deg,#E4E4EC 0 3px,#F7F7FA 3px 6px)}
+.pct{font-weight:600;text-align:right}
+.ctab{display:flex;background:#F2F2F6;border-radius:12px;padding:4px;margin-bottom:6px}
+.ctab button{flex:1;border:0;background:transparent;padding:8px;border-radius:9px;color:var(--ink2);font-size:14px;cursor:pointer}
+.ctab button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.item{padding:13px 2px;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item .t1{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink3)}
+.zp{border-radius:999px;padding:2px 9px;font-size:12.5px;font-weight:600}
+.zp.up{background:var(--pos-soft);color:var(--pos)}.zp.dn{background:var(--neg-soft);color:var(--neg)}.zp.nu{background:#F2F2F6;color:var(--ink2)}
+.item .t2{font-size:15.5px;font-weight:600;margin:6px 0 2px;letter-spacing:-.01em}
+.item .t3{font-size:13px;color:var(--ink2)}
+.item a{color:inherit;text-decoration:none}
+.foot-note{font-size:12px;color:var(--ink3);margin-top:10px;line-height:1.45}
+
+/* financials */
+.fin-head{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.fin-head .ctab{margin:0;width:auto}
+.fin-head .ctab button{padding:7px 16px}
+.tbl-wrap{overflow-x:auto}
+table.fin{border-collapse:collapse;width:100%;font-size:14px;min-width:640px}
+table.fin th,table.fin td{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+table.fin th:first-child,table.fin td:first-child{text-align:left;position:sticky;left:0;background:#fff;color:var(--ink2);font-weight:500}
+table.fin thead th{font-size:12.5px;color:var(--ink3);font-weight:600}
+table.fin tr.filed td{font-size:11.5px;color:var(--ink3);border-bottom:0}
+table.fin .na{color:#B8B8C6}
+.warn{display:flex;gap:8px;align-items:flex-start;background:var(--hold-soft);color:#7A4A00;border-radius:10px;padding:8px 12px;font-size:12.5px;margin-top:12px}
+
+.disc{border-top:1px solid var(--line2);padding-top:18px;font-size:12.5px;color:var(--ink3);line-height:1.55}
+.disc b{color:var(--ink2)}
+
+/* ---------- laptop: price beside score cards, checks become a band ---------- */
+@container vp (min-width: 1181px) and (max-width: 1560px){
+  .ov{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.75fr);grid-template-areas:"score trend price" "why why price" "side side side"}
+  .a-side{flex-direction:row;flex-wrap:wrap}.a-side .side-h{width:100%}.a-side .card{flex:1 1 300px}
+  .a-side .flags{grid-template-columns:repeat(6,1fr)}
+}
+/* ---------- medium: two columns ---------- */
+@container vp (max-width: 1180px){
+  .ov{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"score trend" "why why" "price price" "side side"}
+  .a-side{flex-direction:row;flex-wrap:wrap}.a-side .side-h{width:100%}.a-side .card{flex:1 1 200px}
+  .bottom{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .bottom > :last-child{grid-column:1 / -1}
+}
+/* ---------- phone ---------- */
+@container vp (max-width: 720px){
+  .app{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .main{padding:0 14px 28px}
+  .topbar{display:none}
+  .mobile-top{display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 2px;margin-bottom:6px}
+  .mobile-top .brand{padding:0;font-size:16px}
+  .mobile-top .ic{width:38px;height:38px;border-radius:11px;background:#fff;border:1px solid var(--line2);display:grid;place-items:center;color:var(--ink2)}
+  .mobile-top .ic:last-child{margin-left:auto}
+  .head{display:grid;grid-template-columns:46px minmax(0,1fr);gap:4px 12px}
+  .head .acts{grid-column:1 / -1;margin-top:10px}
+  .mono{width:46px;height:46px;font-size:16px}
+  .head h1{font-size:26px}
+  .head .co{font-size:13px}
+  .head .acts{margin-left:0;width:100%}
+  .head .acts .btn{flex:1;justify-content:center;padding:9px 10px;font-size:13px}
+  .tabs{gap:20px}
+  .ov{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;grid-template-areas:"score score" "why why" "price price" "trend trend" "side side"}
+  .card{padding:16px}
+  .big{font-size:30px}
+  .pc-top .px{font-size:32px}
+  #chart{height:220px}
+  .periods{display:flex;width:100%}.periods button{flex:1;padding:7px 0;font-size:13px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .a-side{gap:12px}.a-side .card{flex:1 1 100%}
+  .side-h{font-size:19px}
+  .bottom{grid-template-columns:1fr;gap:12px}
+  .sec-h{font-size:19px}
+  .scale-l{font-size:12px}.scale-l b{font-size:13.5px}
+  .why-in h3{font-size:15.5px}
+  .cov{margin-left:0}
+}
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Mock</b><span>RELIANCE with real API data · throwaway, for layout and look</span>
+  <span class="sp"></span>
+  <span>Preview as</span>
+  <div class="seg"><button data-v="desktop" class="on">Desktop</button><button data-v="phone">Phone</button></div>
+</div>
+
+<div class="viewport" id="vp">
+<div class="app">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="brand"><span class="mark">◆</span>StockAnalysis</div>
+    <nav class="nav">
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a>
+      <a href="#" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14l3-3 2 2 3-4"/></svg>Stocks</a>
+    </nav>
+    <div class="nav-h">Discover</div>
+    <nav class="nav">
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>Signals</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>Red flags</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Sectors</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>Screener<span class="soon">soon</span></a>
+    </nav>
+    <div class="nav-h">Learn</div>
+    <nav class="nav">
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>How scores work</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4zM4 9h16M9 9v11"/></svg>Model &amp; weights</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></svg>Disclaimer</a>
+    </nav>
+    <div class="fresh">
+      <div class="t">Data freshness <span class="info" title="Each kind of data is refreshed on its own schedule. Every number on a page carries its own date.">i</span></div>
+      <div class="r"><span><span class="dotw"></span>Prices</span><span>14 Aug 2026</span></div>
+      <div class="r"><span><span class="dotw"></span>Scores</span><span>16 Aug 2026</span></div>
+      <div class="r"><span><span class="dotw" style="background:var(--pos)"></span>Filings</span><span>17 Oct 2026</span></div>
+    </div>
+    <div class="side-foot"><span>StockAnalysis © 2026</span><span>NIFTY100</span></div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+    <div class="mobile-top">
+      <span class="ic">☰</span>
+      <span class="brand"><span class="mark">◆</span>StockAnalysis</span>
+      <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>
+    </div>
+
+    <div class="topbar">
+      <div class="crumbs">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>›</span><span>Stocks</span><span>›</span><b>Reliance Industries</b>
+      </div>
+      <div class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>Search a stock or sector…<kbd>⌘K</kbd></div>
+    </div>
+
+    <div class="head">
+      <div class="mono">RIL</div>
+      <div>
+        <h1>RELIANCE</h1>
+        <div class="co">Reliance Industries Ltd. <span class="pill grey">Oil Gas &amp; Consumable Fuels</span> <span class="pill grey">NSE · NIFTY100</span></div>
+      </div>
+      <div class="acts">
+        <button class="btn" title="Needs sign-in, coming later">☆ Watchlist <span class="soon">soon</span></button>
+        <button class="btn primary">How this score works</button>
+      </div>
+    </div>
+
+    <nav class="tabs">
+      <a href="#" class="on">Overview</a><a href="#">Score breakdown</a><a href="#">Score history</a><a href="#">Financials</a><a href="#">News</a><a href="#">Peers</a>
+    </nav>
+
+    <!-- ============ OVERVIEW GRID ============ -->
+    <section class="ov">
+
+      <!-- composite score (win-rate analog) -->
+      <div class="card a-score">
+        <div class="ct">Composite score <span class="info" title="A relative rank of this stock among scored NIFTY100 stocks on one date, built from factor percentiles. Not a valuation or a price target.">i</span><span style="margin-left:auto" class="sig SELL"><span class="d"></span>SELL</span></div>
+        <div class="big tnum">28<small> / 100</small></div>
+        <div class="meter" id="meter"></div>
+        <div class="meter-l"><span>SELL &lt; 45</span><span>HOLD</span><span>BUY ≥ 75</span></div>
+        <div class="asof" style="margin-top:8px">Scored 16 Aug 2026 · model 4b05e87d</div>
+      </div>
+
+      <!-- score trend (total-return analog) -->
+      <div class="card a-trend">
+        <div class="ct">Score trend <span class="info" title="Composite score on every date this stock was scored. Dashed line = the scoring model changed, so points either side aren't strictly comparable.">i</span></div>
+        <div class="big tnum" style="color:var(--neg)">−4.1</div><div class="asof" style="margin-top:-2px">points since first scored, 31 Jul 2026</div>
+        <svg id="trend" viewBox="0 0 240 92" width="100%" height="92" style="display:block;margin-top:6px;overflow:visible"></svg>
+        <div class="asof">3 snapshots · scroll back in <a href="#" style="color:var(--accent-ink)">Score history</a></div>
+      </div>
+
+      <!-- price chart -->
+      <div class="card a-price">
+        <div class="pc-top">
+          <span class="px tnum" id="px">₹1,310.00</span>
+          <span class="chg dn tnum" id="chg">↘ 4.64%</span>
+          <span class="chgabs tnum" id="chgabs" style="color:var(--neg)">−₹63.80</span>
+          <span class="asof" style="margin-left:auto" id="pxasof">NSE close · 14 Aug 2026</span>
+        </div>
+        <div class="periods" id="periods">
+          <button data-p="1M">1M</button><button data-p="3M">3M</button><button data-p="6M">6M</button><button data-p="1Y" class="on">1Y</button><button data-p="3Y">3Y</button><button data-p="MAX">Max</button>
+        </div>
+        <div id="chart"><div class="tip" id="tip"></div></div>
+        <div class="stats" id="stats"></div>
+      </div>
+
+      <!-- side: news tone + red flags (sentiment analog) -->
+      <div class="a-side">
+        <div class="side-h">Checks <span class="chev" style="color:var(--ink2);font-size:18px">›</span></div>
+        <div class="card gauge-card">
+          <div class="row">News tone <span class="cnt" style="background:#F2F2F6;color:var(--ink2)">3 · 30d</span></div>
+          <svg viewBox="0 0 140 84" width="150" height="90" style="margin-top:10px" id="gauge"></svg>
+          <div class="gval">Mixed</div>
+          <div class="glab">1 positive · 1 negative · 1 neutral</div>
+          <div class="asof" style="margin-top:6px">Too few articles to score sentiment</div>
+        </div>
+        <div class="card gauge-card">
+          <div class="row">Red flags <span class="cnt" style="background:#F2F2F6;color:var(--ink2)">4 unchecked</span></div>
+          <div class="gval" style="margin-top:12px">0</div>
+          <div class="glab">triggered</div>
+          <div class="flags">
+            <span class="ok" title="Checked: no flag">✓ Promoter selling</span>
+            <span class="ok" title="Checked: no flag">✓ Auditor opinion</span>
+            <span class="unk" title="Couldn't be checked: data missing">? Pledge</span>
+            <span class="unk" title="Couldn't be checked: data missing">? Cash conv.</span>
+            <span class="unk" title="Couldn't be checked: data missing">? Contingent liab.</span>
+            <span class="unk" title="Couldn't be checked: data missing">? Rating cut</span>
+          </div>
+          <div class="asof">Unchecked ≠ clean</div>
+        </div>
+      </div>
+
+      <!-- why (trade-idea analog) -->
+      <div class="card a-why">
+        <div class="why-top"><span class="sig SELL"><span class="d"></span>SELL</span><span class="asof" style="font-size:13.5px;color:var(--ink2)">16 Aug 2026 &nbsp;···</span></div>
+        <div class="why-in">
+          <h3>Value pulls the score up; quality and momentum pull it down</h3>
+          <div class="badges">
+            <span class="bdg"><i class="up">↗</i>Value 92nd</span>
+            <span class="bdg"><i class="dn">↘</i>Quality 30th</span>
+            <span class="bdg"><i class="dn">↘</i>Momentum 21st</span>
+            <span class="cov">90% of factors measured</span>
+          </div>
+        </div>
+        <div class="scale" id="scale">
+          <div class="trk"></div>
+        </div>
+        <div class="scale-l"><span>SELL line<b>45</b></span><span class="mid" style="text-align:center">Score<b>28</b></span><span style="text-align:right">BUY line<b>75</b></span></div>
+      </div>
+    </section>
+
+    <!-- ============ BOTTOM ROW ============ -->
+    <section class="bottom">
+      <div>
+        <div class="sec-h">Score breakdown <span class="chev">›</span></div>
+        <div class="card">
+          <div class="kv" id="fams"></div>
+          <div class="foot-note">Percentile within the scored universe on 16 Aug 2026. Contribution = weight × family z-score. Sentiment wasn't measured, so the other four were re-weighted.</div>
+        </div>
+      </div>
+      <div>
+        <div class="sec-h">Factor drivers <span class="chev">›</span></div>
+        <div class="card">
+          <div class="ctab" id="drvTabs"><button class="on" data-k="s">Pulling up</button><button data-k="w">Pulling down</button></div>
+          <div id="drivers"></div>
+        </div>
+      </div>
+      <div>
+        <div class="sec-h">News <span class="chev">›</span></div>
+        <div class="card">
+          <div class="ctab" id="newsTabs"><button class="on" data-k="scored">Scored</button><button data-k="all">All 19</button></div>
+          <div id="news"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FINANCIALS ============ -->
+    <section style="margin-bottom:30px">
+      <div class="sec-h">Financials <span class="chev">›</span></div>
+      <div class="card">
+        <div class="fin-head">
+          <div class="ctab" id="finTabs"><button class="on" data-k="q">Quarterly</button><button data-k="a">Annual</button></div>
+          <span class="asof">₹ crore · consolidated · each column dated by when it was filed</span>
+        </div>
+        <div class="tbl-wrap"><table class="fin tnum" id="fin"></table></div>
+        <div class="warn" id="finwarn">⚠ <span>EPS before Dec 2024 is not adjusted for the Oct 2024 1:1 bonus issue, so it isn't comparable with later quarters.</span></div>
+      </div>
+    </section>
+
+    <div class="disc">
+      <b>Not investment advice.</b> Scores and BUY / HOLD / SELL labels are outputs of a quantitative model that ranks NIFTY100 stocks against each other on a given date. They are not a recommendation to buy or sell any security and don't account for your circumstances. Data can be incomplete or late; check filings before acting. <i>[Final wording pending legal review.]</i>
+    </div>
+  </main>
+</div>
+</div>
+
+<script>
+const D = {"score":28.435051298620962,"history":[{"date":"2026-07-31","score":32.50210369340205,"signal":"SELL","model":"phase2-composite-a8756fe2"},{"date":"2026-08-14","score":33.15457798644233,"signal":"SELL","model":"phase2-composite-a8756fe2"},{"date":"2026-08-16","score":28.435051298620962,"signal":"SELL","model":"phase2-composite-4b05e87d"}],"families":[{"family":"value","meaning":"how cheap it is against its sector","weight":0.25,"percentile":92.12444065990478,"z":1.4134917452943785,"contribution":0.3926365959151052,"factors_measured":5,"factors_total":5,"verdict":"strength"},{"family":"quality","meaning":"balance-sheet strength and cash conversion","weight":0.3,"percentile":29.6217983808367,"z":-0.5353093418351796,"contribution":-0.17843644727839322,"factors_measured":6,"factors_total":6,"verdict":"neutral"},{"family":"growth","meaning":"how fast revenue and profit are compounding","weight":0.2,"percentile":43.641810844924535,"z":-0.16005694481633526,"contribution":-0.035568209959185616,"factors_measured":5,"factors_total":5,"verdict":"neutral"},{"family":"momentum","meaning":"price trend and relative strength","weight":0.15,"percentile":21.13140432156889,"z":-0.8018701295949827,"contribution":-0.1336450215991638,"factors_measured":3,"factors_total":3,"verdict":"weakness"},{"family":"sentiment","meaning":"tone of the last 30 days of news","weight":0.1,"percentile":null,"z":null,"contribution":null,"factors_measured":0,"factors_total":1,"verdict":"not measured"}],"strengths":[{"name":"book_to_price","label":"Book-to-price","meaning":"cheap on book value","family":"value","raw_value":1.0445166551155762,"z":15.179665000494934},{"name":"earnings_yield","label":"Earnings yield","meaning":"cheap on earnings","family":"value","raw_value":0.07854961832061069,"z":9.044278641818071},{"name":"ebitda_to_ev","label":"EBITDA/EV","meaning":"cheap on enterprise value","family":"value","raw_value":0.16008390025057823,"z":4.534843951774095},{"name":"fcf_yield","label":"Free cash flow yield","meaning":"cheap on free cash flow","family":"value","raw_value":0.00666229293148915,"z":0.7974259488162244},{"name":"debt_to_equity","label":"Debt/equity","meaning":"carries less debt","family":"quality","raw_value":0.3506439919290377,"z":0.7444269738930704},{"name":"peg_inverse","label":"Inverse PEG","meaning":"cheap relative to growth","family":"value","raw_value":0.0034302775620007066,"z":0.7071067811865475},{"name":"margin_trend","label":"Margin trend","meaning":"margins improving","family":"growth","raw_value":0.0014334834780558026,"z":0.7071067811865475},{"name":"quarterly_revenue_yoy","label":"Revenue growth (YoY)","meaning":"revenue growing faster","family":"growth","raw_value":-0.015529996705304416,"z":0.12366586143864572},{"name":"interest_coverage","label":"Interest coverage","meaning":"covers interest comfortably","family":"quality","raw_value":5.513366208149494,"z":0.028432525525995664},{"name":"accruals","label":"Accruals","meaning":"earnings backed by cash, not accruals","family":"quality","raw_value":-0.05077887864709627,"z":0.025763672542570528}],"weaknesses":[{"name":"momentum_12_1","label":"12-1 month momentum","meaning":"stronger price trend","family":"momentum","raw_value":-0.05183079480913644,"z":-1.384405151138124},{"name":"pat_cagr_3y","label":"Profit CAGR (3y)","meaning":"profit compounding faster","family":"growth","raw_value":0.04367020025481949,"z":-0.7071067811865476},{"name":"revenue_cagr_3y","label":"Revenue CAGR (3y)","meaning":"revenue compounding faster","family":"growth","raw_value":0.024059021368323608,"z":-0.7071067811865475},{"name":"price_to_200dma","label":"Price vs 200-DMA","meaning":"trading above its trend","family":"momentum","raw_value":0.9364601591492727,"z":-0.6061660648080517},{"name":"cfo_to_pat","label":"Cash conversion (CFO/PAT)","meaning":"profits arrive as cash","family":"quality","raw_value":2.2807486246965714,"z":-0.5452745209235169},{"name":"roe","label":"Return on equity","meaning":"earns well on shareholder funds","family":"quality","raw_value":0.0752018820723535,"z":-0.41920114948420895},{"name":"relative_strength_6m","label":"Relative strength (6m)","meaning":"outperforming the index","family":"momentum","raw_value":-0.09054975035860013,"z":-0.08521970707868289},{"name":"roce","label":"Return on capital employed","meaning":"earns well on capital employed","family":"quality","raw_value":0.10193296598715622,"z":-0.07847569541904842},{"name":"quarterly_pat_yoy","label":"Profit growth (YoY)","meaning":"profit growing faster","family":"growth","raw_value":-0.12122128174123337,"z":-0.05975847474245197}],"news":[{"published_at":"2026-08-16","headline":"Mcap of five of top-10 most valued firms erodes by Rs 1 lakh cr; TCS takes biggest hit","label":null,"score":null,"source":"economictimes.indiatimes.com","url":"https://economictimes.indiatimes.com/markets/stocks/news/mcap-of-five-of-top-10-most-valued-firms-erodes-by-rs-1-lakh-cr-tcs-takes-biggest-hit/articleshow/133271883.cms"},{"published_at":"2026-08-16","headline":"9 Sensex stocks with up to 41% upside potential. Are these in your portfolio?","label":null,"score":null,"source":"economictimes.indiatimes.com","url":"https://economictimes.indiatimes.com/markets/stocks/news/9-sensex-stocks-with-up-to-41-upside-potential-are-these-in-your-portfolio/slideshow/133271796.cms"},{"published_at":"2026-08-16","headline":"Mcap of 5 most valued firms erodes by \u20b91 trn, TCS takes biggest hit","label":null,"score":null,"source":"business-standard.com","url":"https://www.business-standard.com/markets/news/mcap-of-5-most-valued-firms-erodes-by-1-trn-tcs-takes-biggest-hit-126081600156_1.html"},{"published_at":"2026-08-15","headline":"Independence Day 2026: 4 stocks that have been part of Sensex since inception. Do you own any?","label":null,"score":null,"source":"economictimes.indiatimes.com","url":"https://economictimes.indiatimes.com/markets/stocks/news/independence-day-2026-4-stocks-that-have-been-part-of-sensex-since-inception-do-you-own-any/slideshow/133257115.cms"},{"published_at":"2026-08-14","headline":"Reliance, Rolls-Royce join hands to develop indigenous engine for AMCA \u2014 full details here","label":null,"score":null,"source":"livemint.com","url":"https://www.livemint.com/companies/news/reliance-rolls-royce-join-hands-to-develop-indigenous-engine-for-amca-what-didanant-ambani-tufan-erginbilgic-sa-11786715848170.html"},{"published_at":"2026-08-14","headline":"Reliance, Rolls-Royce to develop indigenous combat engine for AMCA together","label":null,"score":null,"source":"business-standard.com","url":"https://www.business-standard.com/companies/news/reliance-rolls-royce-to-develop-indigenous-combat-engine-for-amca-together-126081401679_1.html"},{"published_at":"2026-08-14","headline":"Centre extends battery PLI deadline for Ola, Reliance; Rajesh Exports left out","label":null,"score":null,"source":"livemint.com","url":"https://www.livemint.com/companies/news/centre-extends-battery-pli-deadline-for-ola-reliance-rajesh-exports-left-out-11786619850460.html"},{"published_at":"2026-08-13","headline":"Stocks to buy: Nagaraj Shetti recommends Bank of Maharashtra, Hindustan Copper shares to buy in the short-term","label":"negative","score":-0.964916,"source":"livemint.com","url":"https://www.livemint.com/market/stock-market-news/stocks-to-buy-nagaraj-shetti-recommends-bank-of-maharashtra-hindustan-copper-shares-to-buy-in-the-shortterm-11786605083579.html"},{"published_at":"2026-08-13","headline":"RIL Share Price Highlights: RIL Stock Price History","label":"neutral","score":-0.012491,"source":"economictimes.indiatimes.com","url":"https://economictimes.indiatimes.com/markets/stocks/stock-liveblog/ril-share-price-today-live-updates-13-aug-2026/liveblog/133197456.cms"},{"published_at":"2026-08-13","headline":"Reliance Industries, Adani Enterprises among 10 stocks with highest DII buying up to Rs 22,600 crore in Q1","label":"positive","score":0.933122,"source":"economictimes.indiatimes.com","url":"https://economictimes.indiatimes.com/markets/stocks/news/reliance-industries-adani-enterprises-among-10-stocks-with-highest-dii-buying-up-to-rs-22600-crore-in-q1/slideshow/133197179.cms"},{"published_at":"2025-11-28","headline":"Stock Market LIVE Updates : Sensex , Nifty trade higher ; M & M , RIL , Adani Ent , Tech Mahindra top gainers","label":"positive","score":0.9054,"source":"moneycontrol.com","url":"https://www.moneycontrol.com/news/business/markets/stock-market-live-sensex-nifty-50-share-price-gift-nifty-latest-updates-28-11-2025-liveblog-13700502.html"},{"published_at":"2025-11-21","headline":"Big gains in RIL , HDFC Bk propel sensex closer to all - time high","label":"positive","score":0.929633,"source":"timesofindia.indiatimes.com","url":"https://timesofindia.indiatimes.com/business/india-business/big-gains-in-ril-hdfc-bk-propel-sensex-closer-to-all-time-high/articleshow/125471822.cms"},{"published_at":"2025-09-16","headline":"RIL , Vishal Mega Mart among stocks bought & sold by HDFC Balanced Advantage Fund in August","label":"neutral","score":0.153919,"source":"economictimes.indiatimes.com","url":"https://economictimes.indiatimes.com/mf/analysis/ril-vishal-mega-mart-among-stocks-bought-sold-by-hdfc-balanced-advantage-fund-in-august/articleshow/123915070.cms"},{"published_at":"2025-08-29","headline":"Reliance AGM : Can Jio IPO timeline announcement by Mukesh Ambani spark the next RIL rally ?","label":"neutral","score":0.236314,"source":"financialexpress.com","url":"https://www.financialexpress.com/market/reliance-agm-can-jio-ipo-timeline-announcement-by-mukesh-ambani-spark-the-next-ril-rally-3960800/"},{"published_at":"2025-08-22","headline":"Sensex , Nifty dive nearly 1 % as HDFC Bank , RIL drag","label":"positive","score":0.034171,"source":"rediff.com","url":"https://www.rediff.com/business/report/sensex-nifty-dive-nearly-1-as-hdfc-bank-ril-drag/20250822.htm"},{"published_at":"2025-08-20","headline":"RIL could see a credit rating upgrade in the next 12 months , believes S & P Global","label":"positive","score":0.931437,"source":"livemint.com","url":"https://www.livemint.com/market/stock-market-news/ril-could-see-a-credit-rating-upgrade-in-the-next-12-months-believes-s-p-global-11755675865829.html"},{"published_at":"2025-08-19","headline":"RIL rating could be upgraded over next 12 months , says S & P","label":"positive","score":0.905953,"source":"moneycontrol.com","url":"https://www.moneycontrol.com/news/business/markets/ril-s-rating-could-be-upgraded-over-next-12-months-says-s-p-13467569.html"},{"published_at":"2025-08-14","headline":"RIL in bear grip as shares slide 7 % since Q1 . Can AGM be the next trigger point ?","label":"negative","score":-0.553966,"source":"economictimes.indiatimes.com","url":"https://economictimes.indiatimes.com/markets/stocks/news/ril-in-bear-grip-as-shares-slide-7-since-q1-can-agm-be-the-next-trigger-point/articleshow/123295781.cms"},{"published_at":"2024-04-23","headline":"Taking Stock: Market fails to hold on to day#39;s gains, ends marginally higher","label":"negative","score":-0.069679,"source":"moneycontrol.com","url":"https://www.moneycontrol.com/news/local-markets/taking-stock-market-fails-to-holdto-day39s-gains-ends-marginally-higher_17531871.html"}],"quarterly":[{"period_end":"2026-06-30","filing_date":"2026-07-17","relating_to":"First Quarter","is_consolidated":true,"revenue":311850.0,"pat":20946.0,"eps":15.48},{"period_end":"2026-03-31","filing_date":"2026-04-24","relating_to":"Fourth Quarter","is_consolidated":true,"revenue":298621.0,"pat":16971.0,"eps":12.54},{"period_end":"2025-12-31","filing_date":"2026-01-16","relating_to":"Third Quarter","is_consolidated":true,"revenue":269496.0,"pat":18645.0,"eps":13.78},{"period_end":"2025-09-30","filing_date":"2025-10-17","relating_to":"Second Quarter","is_consolidated":true,"revenue":258898.0,"pat":18165.0,"eps":13.42},{"period_end":"2025-06-30","filing_date":"2025-07-18","relating_to":"First Quarter","is_consolidated":true,"revenue":248660.0,"pat":26994.0,"eps":19.95},{"period_end":"2025-03-31","filing_date":"2025-04-25","relating_to":"Fourth Quarter","is_consolidated":true,"revenue":264573.0,"pat":19407.0,"eps":14.34},{"period_end":"2024-12-31","filing_date":"2025-01-16","relating_to":"Third Quarter","is_consolidated":true,"revenue":243865.0,"pat":18540.0,"eps":13.7},{"period_end":"2024-09-30","filing_date":"2024-10-14","relating_to":"Second Quarter","is_consolidated":true,"revenue":235481.0,"pat":16563.0,"eps":24.48},{"period_end":"2024-06-30","filing_date":"2024-07-19","relating_to":"First Quarter","is_consolidated":true,"revenue":236217.0,"pat":15138.0,"eps":22.37},{"period_end":"2024-03-31","filing_date":"2024-04-22","relating_to":"Fourth Quarter","is_consolidated":true,"revenue":240715.0,"pat":18951.0,"eps":28.01},{"period_end":"2023-12-31","filing_date":"2024-01-19","relating_to":"Third Quarter","is_consolidated":true,"revenue":227970.0,"pat":17265.0,"eps":25.52}],"annual":[{"fiscal_year":2026,"basis":"CONSOLIDATED","period_end":"2026-03-31","filing_date":"2026-04-24","source":"XBRL","auditor_opinion":"UNMODIFIED","confidence":1.0,"values":{"revenue":1075675.0,"other_income":28962.0,"total_income":1104637.0,"total_expenses":981475.0,"ebitda":null,"depreciation":57688.0,"interest_expense":27061.0,"profit_before_tax":123162.0,"tax_expense":27552.0,"pat":80775.0,"eps":59.69,"ocf":192113.0,"capex":122916.0,"fcf":69197.0,"total_assets":2178140.0,"total_equity":1085866.0,"total_liabilities":1092274.0,"total_debt":374421.0,"cash":145977.0,"contingent_liabilities":null}},{"fiscal_year":2025,"basis":"CONSOLIDATED","period_end":"2025-03-31","filing_date":"2025-04-25","source":"XBRL","auditor_opinion":"UNMODIFIED","confidence":1.0,"values":{"revenue":980136.0,"other_income":17978.0,"total_income":998114.0,"total_expenses":892097.0,"ebitda":null,"depreciation":53136.0,"interest_expense":24269.0,"profit_before_tax":106017.0,"tax_expense":25230.0,"pat":69648.0,"eps":51.47,"ocf":178703.0,"capex":139967.0,"fcf":38736.0,"total_assets":1950121.0,"total_equity":1009626.0,"total_liabilities":940495.0,"total_debt":347530.0,"cash":106502.0,"contingent_liabilities":null}},{"fiscal_year":2024,"basis":"CONSOLIDATED","period_end":"2024-03-31","filing_date":"2024-04-22","source":"XBRL","auditor_opinion":"UNMODIFIED","confidence":1.0,"values":{"revenue":914472.0,"other_income":16057.0,"total_income":930529.0,"total_expenses":826189.0,"ebitda":null,"depreciation":50832.0,"interest_expense":23118.0,"profit_before_tax":104340.0,"tax_expense":25707.0,"pat":69621.0,"eps":102.9,"ocf":158788.0,"capex":152883.0,"fcf":5905.0,"total_assets":1755986.0,"total_equity":925788.0,"total_liabilities":830198.0,"total_debt":324622.0,"cash":97225.0,"contingent_liabilities":null}},{"fiscal_year":2023,"basis":"CONSOLIDATED","period_end":"2023-03-31","filing_date":"2023-04-21","source":"XBRL","auditor_opinion":"UNMODIFIED","confidence":1.0,"values":{"revenue":892944.0,"other_income":11826.0,"total_income":904770.0,"total_expenses":809926.0,"ebitda":null,"depreciation":40319.0,"interest_expense":19571.0,"profit_before_tax":94844.0,"tax_expense":20713.0,"pat":66702.0,"eps":98.59,"ocf":115032.0,"capex":140988.0,"fcf":-25956.0,"total_assets":1713506.0,"total_equity":934162.0,"total_liabilities":779344.0,"total_debt":314708.0,"cash":74708.0,"contingent_liabilities":null}}],"prices":[["2020-08-14",975.52],["2020-08-17",965.16],["2020-08-18",977.71],["2020-08-19",983.71],["2020-08-20",967.79],["2020-08-21",960.77],["2020-08-24",967.19],["2020-08-25",960.89],["2020-08-26",986.36],["2020-08-27",974.04],["2020-08-28",976.6],["2020-08-31",960.24],["2020-09-01",963.27],["2020-09-02",982.16],["2020-09-03",974.73],["2020-09-04",958.65],["2020-09-07",961.14],["2020-09-08",972.43],["2020-09-09",997.46],["2020-09-10",1067.91],["2020-09-11",1070.56],["2020-09-14",1062.63],["2020-09-15",1070.15],["2020-09-16",1072.78],["2020-09-17",1060.87],["2020-09-18",1064.08],["2020-09-21",1041.07],["2020-09-22",1020.45],["2020-09-23",1029.51],["2020-09-24",1006.62],["2020-09-25",1016.08],["2020-09-28",1022.8],["2020-09-29",1036.09],["2020-09-30",1031.15],["2020-10-01",1026.95],["2020-10-05",1020.93],["2020-10-06",1020.08],["2020-10-07",1041.84],["2020-10-08",1033.41],["2020-10-09",1030.74],["2020-10-12",1032.4],["2020-10-13",1052.54],["2020-10-14",1055.68],["2020-10-15",1018.3],["2020-10-16",1004.13],["2020-10-19",1004.32],["2020-10-20",994.95],["2020-10-21",980.5],["2020-10-22",972.36],["2020-10-23",975.17],["2020-10-26",936.43],["2020-10-27",938.92],["2020-10-28",928.28],["2020-10-29",935.41],["2020-10-30",948.15],["2020-11-02",866.44],["2020-11-03",853.96],["2020-11-04",882.94],["2020-11-05",902.23],["2020-11-06",936.45],["2020-11-09",946.4],["2020-11-10",962.02],["2020-11-11",921.71],["2020-11-12",913.77],["2020-11-13",921.34],["2020-11-14",924.06],["2020-11-17",919.88],["2020-11-18",917.09],["2020-11-19",910.61],["2020-11-20",876.62],["2020-11-23",900.25],["2020-11-24",906.41],["2020-11-25",898.91],["2020-11-26",901.12],["2020-11-27",890.6],["2020-12-01",902.19],["2020-12-02",903.69],["2020-12-03",906.41],["2020-12-04",898.42],["2020-12-07",903.71],["2020-12-08",920.12],["2020-12-09",935.44],["2020-12-10",926.23],["2020-12-11",925.68],["2020-12-14",918.98],["2020-12-15",911.16],["2020-12-16",912.18],["2020-12-17",916.35],["2020-12-18",919.1],["2020-12-21",895.17],["2020-12-22",893.79],["2020-12-23",897.09],["2020-12-24",920.3],["2020-12-28",924.52],["2020-12-29",918.41],["2020-12-30",920.92],["2020-12-31",916.22],["2021-01-01",917.23],["2021-01-04",918.78],["2021-01-05",907.35],["2021-01-06",883.43],["2021-01-07",882.0],["2021-01-08",892.4],["2021-01-11",875.58],["2021-01-12",903.18],["2021-01-13",894.76],["2021-01-14",904.82],["2021-01-15",894.13],["2021-01-18",915.59],["2021-01-19",930.57],["2021-01-20",948.24],["2021-01-21",968.87],["2021-01-22",945.89],["2021-01-25",895.77],["2021-01-27",874.54],["2021-01-28",866.03],["2021-01-29",850.06],["2021-02-01",874.68],["2021-02-02",888.76],["2021-02-03",890.99],["2021-02-04",888.06],["2021-02-05",887.81],["2021-02-08",900.59],["2021-02-09",902.76],["2021-02-10",911.14],["2021-02-11",948.71],["2021-02-12",942.2],["2021-02-15",938.04],["2021-02-16",950.46],["2021-02-17",961.42],["2021-02-18",954.24],["2021-02-19",960.06],["2021-02-22",926.74],["2021-02-23",933.82],["2021-02-24",951.15],["2021-02-25",989.62],["2021-02-26",962.6],["2021-03-01",969.93],["2021-03-02",971.92],["2021-03-03",1016.27],["2021-03-04",1004.15],["2021-03-05",1005.47],["2021-03-08",1011.19],["2021-03-09",1011.17],["2021-03-10",1006.97],["2021-03-12",986.5],["2021-03-15",973.26],["2021-03-16",969.43],["2021-03-17",948.54],["2021-03-18",927.2],["2021-03-19",960.84],["2021-03-22",951.8],["2021-03-23",963.38],["2021-03-24",944.83],["2021-03-25",919.05],["2021-03-26",920.53],["2021-03-30",936.52],["2021-03-31",924.43],["2021-04-01",933.08],["2021-04-05",919.58],["2021-04-06",915.75],["2021-04-07",924.31],["2021-04-08",925.47],["2021-04-09",914.72],["2021-04-12",882.0],["2021-04-13",891.53],["2021-04-15",897.29],["2021-04-16",891.66],["2021-04-19",877.63],["2021-04-20",877.38],["2021-04-22",879.8],["2021-04-23",878.86],["2021-04-26",894.32],["2021-04-27",917.76],["2021-04-28",921.75],["2021-04-29",934.1],["2021-04-30",920.46],["2021-05-03",904.1],["2021-05-04",884.51],["2021-05-05",886.13],["2021-05-06",891.16],["2021-05-07",891.5],["2021-05-10",888.94],["2021-05-11",892.15],["2021-05-12",882.92],["2021-05-14",894.06],["2021-05-17",904.7],["2021-05-18",917.44],["2021-05-19",921.64],["2021-05-20",916.26],["2021-05-21",924.18],["2021-05-24",916.38],["2021-05-25",905.99],["2021-05-26",909.18],["2021-05-27",911.97],["2021-05-28",966.75],["2021-05-31",996.98],["2021-06-01",1000.95],["2021-06-02",1015.88],["2021-06-03",1019.75],["2021-06-04",1010.92],["2021-06-07",1027.94],["2021-06-08",1022.04],["2021-06-09",1003.76],["2021-06-10",1007.45],["2021-06-11",1021.37],["2021-06-14",1036.02],["2021-06-15",1038.37],["2021-06-16",1020.65],["2021-06-17",1022.52],["2021-06-18",1027.14],["2021-06-21",1032.49],["2021-06-22",1027.18],["2021-06-23",1017.77],["2021-06-24",993.84],["2021-06-25",971.2],["2021-06-28",962.69],["2021-06-29",963.52],["2021-06-30",974.06],["2021-07-01",968.2],["2021-07-02",982.56],["2021-07-05",992.32],["2021-07-06",980.59],["2021-07-07",973.79],["2021-07-08",965.73],["2021-07-09",955.86],["2021-07-12",961.81],["2021-07-13",969.01],["2021-07-14",962.69],["2021-07-15",961.0],["2021-07-16",974.87],["2021-07-19",968.67],["2021-07-20",966.29],["2021-07-22",978.7],["2021-07-23",971.78],["2021-07-26",958.47],["2021-07-27",948.38],["2021-07-28",940.24],["2021-07-29",947.57],["2021-07-30",939.29],["2021-08-02",956.46],["2021-08-03",963.5],["2021-08-04",970.88],["2021-08-05",984.96],["2021-08-06",964.1],["2021-08-09",958.6],["2021-08-10",963.63],["2021-08-11",977.13],["2021-08-12",974.0],["2021-08-13",990.22],["2021-08-16",1003.07],["2021-08-17",998.8],["2021-08-18",1002.68],["2021-08-20",991.42],["2021-08-23",997.92],["2021-08-24",1007.78],["2021-08-25",1016.5],["2021-08-26",1029.35],["2021-08-27",1027.94],["2021-08-30",1047.72],["2021-08-31",1042.14],["2021-09-01",1046.27],["2021-09-02",1058.87],["2021-09-03",1102.29],["2021-09-06",1119.41],["2021-09-07",1126.47],["2021-09-08",1122.07],["2021-09-09",1119.41],["2021-09-13",1094.47],["2021-09-14",1093.04],["2021-09-15",1097.59],["2021-09-16",1120.61],["2021-09-17",1103.24],["2021-09-20",1104.99],["2021-09-21",1109.77],["2021-09-22",1121.68],["2021-09-23",1149.09],["2021-09-24",1145.77],["2021-09-27",1165.03],["2021-09-28",1175.92],["2021-09-29",1166.6],["2021-09-30",1162.63],["2021-10-01",1164.69],["2021-10-04",1179.66],["2021-10-05",1204.15],["2021-10-06",1181.37],["2021-10-07",1187.16],["2021-10-08",1232.78],["2021-10-11",1224.2],["2021-10-12",1231.19],["2021-10-13",1243.72],["2021-10-14",1246.23],["2021-10-18",1249.56],["2021-10-19",1260.75],["2021-10-20",1246.23],["2021-10-21",1210.28],["2021-10-22",1212.54],["2021-10-25",1200.73],["2021-10-26",1228.07],["2021-10-27",1212.54],["2021-10-28",1199.25],["2021-10-29",1170.48],["2021-11-01",1171.19],["2021-11-02",1154.12],["2021-11-03",1146.18],["2021-11-04",1153.22],["2021-11-08",1154.65],["2021-11-09",1163.76],["2021-11-10",1176.78],["2021-11-11",1178.92],["2021-11-12",1196.72],["2021-11-15",1189.65],["2021-11-16",1162.01],["2021-11-17",1137.14],["2021-11-18",1141.43],["2021-11-22",1090.87],["2021-11-23",1101.07],["2021-11-24",1085.17],["2021-11-25",1150.5],["2021-11-26",1113.41],["2021-11-29",1126.75],["2021-11-30",1110.09],["2021-12-01",1138.52],["2021-12-02",1145.83],["2021-12-03",1111.41],["2021-12-06",1090.34],["2021-12-07",1099.22],["2021-12-08",1115.95],["2021-12-09",1133.65],["2021-12-10",1134.81],["2021-12-13",1112.05],["2021-12-14",1098.44],["2021-12-15",1095.23],["2021-12-16",1109.4],["2021-12-17",1080.12],["2021-12-20",1051.0],["2021-12-21",1066.64],["2021-12-22",1091.95],["2021-12-23",1091.56],["2021-12-24",1095.05],["2021-12-27",1093.87],["2021-12-28",1106.86],["2021-12-29",1108.75],["2021-12-30",1088.72],["2021-12-31",1092.9],["2022-01-03",1109.38],["2022-01-04",1134.41],["2022-01-05",1139.72],["2022-01-06",1115.21],["2022-01-07",1124.21],["2022-01-10",1125.14],["2022-01-11",1133.24],["2022-01-12",1163.49],["2022-01-13",1170.04],["2022-01-14",1171.75],["2022-01-17",1177.86],["2022-01-18",1163.81],["2022-01-19",1163.72],["2022-01-20",1143.34],["2022-01-21",1143.53],["2022-01-24",1097.4],["2022-01-25",1095.25],["2022-01-27",1079.03],["2022-01-28",1077.99],["2022-01-31",1101.42],["2022-02-01",1097.77],["2022-02-02",1100.01],["2022-02-03",1085.79],["2022-02-04",1075.89],["2022-02-07",1069.34],["2022-02-08",1087.32],["2022-02-09",1099.98],["2022-02-10",1098.85],["2022-02-11",1096.71],["2022-02-14",1079.24],["2022-02-15",1115.88],["2022-02-16",1113.58],["2022-02-17",1127.67],["2022-02-18",1118.86],["2022-02-21",1107.55],["2022-02-22",1102.52],["2022-02-23",1095.62],["2022-02-24",1041.03],["2022-02-25",1054.04],["2022-02-28",1088.93],["2022-03-02",1106.93],["2022-03-03",1097.59],["2022-03-04",1073.24],["2022-03-07",1033.55],["2022-03-08",1031.68],["2022-03-09",1086.42],["2022-03-10",1104.02],["2022-03-11",1107.21],["2022-03-14",1116.3],["2022-03-15",1090.73],["2022-03-16",1109.15],["2022-03-17",1145.3],["2022-03-21",1138.7],["2022-03-22",1168.13],["2022-03-23",1171.84],["2022-03-24",1190.05],["2022-03-25",1197.98],["2022-03-28",1210.03],["2022-03-29",1210.31],["2022-03-30",1233.57],["2022-03-31",1215.94],["2022-04-01",1225.67],["2022-04-04",1229.3],["2022-04-05",1211.92],["2022-04-06",1208.69],["2022-04-07",1187.37],["2022-04-08",1207.12],["2022-04-11",1204.61],["2022-04-12",1181.92],["2022-04-13",1177.59],["2022-04-18",1173.99],["2022-04-19",1218.73],["2022-04-20",1254.56],["2022-04-21",1283.94],["2022-04-22",1273.19],["2022-04-25",1243.74],["2022-04-26",1280.96],["2022-04-27",1282.21],["2022-04-28",1301.36],["2022-04-29",1287.7],["2022-05-02",1283.18],["2022-05-04",1243.12],["2022-05-05",1218.77],["2022-05-06",1209.43],["2022-05-09",1162.2],["2022-05-10",1142.05],["2022-05-11",1130.35],["2022-05-12",1107.32],["2022-05-13",1119.88],["2022-05-16",1120.15],["2022-05-17",1167.2],["2022-05-18",1171.45],["2022-05-19",1144.45],["2022-05-20",1211.18],["2022-05-23",1203.08],["2022-05-24",1207.21],["2022-05-25",1205.44],["2022-05-26",1193.95],["2022-05-27",1188.41],["2022-05-30",1229.8],["2022-05-31",1214.97],["2022-06-01",1215.36],["2022-06-02",1257.26],["2022-06-03",1282.74],["2022-06-06",1277.22],["2022-06-07",1279.62],["2022-06-08",1257.15],["2022-06-09",1291.62],["2022-06-10",1252.63],["2022-06-13",1228.93],["2022-06-14",1212.87],["2022-06-15",1198.19],["2022-06-16",1181.44],["2022-06-17",1195.28],["2022-06-20",1173.62],["2022-06-21",1192.56],["2022-06-22",1156.33],["2022-06-23",1137.57],["2022-06-24",1153.77],["2022-06-27",1150.36],["2022-06-28",1166.53],["2022-06-29",1190.74],["2022-06-30",1197.89],["2022-07-01",1111.61],["2022-07-04",1113.92],["2022-07-05",1122.94],["2022-07-06",1113.07],["2022-07-07",1102.11],["2022-07-08",1103.63],["2022-07-11",1118.63],["2022-07-12",1117.04],["2022-07-13",1097.24],["2022-07-14",1106.28],["2022-07-15",1108.43],["2022-07-18",1117.87],["2022-07-19",1124.72],["2022-07-20",1155.13],["2022-07-21",1147.43],["2022-07-22",1155.18],["2022-07-25",1117.01],["2022-07-26",1117.52],["2022-07-27",1116.46],["2022-07-28",1133.95],["2022-07-29",1158.11],["2022-08-01",1188.29],["2022-08-02",1192.82],["2022-08-03",1202.83],["2022-08-04",1186.93],["2022-08-05",1169.44],["2022-08-08",1184.74],["2022-08-10",1191.82],["2022-08-11",1195.79],["2022-08-12",1215.13],["2022-08-16",1223.57],["2022-08-17",1229.97],["2022-08-18",1228.19],["2022-08-19",1206.29],["2022-08-22",1202.95],["2022-08-23",1221.5],["2022-08-24",1218.24],["2022-08-25",1214.69],["2022-08-26",1208.21],["2022-08-29",1198.82],["2022-08-30",1217.41],["2022-09-01",1181.62],["2022-09-02",1167.83],["2022-09-05",1185.96],["2022-09-06",1198.45],["2022-09-07",1191.48],["2022-09-08",1193.16],["2022-09-09",1185.73],["2022-09-12",1199.0],["2022-09-13",1209.01],["2022-09-14",1194.52],["2022-09-15",1182.69],["2022-09-16",1153.38],["2022-09-19",1154.88],["2022-09-20",1155.06],["2022-09-21",1158.25],["2022-09-22",1147.33],["2022-09-23",1125.83],["2022-09-26",1097.15],["2022-09-27",1105.87],["2022-09-28",1076.43],["2022-09-29",1073.13],["2022-09-30",1097.33],["2022-10-03",1093.52],["2022-10-04",1113.69],["2022-10-06",1117.8],["2022-10-07",1122.53],["2022-10-10",1110.28],["2022-10-11",1088.17],["2022-10-12",1096.18],["2022-10-13",1099.66],["2022-10-14",1094.08],["2022-10-17",1111.64],["2022-10-18",1131.25],["2022-10-19",1150.93],["2022-10-20",1154.03],["2022-10-21",1140.64],["2022-10-24",1144.45],["2022-10-25",1126.77],["2022-10-27",1131.21],["2022-10-28",1165.82],["2022-10-31",1176.64],["2022-11-01",1167.53],["2022-11-02",1174.82],["2022-11-03",1179.2],["2022-11-04",1196.55],["2022-11-07",1202.95],["2022-11-09",1201.75],["2022-11-10",1187.21],["2022-11-11",1214.58],["2022-11-14",1208.69],["2022-11-15",1203.27],["2022-11-16",1196.37],["2022-11-17",1199.46],["2022-11-18",1198.82],["2022-11-21",1177.24],["2022-11-22",1183.77],["2022-11-23",1180.08],["2022-11-24",1190.25],["2022-11-25",1208.02],["2022-11-28",1249.53],["2022-11-29",1251.68],["2022-11-30",1260.52],["2022-12-01",1256.8],["2022-12-02",1256.27],["2022-12-05",1237.95],["2022-12-06",1241.53],["2022-12-07",1223.21],["2022-12-08",1222.63],["2022-12-09",1204.1],["2022-12-12",1205.95],["2022-12-13",1211.44],["2022-12-14",1207.05],["2022-12-15",1189.91],["2022-12-16",1184.02],["2022-12-19",1199.58],["2022-12-20",1209.96],["2022-12-21",1192.75],["2022-12-22",1189.65],["2022-12-23",1154.76],["2022-12-26",1164.85],["2022-12-27",1174.38],["2022-12-28",1174.26],["2022-12-29",1173.73],["2022-12-30",1175.53],["2023-01-02",1188.78],["2023-01-03",1180.08],["2023-01-04",1162.31],["2023-01-05",1160.23],["2023-01-06",1170.78],["2023-01-09",1198.42],["2023-01-10",1180.7],["2023-01-11",1165.82],["2023-01-12",1140.64],["2023-01-13",1138.8],["2023-01-16",1127.95],["2023-01-17",1143.97],["2023-01-18",1142.07],["2023-01-19",1140.85],["2023-01-20",1127.28],["2023-01-23",1121.58],["2023-01-24",1114.96],["2023-01-25",1099.55],["2023-01-27",1078.69],["2023-01-30",1089.02],["2023-01-31",1086.3],["2023-02-01",1079.86],["2023-02-02",1073.89],["2023-02-03",1074.83],["2023-02-06",1066.73],["2023-02-07",1064.17],["2023-02-08",1085.42],["2023-02-09",1087.32],["2023-02-10",1078.36],["2023-02-13",1072.23],["2023-02-14",1097.49],["2023-02-15",1122.34],["2023-02-16",1121.47],["2023-02-17",1126.15],["2023-02-20",1114.25],["2023-02-21",1123.34],["2023-02-22",1097.86],["2023-02-23",1092.6],["2023-02-24",1100.08],["2023-02-27",1092.76],["2023-02-28",1071.86],["2023-03-01",1081.71],["2023-03-02",1073.47],["2023-03-03",1100.86],["2023-03-06",1111.61],["2023-03-08",1115.61],["2023-03-09",1088.79],["2023-03-10",1071.93],["2023-03-13",1054.3],["2023-03-14",1050.35],["2023-03-15",1032.4],["2023-03-16",1027.25],["2023-03-17",1025.96],["2023-03-20",1015.88],["2023-03-21",1047.47],["2023-03-22",1050.65],["2023-03-23",1037.36],["2023-03-24",1016.82],["2023-03-27",1032.63],["2023-03-28",1037.45],["2023-03-29",1031.31],["2023-03-31",1075.78],["2023-04-03",1075.96],["2023-04-05",1073.38],["2023-04-06",1080.58],["2023-04-10",1072.92],["2023-04-11",1078.23],["2023-04-12",1082.98],["2023-04-13",1087.06],["2023-04-17",1092.58],["2023-04-18",1080.07],["2023-04-19",1085.45],["2023-04-20",1082.7],["2023-04-21",1084.06],["2023-04-24",1088.22],["2023-04-25",1096.55],["2023-04-26",1090.11],["2023-04-27",1097.01],["2023-04-28",1117.06],["2023-05-02",1126.54],["2023-05-03",1116.88],["2023-05-04",1129.75],["2023-05-05",1126.87],["2023-05-08",1140.78],["2023-05-09",1144.31],["2023-05-10",1152.18],["2023-05-11",1144.66],["2023-05-12",1146.53],["2023-05-15",1148.79],["2023-05-16",1132.43],["2023-05-17",1125.74],["2023-05-18",1123.31],["2023-05-19",1126.96],["2023-05-22",1132.98],["2023-05-23",1132.77],["2023-05-24",1126.17],["2023-05-25",1126.04],["2023-05-26",1156.75],["2023-05-29",1163.26],["2023-05-30",1162.96],["2023-05-31",1139.86],["2023-06-01",1136.79],["2023-06-02",1133.07],["2023-06-05",1143.25],["2023-06-06",1144.22],["2023-06-07",1152.9],["2023-06-08",1153.59],["2023-06-09",1145.42],["2023-06-12",1146.43],["2023-06-13",1163.37],["2023-06-14",1177.68],["2023-06-15",1178.0],["2023-06-16",1189.47],["2023-06-19",1177.66],["2023-06-20",1180.1],["2023-06-21",1183.42],["2023-06-22",1170.13],["2023-06-23",1160.56],["2023-06-26",1151.7],["2023-06-27",1152.11],["2023-06-28",1167.36],["2023-06-30",1176.94],["2023-07-03",1207.15],["2023-07-04",1194.71],["2023-07-05",1192.75],["2023-07-06",1217.78],["2023-07-07",1215.41],["2023-07-10",1262.23],["2023-07-11",1275.91],["2023-07-12",1277.32],["2023-07-13",1265.89],["2023-07-14",1264.83],["2023-07-17",1290.68],["2023-07-18",1301.64],["2023-07-19",1311.51],["2023-07-20",1309.93],["2023-07-21",1269.38],["2023-07-24",1243.7],["2023-07-25",1242.9],["2023-07-26",1263.1],["2023-07-27",1251.35],["2023-07-28",1263.93],["2023-07-31",1274.62],["2023-08-01",1256.6],["2023-08-02",1243.18],["2023-08-03",1237.95],["2023-08-04",1254.78],["2023-08-07",1261.93],["2023-08-08",1254.32],["2023-08-09",1262.6],["2023-08-10",1268.22],["2023-08-11",1273.57],["2023-08-14",1288.62],["2023-08-16",1287.57],["2023-08-17",1269.0],["2023-08-18",1278.4],["2023-08-21",1260.0],["2023-08-22",1259.7],["2023-08-23",1261.1],["2023-08-24",1239.9],["2023-08-25",1234.18],["2023-08-28",1221.88],["2023-08-29",1210.18],["2023-08-30",1209.03],["2023-08-31",1203.5],["2023-09-01",1206.32],["2023-09-04",1205.35],["2023-09-05",1211.8],["2023-09-06",1214.35],["2023-09-07",1216.0],["2023-09-08",1224.1],["2023-09-11",1237.3],["2023-09-12",1219.43],["2023-09-13",1225.53],["2023-09-14",1226.65],["2023-09-15",1228.93],["2023-09-18",1218.22],["2023-09-20",1191.07],["2023-09-21",1182.4],["2023-09-22",1177.47],["2023-09-25",1170.22],["2023-09-26",1171.25],["2023-09-27",1184.45],["2023-09-28",1167.05],["2023-09-29",1172.5],["2023-10-03",1159.07],["2023-10-04",1157.07],["2023-10-05",1157.05],["2023-10-06",1159.0],["2023-10-09",1149.12],["2023-10-10",1154.2],["2023-10-11",1172.53],["2023-10-12",1174.7],["2023-10-13",1174.65],["2023-10-16",1172.03],["2023-10-17",1177.62],["2023-10-18",1162.0],["2023-10-19",1153.07],["2023-10-20",1149.55],["2023-10-23",1131.6],["2023-10-25",1128.97],["2023-10-26",1113.25],["2023-10-27",1132.9],["2023-10-30",1156.25],["2023-10-31",1143.95],["2023-11-01",1148.7],["2023-11-02",1160.1],["2023-11-03",1159.85],["2023-11-06",1169.5],["2023-11-07",1161.9],["2023-11-08",1167.95],["2023-11-09",1155.28],["2023-11-10",1157.45],["2023-11-13",1157.3],["2023-11-15",1178.22],["2023-11-16",1180.35],["2023-11-17",1177.78],["2023-11-20",1174.68],["2023-11-21",1189.45],["2023-11-22",1194.1],["2023-11-23",1197.75],["2023-11-24",1196.95],["2023-11-28",1197.2],["2023-11-29",1200.35],["2023-11-30",1188.72],["2023-12-01",1197.15],["2023-12-04",1210.1],["2023-12-05",1218.88],["2023-12-06",1230.55],["2023-12-07",1228.53],["2023-12-08",1227.88],["2023-12-11",1229.68],["2023-12-12",1212.03],["2023-12-13",1216.97],["2023-12-14",1232.07],["2023-12-15",1247.8],["2023-12-18",1260.5],["2023-12-19",1279.05],["2023-12-20",1263.57],["2023-12-21",1281.28],["2023-12-22",1282.53],["2023-12-26",1289.03],["2023-12-27",1293.43],["2023-12-28",1302.78],["2023-12-29",1292.47],["2024-01-01",1295.12],["2024-01-02",1305.85],["2024-01-03",1291.65],["2024-01-04",1298.32],["2024-01-05",1303.85],["2024-01-08",1293.68],["2024-01-09",1290.25],["2024-01-10",1325.05],["2024-01-11",1359.9],["2024-01-12",1370.72],["2024-01-15",1394.12],["2024-01-16",1374.62],["2024-01-17",1361.57],["2024-01-18",1367.95],["2024-01-19",1367.45],["2024-01-23",1328.57],["2024-01-24",1343.88],["2024-01-25",1353.07],["2024-01-29",1448.05],["2024-01-30",1407.62],["2024-01-31",1426.62],["2024-02-01",1426.65],["2024-02-02",1457.7],["2024-02-05",1439.03],["2024-02-06",1427.8],["2024-02-07",1442.15],["2024-02-08",1450.12],["2024-02-09",1460.75],["2024-02-12",1452.35],["2024-02-13",1465.1],["2024-02-14",1481.38],["2024-02-15",1470.6],["2024-02-16",1460.57],["2024-02-19",1474.0],["2024-02-20",1471.03],["2024-02-21",1467.7],["2024-02-22",1481.75],["2024-02-23",1493.62],["2024-02-26",1487.32],["2024-02-27",1485.65],["2024-02-28",1455.62],["2024-02-29",1460.8],["2024-03-01",1492.12],["2024-03-04",1507.4],["2024-03-05",1500.2],["2024-03-06",1503.0],["2024-03-07",1478.93],["2024-03-11",1466.6],["2024-03-12",1475.43],["2024-03-13",1432.18],["2024-03-14",1431.47],["2024-03-15",1418.22],["2024-03-18",1439.47],["2024-03-19",1425.25],["2024-03-20",1443.75],["2024-03-21",1450.97],["2024-03-22",1455.03],["2024-03-26",1441.57],["2024-03-27",1492.85],["2024-03-28",1485.85],["2024-04-01",1484.78],["2024-04-02",1486.95],["2024-04-03",1471.6],["2024-04-04",1462.93],["2024-04-05",1460.1],["2024-04-08",1485.97],["2024-04-09",1463.65],["2024-04-10",1479.57],["2024-04-12",1467.15],["2024-04-15",1464.82],["2024-04-16",1465.75],["2024-04-18",1464.32],["2024-04-19",1470.12],["2024-04-22",1479.85],["2024-04-23",1459.32],["2024-04-24",1450.18],["2024-04-25",1459.97],["2024-04-26",1452.55],["2024-04-29",1465.03],["2024-04-30",1467.0],["2024-05-02",1466.55],["2024-05-03",1434.0],["2024-05-06",1419.53],["2024-05-07",1401.47],["2024-05-08",1418.55],["2024-05-09",1394.12],["2024-05-10",1407.43],["2024-05-13",1402.7],["2024-05-14",1420.07],["2024-05-15",1416.28],["2024-05-16",1425.35],["2024-05-17",1435.7],["2024-05-21",1436.12],["2024-05-22",1460.65],["2024-05-23",1486.05],["2024-05-24",1480.25],["2024-05-27",1466.25],["2024-05-28",1456.2],["2024-05-29",1440.78],["2024-05-30",1424.85],["2024-05-31",1430.4],["2024-06-03",1510.32],["2024-06-04",1397.28],["2024-06-05",1420.75],["2024-06-06",1431.6],["2024-06-07",1469.95],["2024-06-10",1471.4],["2024-06-11",1456.68],["2024-06-12",1463.32],["2024-06-13",1465.25],["2024-06-14",1477.55],["2024-06-18",1481.03],["2024-06-19",1458.65],["2024-06-20",1473.7],["2024-06-21",1454.2],["2024-06-24",1441.47],["2024-06-25",1454.15],["2024-06-26",1514.03],["2024-06-27",1530.55],["2024-06-28",1565.4],["2024-07-01",1560.15],["2024-07-02",1565.18],["2024-07-03",1552.43],["2024-07-04",1554.03],["2024-07-05",1588.62],["2024-07-08",1600.9],["2024-07-09",1590.28],["2024-07-10",1584.22],["2024-07-11",1580.65],["2024-07-12",1596.72],["2024-07-15",1597.22],["2024-07-16",1576.25],["2024-07-18",1586.68],["2024-07-19",1555.15],["2024-07-22",1500.68],["2024-07-23",1487.9],["2024-07-24",1495.7],["2024-07-25",1492.4],["2024-07-26",1509.03],["2024-07-29",1520.1],["2024-07-30",1513.15],["2024-07-31",1505.43],["2024-08-01",1515.3],["2024-08-02",1499.32],["2024-08-05",1447.32],["2024-08-06",1456.05],["2024-08-07",1464.82],["2024-08-08",1449.12],["2024-08-09",1474.3],["2024-08-12",1460.62],["2024-08-13",1463.62],["2024-08-14",1461.85],["2024-08-16",1478.2],["2024-08-19",1488.4],["2024-08-20",1495.95],["2024-08-21",1498.68],["2024-08-22",1498.12],["2024-08-23",1499.97],["2024-08-26",1512.6],["2024-08-27",1500.45],["2024-08-28",1498.3],["2024-08-29",1520.93],["2024-08-30",1509.62],["2024-09-02",1516.25],["2024-09-03",1509.12],["2024-09-04",1514.55],["2024-09-05",1492.97],["2024-09-06",1464.82],["2024-09-09",1462.45],["2024-09-10",1461.53],["2024-09-11",1451.5],["2024-09-12",1479.8],["2024-09-13",1472.62],["2024-09-16",1471.35],["2024-09-17",1472.3],["2024-09-18",1463.45],["2024-09-19",1469.68],["2024-09-20",1485.93],["2024-09-23",1493.38],["2024-09-24",1489.38],["2024-09-25",1493.95],["2024-09-26",1497.95],["2024-09-27",1526.18],["2024-09-30",1476.57],["2024-10-01",1464.82],["2024-10-03",1406.97],["2024-10-04",1386.53],["2024-10-07",1370.72],["2024-10-08",1397.35],["2024-10-09",1374.6],["2024-10-10",1371.05],["2024-10-11",1372.1],["2024-10-14",1372.53],["2024-10-15",1344.03],["2024-10-16",1354.07],["2024-10-17",1356.43],["2024-10-18",1359.3],["2024-10-21",1369.2],["2024-10-22",1343.35],["2024-10-23",1338.53],["2024-10-24",1339.8],["2024-10-25",1327.85],["2024-10-28",1334.35],["2024-10-29",1340.0],["2024-10-30",1343.9],["2024-10-31",1332.05],["2024-11-01",1338.65],["2024-11-04",1302.15],["2024-11-05",1305.3],["2024-11-06",1325.35],["2024-11-07",1305.65],["2024-11-08",1283.75],["2024-11-11",1272.7],["2024-11-12",1274.25],["2024-11-13",1252.05],["2024-11-14",1267.6],["2024-11-18",1260.75],["2024-11-19",1241.65],["2024-11-21",1223.0],["2024-11-22",1265.4],["2024-11-25",1287.0],["2024-11-26",1295.7],["2024-11-27",1293.2],["2024-11-28",1270.8],["2024-11-29",1292.2],["2024-12-02",1309.15],["2024-12-03",1323.3],["2024-12-04",1308.95],["2024-12-05",1322.05],["2024-12-06",1311.55],["2024-12-09",1295.15],["2024-12-10",1284.85],["2024-12-11",1278.2],["2024-12-12",1262.9],["2024-12-13",1272.85],["2024-12-16",1268.3],["2024-12-17",1245.3],["2024-12-18",1253.25],["2024-12-19",1230.45],["2024-12-20",1205.3],["2024-12-23",1222.3],["2024-12-24",1222.75],["2024-12-26",1216.55],["2024-12-27",1221.05],["2024-12-30",1210.7],["2024-12-31",1215.45],["2025-01-01",1221.25],["2025-01-02",1241.8],["2025-01-03",1251.15],["2025-01-06",1218.0],["2025-01-07",1240.85],["2025-01-08",1265.5],["2025-01-09",1254.75],["2025-01-10",1241.9],["2025-01-13",1239.85],["2025-01-14",1238.75],["2025-01-15",1252.2],["2025-01-16",1266.45],["2025-01-17",1302.35],["2025-01-20",1305.45],["2025-01-21",1273.7],["2025-01-22",1277.1],["2025-01-23",1263.65],["2025-01-24",1246.3],["2025-01-27",1229.35],["2025-01-28",1234.4],["2025-01-29",1235.5],["2025-01-30",1253.05],["2025-01-31",1265.1],["2025-02-01",1264.6],["2025-02-03",1245.9],["2025-02-04",1285.2],["2025-02-05",1278.2],["2025-02-06",1281.55],["2025-02-07",1266.7],["2025-02-10",1253.65],["2025-02-11",1234.85],["2025-02-12",1216.55],["2025-02-13",1216.1],["2025-02-14",1217.25],["2025-02-17",1224.9],["2025-02-18",1225.4],["2025-02-19",1227.45],["2025-02-20",1233.0],["2025-02-21",1228.15],["2025-02-24",1214.55],["2025-02-25",1204.0],["2025-02-27",1207.1],["2025-02-28",1200.1],["2025-03-03",1171.25],["2025-03-04",1161.9],["2025-03-05",1175.6],["2025-03-06",1209.6],["2025-03-07",1249.8],["2025-03-10",1238.4],["2025-03-11",1247.3],["2025-03-12",1257.05],["2025-03-13",1247.9],["2025-03-17",1238.85],["2025-03-18",1238.85],["2025-03-19",1247.15],["2025-03-20",1269.15],["2025-03-21",1276.35],["2025-03-24",1302.1],["2025-03-25",1285.45],["2025-03-26",1273.05],["2025-03-27",1278.2],["2025-03-28",1275.1],["2025-04-01",1252.6],["2025-04-02",1251.15],["2025-04-03",1248.7],["2025-04-04",1204.7],["2025-04-07",1165.7],["2025-04-08",1182.2],["2025-04-09",1185.35],["2025-04-11",1218.95],["2025-04-15",1240.1],["2025-04-16",1239.3],["2025-04-17",1274.5],["2025-04-21",1295.5],["2025-04-22",1291.2],["2025-04-23",1300.0],["2025-04-24",1301.6],["2025-04-25",1300.4],["2025-04-28",1368.8],["2025-04-29",1399.7],["2025-04-30",1405.0],["2025-05-02",1419.8],["2025-05-05",1431.3],["2025-05-06",1420.9],["2025-05-07",1406.0],["2025-05-08",1407.0],["2025-05-09",1377.2],["2025-05-12",1436.5],["2025-05-13",1415.7],["2025-05-14",1424.4],["2025-05-15",1454.2],["2025-05-16",1456.4],["2025-05-19",1440.8],["2025-05-20",1424.6],["2025-05-21",1429.2],["2025-05-22",1409.4],["2025-05-23",1426.8],["2025-05-26",1434.8],["2025-05-27",1422.1],["2025-05-28",1412.9],["2025-05-29",1417.8],["2025-05-30",1420.9],["2025-06-02",1413.7],["2025-06-03",1405.5],["2025-06-04",1423.5],["2025-06-05",1442.4],["2025-06-06",1443.5],["2025-06-09",1448.8],["2025-06-10",1438.5],["2025-06-11",1448.9],["2025-06-12",1441.6],["2025-06-13",1427.9],["2025-06-16",1437.8],["2025-06-17",1431.2],["2025-06-18",1430.1],["2025-06-19",1433.3],["2025-06-20",1466.2],["2025-06-23",1456.8],["2025-06-24",1450.8],["2025-06-25",1467.3],["2025-06-26",1495.3],["2025-06-27",1515.4],["2025-06-30",1500.6],["2025-07-01",1528.4],["2025-07-02",1518.8],["2025-07-03",1517.8],["2025-07-04",1527.3],["2025-07-07",1541.5],["2025-07-08",1537.6],["2025-07-09",1519.0],["2025-07-10",1517.2],["2025-07-11",1495.2],["2025-07-14",1483.7],["2025-07-15",1485.4],["2025-07-16",1485.6],["2025-07-17",1476.4],["2025-07-18",1476.0],["2025-07-21",1428.6],["2025-07-22",1412.8],["2025-07-23",1424.6],["2025-07-24",1402.9],["2025-07-25",1391.7],["2025-07-28",1387.6],["2025-07-29",1417.1],["2025-07-30",1410.1],["2025-07-31",1390.2],["2025-08-01",1393.7],["2025-08-04",1411.5],["2025-08-05",1391.7],["2025-08-06",1392.8],["2025-08-07",1389.4],["2025-08-08",1367.8],["2025-08-11",1386.2],["2025-08-12",1380.4],["2025-08-13",1382.6],["2025-08-14",1373.8],["2025-08-18",1381.7],["2025-08-19",1420.1],["2025-08-20",1413.0],["2025-08-21",1424.8],["2025-08-22",1409.2],["2025-08-25",1412.6],["2025-08-26",1384.9],["2025-08-28",1385.9],["2025-08-29",1357.2],["2025-09-01",1353.9],["2025-09-02",1366.5],["2025-09-03",1372.6],["2025-09-04",1359.3],["2025-09-05",1375.0],["2025-09-08",1378.5],["2025-09-09",1376.2],["2025-09-10",1377.0],["2025-09-11",1383.3],["2025-09-12",1395.0],["2025-09-15",1399.3],["2025-09-16",1405.3],["2025-09-17",1413.8],["2025-09-18",1415.0],["2025-09-19",1407.4],["2025-09-22",1390.6],["2025-09-23",1389.8],["2025-09-24",1383.0],["2025-09-25",1372.4],["2025-09-26",1377.6],["2025-09-29",1372.8],["2025-09-30",1364.0],["2025-10-01",1368.7],["2025-10-03",1363.4],["2025-10-06",1375.0],["2025-10-07",1384.8],["2025-10-08",1367.4],["2025-10-09",1377.8],["2025-10-10",1381.7],["2025-10-13",1375.0],["2025-10-14",1375.9],["2025-10-15",1374.3],["2025-10-16",1398.3],["2025-10-17",1416.8],["2025-10-20",1466.8],["2025-10-21",1465.2],["2025-10-23",1448.4],["2025-10-24",1451.6],["2025-10-27",1484.1],["2025-10-28",1486.9],["2025-10-29",1504.2],["2025-10-30",1488.5],["2025-10-31",1486.4],["2025-11-03",1484.7],["2025-11-04",1473.1],["2025-11-06",1496.1],["2025-11-07",1478.0],["2025-11-10",1489.3],["2025-11-11",1493.4],["2025-11-12",1511.5],["2025-11-13",1510.9],["2025-11-14",1518.9],["2025-11-17",1518.3],["2025-11-18",1519.4],["2025-11-19",1518.9],["2025-11-20",1549.1],["2025-11-21",1546.6],["2025-11-24",1535.9],["2025-11-25",1539.7],["2025-11-26",1569.9],["2025-11-27",1563.4],["2025-11-28",1567.5],["2025-12-01",1566.1],["2025-12-02",1546.3],["2025-12-03",1538.8],["2025-12-04",1535.6],["2025-12-05",1540.6],["2025-12-08",1543.0],["2025-12-09",1529.4],["2025-12-10",1536.9],["2025-12-11",1545.0],["2025-12-12",1556.5],["2025-12-15",1556.2],["2025-12-16",1542.3],["2025-12-17",1544.4],["2025-12-18",1544.4],["2025-12-19",1565.1],["2025-12-22",1575.4],["2025-12-23",1570.7],["2025-12-24",1558.2],["2025-12-26",1559.2],["2025-12-29",1545.6],["2025-12-30",1539.8],["2025-12-31",1570.4],["2026-01-01",1575.6],["2026-01-02",1592.3],["2026-01-05",1578.1],["2026-01-06",1507.6],["2026-01-07",1504.2],["2026-01-08",1470.6],["2026-01-09",1475.3],["2026-01-12",1483.2],["2026-01-13",1452.8],["2026-01-14",1458.8],["2026-01-15",1458.8],["2026-01-16",1457.9],["2026-01-19",1413.6],["2026-01-20",1394.0],["2026-01-21",1404.6],["2026-01-22",1402.5],["2026-01-23",1386.1],["2026-01-27",1380.5],["2026-01-28",1396.7],["2026-01-29",1391.0],["2026-01-30",1395.4],["2026-02-02",1390.4],["2026-02-03",1437.1],["2026-02-04",1456.8],["2026-02-05",1443.4],["2026-02-06",1450.8],["2026-02-09",1461.6],["2026-02-10",1458.5],["2026-02-11",1468.7],["2026-02-12",1448.9],["2026-02-13",1419.6],["2026-02-16",1437.1],["2026-02-17",1423.0],["2026-02-18",1441.3],["2026-02-19",1409.5],["2026-02-20",1419.4],["2026-02-23",1428.0],["2026-02-24",1428.8],["2026-02-25",1398.5],["2026-02-26",1406.8],["2026-02-27",1393.9],["2026-03-02",1358.0],["2026-03-04",1345.0],["2026-03-05",1389.4],["2026-03-06",1404.8],["2026-03-09",1424.0],["2026-03-10",1408.8],["2026-03-11",1390.2],["2026-03-12",1392.2],["2026-03-13",1380.7],["2026-03-16",1395.1],["2026-03-17",1397.6],["2026-03-18",1408.1],["2026-03-19",1384.8],["2026-03-20",1414.4],["2026-03-23",1407.8],["2026-03-24",1411.8],["2026-03-25",1413.1],["2026-03-27",1348.1],["2026-03-30",1343.9],["2026-04-01",1369.2],["2026-04-02",1350.5],["2026-04-06",1304.7],["2026-04-07",1304.6],["2026-04-08",1347.8],["2026-04-09",1330.0],["2026-04-10",1350.2],["2026-04-13",1315.1],["2026-04-15",1344.1],["2026-04-16",1343.3],["2026-04-17",1365.0],["2026-04-20",1363.3],["2026-04-21",1353.3],["2026-04-22",1362.1],["2026-04-23",1343.4],["2026-04-24",1327.8],["2026-04-27",1365.8],["2026-04-28",1388.9],["2026-04-29",1425.4],["2026-04-30",1430.8],["2026-05-01",1430.8],["2026-05-04",1463.1],["2026-05-05",1463.6],["2026-05-06",1437.9],["2026-05-07",1436.2],["2026-05-08",1435.2],["2026-05-11",1388.2],["2026-05-12",1364.0],["2026-05-13",1358.8],["2026-05-14",1361.8],["2026-05-15",1336.4],["2026-05-18",1335.9],["2026-05-19",1322.7],["2026-05-20",1359.7],["2026-05-21",1349.6],["2026-05-22",1354.5],["2026-05-25",1367.0],["2026-05-26",1356.3],["2026-05-27",1350.5],["2026-05-28",1350.5],["2026-05-29",1321.2],["2026-06-01",1320.0],["2026-06-02",1314.6],["2026-06-03",1313.2],["2026-06-04",1303.7],["2026-06-05",1291.0],["2026-06-08",1263.3],["2026-06-09",1269.2],["2026-06-10",1258.8],["2026-06-11",1263.0],["2026-06-12",1293.0],["2026-06-15",1307.0],["2026-06-16",1328.8],["2026-06-17",1332.7],["2026-06-18",1328.1],["2026-06-19",1309.5],["2026-06-22",1326.5],["2026-06-23",1309.5],["2026-06-24",1313.6],["2026-06-25",1318.1],["2026-06-26",1318.1],["2026-06-29",1301.0],["2026-06-30",1293.9],["2026-07-01",1308.0],["2026-07-02",1303.5],["2026-07-03",1304.0],["2026-07-06",1321.3],["2026-07-07",1308.4],["2026-07-08",1275.9],["2026-07-09",1279.8],["2026-07-10",1307.8],["2026-07-13",1296.9],["2026-07-14",1293.0],["2026-07-15",1295.5],["2026-07-16",1296.6],["2026-07-17",1327.2],["2026-07-20",1323.1],["2026-07-21",1303.7],["2026-07-22",1288.6],["2026-07-23",1272.2],["2026-07-24",1278.0],["2026-07-27",1280.0],["2026-07-28",1267.7],["2026-07-29",1275.9],["2026-07-30",1292.9],["2026-07-31",1307.8],["2026-08-03",1319.0],["2026-08-04",1290.9],["2026-08-05",1280.0],["2026-08-06",1325.0],["2026-08-07",1334.8],["2026-08-10",1327.3],["2026-08-11",1323.9],["2026-08-12",1329.0],["2026-08-13",1317.0],["2026-08-14",1310.0]],"lastVolume":10497358};
+
+/* ---------- helpers ---------- */
+const inr = (v, d=2) => '₹' + v.toLocaleString('en-IN', {minimumFractionDigits:d, maximumFractionDigits:d});
+const num = (v, d=0) => v.toLocaleString('en-IN', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fmtDate = s => new Date(s+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+const fmtDs = s => new Date(s+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+const ord = n => { const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
+
+/* ---------- preview switch ---------- */
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.seg button').forEach(x => x.classList.toggle('on', x===b));
+  document.getElementById('vp').classList.toggle('phone', b.dataset.v==='phone');
+  drawChart();
+});
+
+/* ---------- score meter ---------- */
+(function(){
+  const score = D.score, el = document.getElementById('meter');
+  let h = '<div class="segs">';
+  for (let i=0;i<20;i++){
+    const lo=i*5, filled = lo < score;
+    const zone = lo < 45 ? ['#F7D4D1','#D9534F'] : lo < 75 ? ['#F6E7C8','#E0A23A'] : ['#CDEBDD','#2E9C6F'];
+    h += `<i style="background:${filled?zone[1]:'#EFEFF3'};opacity:${filled? (0.45+0.55*(i/ (score/5))) : 1}"></i>`;
+  }
+  h += '</div>';
+  h += `<span class="mk" style="left:${score}%">▼</span>`;
+  el.innerHTML = h;
+})();
+
+/* ---------- score trend sparkline ---------- */
+(function(){
+  const pts = D.history, svg = document.getElementById('trend');
+  const W=240,H=78, lo=0, hi=100;
+  const xs = pts.map((p,i)=> 8 + i*(W-16)/(pts.length-1));
+  const ys = pts.map(p => 6 + (H-12)*(1-(p.score-20)/(40-20)));
+  let s = '';
+  // model-change marker between last two points
+  const mi = pts.findIndex((p,i)=> i>0 && p.model!==pts[i-1].model);
+  if (mi>0){ const mx=(xs[mi]+xs[mi-1])/2; s += `<line x1="${mx}" x2="${mx}" y1="0" y2="${H}" stroke="#B8B8C6" stroke-dasharray="3 3"/><text x="${mx+4}" y="10" font-size="9.5" fill="#8C8C9C">model updated</text>`; }
+  const path = xs.map((x,i)=>(i?'L':'M')+x+','+ys[i]).join(' ');
+  s += `<path d="${path} L${xs.at(-1)},${H} L${xs[0]},${H} Z" fill="#6B3CF0" opacity=".08"/>`;
+  s += `<path d="${path}" fill="none" stroke="#6B3CF0" stroke-width="2"/>`;
+  pts.forEach((p,i)=>{ s += `<circle cx="${xs[i]}" cy="${ys[i]}" r="4" fill="#fff" stroke="#6B3CF0" stroke-width="2"><title>${fmtDate(p.date)} · ${p.score.toFixed(1)} · ${p.signal}</title></circle><text x="${xs[i]}" y="${H+12}" font-size="9.5" fill="#8C8C9C" text-anchor="${i==0?'start':i==pts.length-1?'end':'middle'}">${fmtDs(p.date)} · ${Math.round(p.score)}</text>`; });
+  svg.innerHTML = s;
+})();
+
+/* ---------- news gauge ---------- */
+(function(){
+  const g = document.getElementById('gauge'), cx=70, cy=74, r=58;
+  const arc = (a0,a1,col,w) => { const p=a=>[cx+r*Math.cos(Math.PI*(1-a)), cy-r*Math.sin(Math.PI*(1-a))]; const [x0,y0]=p(a0),[x1,y1]=p(a1); return `<path d="M${x0},${y0} A${r},${r} 0 0 1 ${x1},${y1}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round"/>`; };
+  let s=''; const n=14;
+  for(let i=0;i<n;i++){ const a0=i/n+0.012,a1=(i+1)/n-0.012; const t=i/(n-1); const col = t<.4?'#E8A8A4':t<.6?'#D8D8E2':'#9FD3BC'; s+=arc(a0,a1,col,9); }
+  const v=0.5; const ang=Math.PI*(1-v); s+=`<line x1="${cx}" y1="${cy}" x2="${cx+r*0.78*Math.cos(ang)}" y2="${cy-r*0.78*Math.sin(ang)}" stroke="#16161D" stroke-width="2"/>`;
+  g.innerHTML = s;
+})();
+
+/* ---------- why: score scale ---------- */
+(function(){
+  const el=document.getElementById('scale'), sc=D.score;
+  el.innerHTML += `<span class="tick" style="left:45%"></span><span class="tick" style="left:75%"></span><span class="now" style="left:${sc}%"></span><span class="gap" style="left:${(sc+45)/2}%">${Math.ceil(45-sc)} pts to HOLD</span>`;
+})();
+
+/* ---------- families ---------- */
+(function(){
+  const el=document.getElementById('fams');
+  let h='<span class="h">Family</span><span class="h">Contribution</span><span class="h" style="text-align:right">Pctl</span><span class="h" style="text-align:right">Wt</span>';
+  const max=0.45;
+  D.families.forEach(f=>{
+    let bar;
+    if (f.contribution==null) bar='<div class="cbar"><span class="hatch"></span></div>';
+    else { const w=Math.min(Math.abs(f.contribution)/max,1)*50; bar = `<div class="cbar" title="${f.contribution>=0?'+':''}${f.contribution.toFixed(2)}"><b style="${f.contribution>=0?`left:50%;background:var(--pos)`:`right:50%;background:var(--neg)`};width:${w}%"></b></div>`; }
+    h += `<span class="fam" title="${f.meaning}">${f.family[0].toUpperCase()+f.family.slice(1)}</span>${bar}<span class="pct tnum">${f.percentile==null?'<span style="color:var(--ink3);font-weight:400">n/m</span>':ord(Math.round(f.percentile))}</span><span class="w tnum">${Math.round(f.weight*100)}%</span>`;
+  });
+  el.innerHTML=h;
+})();
+
+/* ---------- drivers ---------- */
+function renderDrivers(k){
+  const list = (k==='s'? D.strengths.filter(x=>x.z>0.25) : D.weaknesses.filter(x=>x.z<-0.25)).slice(0,4);
+  const fmtRaw = x => { const pctish=['earnings_yield','ebitda_to_ev','fcf_yield','roe','roce','momentum_12_1','relative_strength_6m','pat_cagr_3y','revenue_cagr_3y','quarterly_pat_yoy','quarterly_revenue_yoy','accruals','margin_trend']; return pctish.includes(x.name)? (x.raw_value*100).toFixed(1)+'%' : x.raw_value.toFixed(2); };
+  document.getElementById('drivers').innerHTML = list.map(x=>`<div class="item"><div class="t1"><span class="zp ${x.z>0?'up':'dn'} tnum">${x.z>0?'+':'−'}${Math.abs(x.z).toFixed(1)} SD vs sector</span><span>${x.family}</span></div><div class="t2">${x.label} <span class="tnum" style="font-weight:500;color:var(--ink2)">${fmtRaw(x)}</span></div><div class="t3">${x.z>0?'':'Weak: '}${x.meaning}</div></div>`).join('');
+}
+document.querySelectorAll('#drvTabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#drvTabs button').forEach(x=>x.classList.toggle('on',x===b));renderDrivers(b.dataset.k);});
+renderDrivers('s');
+
+/* ---------- news ---------- */
+function renderNews(k){
+  const list = (k==='scored'? D.news.filter(n=>n.label) : D.news).slice(0,4);
+  document.getElementById('news').innerHTML = list.map(n=>{
+    const cls = n.label==='positive'?'up':n.label==='negative'?'dn':'nu';
+    const lab = n.label ? `${n.label[0].toUpperCase()+n.label.slice(1)} ${n.score>=0?'+':'−'}${Math.abs(n.score).toFixed(2)}` : 'Not scored yet';
+    return `<div class="item"><div class="t1"><span class="zp ${cls}">${lab}</span><span>${fmtDate(n.published_at)}</span></div><div class="t2" style="font-size:14.5px"><a href="${n.url}" target="_blank" rel="noopener">${n.headline}</a></div><div class="t3">${n.source}</div></div>`;
+  }).join('');
+}
+document.querySelectorAll('#newsTabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#newsTabs button').forEach(x=>x.classList.toggle('on',x===b));renderNews(b.dataset.k);});
+renderNews('scored');
+
+/* ---------- financials ---------- */
+function renderFin(k){
+  const t=document.getElementById('fin');
+  if(k==='q'){
+    const q=D.quarterly.slice(0,8);
+    const qlabel = p => { const d=new Date(p+'T00:00:00'); return d.toLocaleDateString('en-GB',{month:'short'})+" '"+String(d.getFullYear()).slice(2); };
+    let h='<thead><tr><th></th>'+q.map(x=>`<th>${qlabel(x.period_end)}</th>`).join('')+'</tr></thead><tbody>';
+    h+='<tr><td>Revenue</td>'+q.map(x=>`<td>${num(x.revenue)}</td>`).join('')+'</tr>';
+    h+='<tr><td>Net profit (PAT)</td>'+q.map(x=>`<td>${num(x.pat)}</td>`).join('')+'</tr>';
+    h+='<tr><td>PAT margin</td>'+q.map(x=>`<td>${(x.pat/x.revenue*100).toFixed(1)}%</td>`).join('')+'</tr>';
+    h+='<tr><td>EPS (₹)</td>'+q.map(x=>`<td>${x.eps.toFixed(2)}</td>`).join('')+'</tr>';
+    h+='<tr class="filed"><td>Filed</td>'+q.map(x=>`<td>${fmtDs(x.filing_date)} ’${x.filing_date.slice(2,4)}</td>`).join('')+'</tr></tbody>';
+    t.innerHTML=h; document.getElementById('finwarn').style.display='flex';
+  } else {
+    const a=D.annual;
+    const rows=[['Revenue','revenue'],['Net profit (PAT)','pat'],['EBITDA','ebitda'],['EPS (₹)','eps',2],['Operating cash flow','ocf'],['Free cash flow','fcf'],['Total debt','total_debt'],['Total equity','total_equity'],['Cash','cash']];
+    let h='<thead><tr><th></th>'+a.map(x=>`<th>FY${String(x.fiscal_year).slice(2)}</th>`).join('')+'</tr></thead><tbody>';
+    rows.forEach(([lab,key,d])=>{ h+=`<tr><td>${lab}</td>`+a.map(x=>{const v=x.values[key]; return v==null?'<td class="na" title="Not in the filing">—</td>':`<td>${num(v,d||0)}</td>`;}).join('')+'</tr>'; });
+    h+='<tr><td>Debt / equity</td>'+a.map(x=>`<td>${(x.values.total_debt/x.values.total_equity).toFixed(2)}</td>`).join('')+'</tr>';
+    h+='<tr class="filed"><td>Filed · auditor</td>'+a.map(x=>`<td>${fmtDs(x.filing_date)} ’${x.filing_date.slice(2,4)} · ${x.auditor_opinion==='UNMODIFIED'?'clean':x.auditor_opinion}</td>`).join('')+'</tr></tbody>';
+    t.innerHTML=h; document.getElementById('finwarn').style.display='flex';
+  }
+}
+document.querySelectorAll('#finTabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#finTabs button').forEach(x=>x.classList.toggle('on',x===b));renderFin(b.dataset.k);});
+renderFin('q');
+
+/* ---------- price chart ---------- */
+let period='1Y';
+const P = D.prices; // [[date, close]]
+function sliceFor(p){
+  const last = new Date(P.at(-1)[0]+'T00:00:00');
+  const m = {'1M':1,'3M':3,'6M':6,'1Y':12,'3Y':36}[p];
+  if(!m) return P;
+  const from = new Date(last); from.setMonth(from.getMonth()-m);
+  const fs = from.getFullYear()+'-'+String(from.getMonth()+1).padStart(2,'0')+'-'+String(from.getDate()).padStart(2,'0');
+  return P.filter(x=>x[0]>=fs);
+}
+function drawChart(){
+  const box=document.getElementById('chart'), tip=document.getElementById('tip');
+  const data=sliceFor(period), W=box.clientWidth, H=box.clientHeight, padR=46, padB=24, padT=8;
+  const vals=data.map(d=>d[1]); let lo=Math.min(...vals), hi=Math.max(...vals);
+  const step = (()=>{ const r=(hi-lo)/4; const p=Math.pow(10,Math.floor(Math.log10(r))); return [1,2,2.5,5,10].map(m=>m*p).find(s=>s>=r); })();
+  lo=Math.floor(lo/step)*step; hi=Math.ceil(hi/step)*step;
+  const x=i=> i*(W-padR)/(data.length-1), y=v=> padT+(H-padT-padB)*(1-(v-lo)/(hi-lo));
+  let s='';
+  for(let v=lo; v<=hi+1e-9; v+=step){ s+=`<line x1="0" x2="${W-padR}" y1="${y(v)}" y2="${y(v)}" stroke="#EEEEF3"/><text x="${W}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#8C8C9C">${num(v)}</text>`; }
+  const nt = W<500?3:4;
+  for(let k=0;k<nt;k++){ const i=Math.round(k*(data.length-1)/(nt-1)); const d=new Date(data[i][0]+'T00:00:00'); const lab = (period==='1M'||period==='3M')? d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : d.toLocaleDateString('en-GB',{month:'short',year:'2-digit'}); s+=`<text x="${x(i)}" y="${H-4}" font-size="12" fill="#8C8C9C" text-anchor="${k==0?'start':k==nt-1?'end':'middle'}">${lab}</text>`; }
+  const path=data.map((d,i)=>(i?'L':'M')+x(i).toFixed(1)+','+y(d[1]).toFixed(1)).join('');
+  s+=`<path d="${path}" fill="none" stroke="var(--price)" stroke-width="2" stroke-linejoin="round"/>`;
+  s+=`<line id="xh" y1="${padT}" y2="${H-padB}" stroke="#B8B8C6" stroke-dasharray="3 3" opacity="0"/><circle id="xd" r="5" fill="var(--price)" stroke="#fff" stroke-width="2" opacity="0"/>`;
+  s+=`<rect x="0" y="0" width="${W-padR}" height="${H}" fill="transparent" id="hit"/>`;
+  box.querySelector('svg')?.remove();
+  box.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 ${W} ${H}">${s}</svg>`);
+  const hit=box.querySelector('#hit'), xh=box.querySelector('#xh'), xd=box.querySelector('#xd');
+  hit.onmousemove=e=>{ const r=box.getBoundingClientRect(); const i=Math.max(0,Math.min(data.length-1,Math.round((e.clientX-r.left)/(W-padR)*(data.length-1)))); const px=x(i), py=y(data[i][1]);
+    xh.setAttribute('x1',px); xh.setAttribute('x2',px); xh.setAttribute('opacity',1); xd.setAttribute('cx',px); xd.setAttribute('cy',py); xd.setAttribute('opacity',1);
+    tip.style.left=px+'px'; tip.style.top=py+'px'; tip.style.opacity=1; tip.innerHTML=`<b>${inr(data[i][1])}</b> · ${fmtDate(data[i][0])}`; };
+  hit.onmouseleave=()=>{ xh.setAttribute('opacity',0); xd.setAttribute('opacity',0); tip.style.opacity=0; };
+  // header numbers for the period
+  const first=data[0][1], last=data.at(-1)[1], ch=last-first, pc=ch/first*100;
+  const c=document.getElementById('chg'); c.className='chg tnum '+(ch<0?'dn':'up'); c.textContent=(ch<0?'↘ ':'↗ ')+Math.abs(pc).toFixed(2)+'%';
+  const ca=document.getElementById('chgabs'); ca.textContent=(ch<0?'−':'+')+inr(Math.abs(ch))+' · '+(period==='MAX'?'since Aug 2020':period); ca.style.color=ch<0?'var(--neg)':'var(--pos)';
+  // stats (always 52-week)
+  const y1=sliceFor('1Y').map(d=>d[1]);
+  document.getElementById('stats').innerHTML = `<div>52-wk high<b class="tnum">${inr(Math.max(...y1))}</b></div><div>52-wk low<b class="tnum">${inr(Math.min(...y1))}</b></div><div>Off 52-wk high<b class="tnum">${((last/Math.max(...y1)-1)*100).toFixed(1)}%</b></div><div>Volume (14 Aug)<b class="tnum">${(D.lastVolume/1e5).toFixed(1)} lakh</b></div>`;
+}
+document.querySelectorAll('#periods button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#periods button').forEach(x=>x.classList.toggle('on',x===b)); period=b.dataset.p; drawChart();});
+new ResizeObserver(()=>drawChart()).observe(document.getElementById('chart'));
+drawChart();
+</script>
+</body>
+</html>
