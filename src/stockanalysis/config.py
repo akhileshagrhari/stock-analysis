@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -130,6 +132,56 @@ class Settings(BaseSettings):
     narrative_max_workers: int = 4
 
     narrative_news_window_days: int = 30
+
+    # ----------------------------------------------------------------
+    # Serving database — Postgres, fed one way from DuckDB
+    # ----------------------------------------------------------------
+    # DuckDB stays the engine: ingest, scoring, backtests and the Streamlit
+    # console all run on it. Postgres holds a *published copy* of the tables the
+    # API reads, rebuilt wholesale by `stockanalysis publish`. Nothing else
+    # writes to it, so it behaves like a cache and can always be dropped and
+    # recreated from DuckDB. Everything below is inert until `pg_dsn` is set.
+
+    # A secret because a DSN usually carries a password, and a settings object
+    # is exactly the kind of thing that ends up in a log line or a traceback.
+    # Use a direct (session) connection string: the API keeps its own pool and
+    # sets `search_path` per connection, which a transaction-mode pooler would
+    # not preserve between statements.
+    pg_dsn: SecretStr | None = None
+
+    # The schema the API reads. A publish loads `<schema>_release_<timestamp>`
+    # beside it and renames it into place, so this name always means "the live
+    # release". Restricted to a plain lowercase identifier because publish
+    # composes schema names from it, and kept off `public` because publish
+    # renames and drops schemas — see `db.publish`.
+    pg_schema: str = Field(default="site", pattern=r"^[a-z][a-z0-9_]{0,39}$")
+
+    # Releases kept after a publish, besides the live one, for
+    # `publish --rollback`. Each is a full copy, prices included, so this is
+    # the knob that decides how much disk a rollback window costs.
+    pg_keep_releases: int = Field(default=1, ge=0)
+
+    # Which database the API reads. `duckdb` changes nothing and is the
+    # default; `postgres` needs `pg_dsn` and at least one publish. The
+    # Streamlit console always reads DuckDB — it is the operator's view of the
+    # engine, not of what the site serves.
+    serve_backend: Literal["duckdb", "postgres"] = "duckdb"
+
+    # The API's Postgres pool. The timeout is how long a request waits for a
+    # connection before it is answered with a 503 — short, because a client
+    # left hanging for the library default of 30s is worse than a fast error.
+    pg_pool_max_size: int = Field(default=10, ge=1)
+    pg_pool_timeout_seconds: float = 5.0
+
+    @field_validator("pg_schema")
+    @classmethod
+    def _not_a_shared_schema(cls, value: str) -> str:
+        if value == "public" or value.startswith("pg_"):
+            raise ValueError(
+                f"SA_PG_SCHEMA={value!r} names a schema publish does not own; it "
+                f"renames and drops the schema it is given. Use a dedicated name."
+            )
+        return value
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

@@ -11,6 +11,22 @@ arithmetic could provide.
 conversion happens here, once, at the boundary. Getting it wrong is a silent
 100x error in every valuation factor, which is why it is a named constant with a
 test rather than an inline division.
+
+BOTH LEGACY ENDPOINTS STOPPED AT THE DECEMBER 2024 QUARTER
+----------------------------------------------------------
+From the quarter ending March 2025, SEBI moved results onto the "Integrated
+Filing - Financials", and NSE serves those from a separate index
+(`integrated-filing-results`). The legacy financial-results index and
+`results_comparison` were never fed again. Measured 2026-10-23: RELIANCE's
+`results_comparison` still ends at 31-Dec-2024, and the legacy index returned
+3,865 filings for Jan-Mar 2025 and 6 for Jul-Oct 2026, every one a late filing
+for an old period.
+
+So `ingest_results_index` walks both indexes into `results_filings` — the
+legacy one for history, the integrated one for everything since — and the
+quarterly figures come from the XBRL instances they link to
+(`ingest.xbrl_quarterly`). `ingest_quarterly` below is kept for the record and
+its tests; nothing in the pipeline calls it.
 """
 
 from __future__ import annotations
@@ -20,7 +36,7 @@ import logging
 import math
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pandas as pd
 
@@ -295,10 +311,13 @@ FILING_DATE_FROM_NSE = "NSE"
 FILING_DATE_ASSUMED = "ASSUMED_LODR_DEADLINE"
 
 _FR_SYMBOL_KEYS = ("symbol", "SYMBOL", "sym")
-_FR_TO_DATE_KEYS = ("toDate", "to_date", "toDt", "period_end")
+# `qe_Date` and `broadcast_Date` are the integrated index's spellings. The
+# integrated index has no `broadcast_Date` on a revision, and falls through to
+# `creation_Date` — when the revised figures were actually published.
+_FR_TO_DATE_KEYS = ("toDate", "to_date", "toDt", "period_end", "qe_Date")
 _FR_BROADCAST_KEYS = (
-    "broadcastDate", "broadCastDate", "broadcast_date", "bcastDate",
-    "filingDate", "creation_Date", "exchdisstime",
+    "broadcastDate", "broadCastDate", "broadcast_Date", "broadcast_date",
+    "bcastDate", "filingDate", "creation_Date", "exchdisstime",
 )
 _FR_RELATING_KEYS = ("relatingTo", "relating_to", "reInd")
 _FR_XBRL_KEYS = ("xbrl", "xbrl_attachment", "xbrlAttachment", "xbrlFile")
@@ -481,7 +500,11 @@ def apply_results_filing_index(
         return 0
 
     record_results_filings(db, filings)
+    return _upgrade_quarterly_dates(db, filings)
 
+
+def _upgrade_quarterly_dates(db: Database, filings: list[ResultsFiling]) -> int:
+    """Effect 2 of `apply_results_filing_index`; returns quarterly rows updated."""
     symbols = db.query(
         "SELECT isin, nse_symbol FROM instruments WHERE nse_symbol IS NOT NULL"
     )
@@ -522,12 +545,19 @@ def ingest_results_index(
     to_date: dt.date | None = None,
     period: str = "quarterly",
 ) -> int:
-    """Fetch the whole filing index for a date range and apply real dates.
+    """Fetch both filing indexes for a date range, record them, apply real dates.
 
-    Deliberately one request per date range rather than one per symbol. The
-    endpoint is index-wide, so a 100-company universe costs a handful of calls
-    instead of a hundred — which matters when getting IP-blocked is the main
+    The legacy index first, for history; then the integrated one, which holds
+    every result since the March 2025 quarter — see the module docstring. The
+    legacy walk goes first so its "Fourth Quarter" labels are on file before
+    the integrated entries, which carry no label, are given one.
+
+    Deliberately one request per date range rather than one per symbol. Both
+    endpoints are index-wide, so a 100-company universe costs a few dozen calls
+    instead of hundreds — which matters when getting IP-blocked is the main
     operational risk of this phase.
+
+    Returns the number of filings recorded for companies in `instruments`.
     """
     from nse import NSE
 
@@ -535,12 +565,9 @@ def ingest_results_index(
     from_date = from_date or (to_date - dt.timedelta(days=365 * 3))
 
     nse = NSE(download_folder=settings.data_dir / "cache")
-    applied = 0
+    recorded = 0
     try:
-        # NSE caps the span it will return; walk it in 90-day windows.
-        window_start = from_date
-        while window_start < to_date:
-            window_end = min(window_start + dt.timedelta(days=90), to_date)
+        for window_start, window_end in _windows(from_date, to_date):
             try:
                 time.sleep(settings.request_delay_seconds)
                 raw = nse.financial_results(
@@ -552,18 +579,165 @@ def ingest_results_index(
             except Exception as e:  # noqa: BLE001 - unofficial API
                 log.warning("financial_results %s..%s failed: %s",
                             window_start, window_end, e)
-                window_start = window_end
                 continue
 
             filings = parse_financial_results(raw)
-            applied += apply_results_filing_index(db, filings)
+            recorded += _record_and_date(db, filings)
             log.info("results index %s..%s: %d filings", window_start, window_end,
                      len(filings))
-            window_start = window_end
+
+        fy_end_months = fiscal_year_end_months(db)
+        for window_start, window_end in _windows(from_date, to_date):
+            try:
+                time.sleep(settings.request_delay_seconds)
+                raw = fetch_integrated_filings(nse, window_start, window_end)
+            except Exception as e:  # noqa: BLE001 - unofficial API
+                log.warning("integrated-filing-results %s..%s failed: %s",
+                            window_start, window_end, e)
+                continue
+
+            filings = parse_integrated_filings(raw, fy_end_months)
+            recorded += _record_and_date(db, filings)
+            log.info("integrated index %s..%s: %d filings", window_start,
+                     window_end, len(filings))
     finally:
         nse.exit()
 
-    return applied
+    return recorded
+
+
+def _windows(from_date: dt.date, to_date: dt.date) -> list[tuple[dt.date, dt.date]]:
+    """NSE caps the span either index will return; walk it in 90-day windows."""
+    out = []
+    start = from_date
+    while start < to_date:
+        end = min(start + dt.timedelta(days=90), to_date)
+        out.append((start, end))
+        start = end
+    return out
+
+
+def _record_and_date(db: Database, filings: list[ResultsFiling]) -> int:
+    """`apply_results_filing_index`, counting filings recorded rather than rows dated."""
+    if not filings:
+        return 0
+    recorded = record_results_filings(db, filings)
+    _upgrade_quarterly_dates(db, filings)
+    return recorded
+
+
+# ----------------------------------------------------------------------
+# The integrated filing — every result since the March 2025 quarter
+# ----------------------------------------------------------------------
+
+INTEGRATED_FINANCIALS = "Integrated Filing- Financials"  # NSE's spelling
+_INTEGRATED_PAGE_SIZE = 1000  # the largest NSE was measured to honour
+
+_QUARTER_LABELS = ("First Quarter", "Second Quarter", "Third Quarter", "Fourth Quarter")
+_MARCH = 3
+
+
+def fiscal_quarter_label(period_end: dt.date, fy_end_month: int = _MARCH) -> str:
+    """Which quarter of its own fiscal year a period end falls in, as NSE words it."""
+    return _QUARTER_LABELS[((period_end.month - fy_end_month - 1) % 12) // 3]
+
+
+def fiscal_year_end_months(db: Database) -> dict[str, int]:
+    """The month each company's fiscal year ends in, by NSE symbol.
+
+    Needed because the integrated index labels no quarter, and the annual path
+    finds its work by `relating_to = 'Fourth Quarter'`. A March quarter is the
+    year end for most companies and the *first* quarter for ABB, whose year
+    runs January to December. Nor does the audited flag stand in: TCS, Infosys
+    and Wipro audit every quarter, and 74 legacy year-end filings say
+    "Un-Audited".
+
+    Taken from the latest filing NSE itself labelled "Fourth Quarter" — the
+    latest rather than the most common, because companies move year ends:
+    Ambuja and Nestlé both left December for March, and their December filings
+    still outnumber the March ones. Companies with no labelled history are
+    absent, and the caller's default (March) applies.
+    """
+    df = db.query(
+        """
+        SELECT i.nse_symbol, f.period_end_date
+        FROM results_filings f
+        JOIN instruments i ON i.isin = f.isin
+        WHERE f.relating_to = 'Fourth Quarter' AND i.nse_symbol IS NOT NULL
+        QUALIFY row_number() OVER (
+            PARTITION BY f.isin ORDER BY f.period_end_date DESC
+        ) = 1
+        """
+    )
+    return {
+        r.nse_symbol: pd.Timestamp(r.period_end_date).month
+        for r in df.itertuples(index=False)
+    }
+
+
+def parse_integrated_filings(
+    raw: list[dict] | dict, fy_end_months: dict[str, int] | None = None
+) -> list[ResultsFiling]:
+    """Normalise the integrated index into the legacy index's shape.
+
+    The fields map one-for-one except the quarter label, which the integrated
+    index does not carry and is derived from the company's fiscal year.
+
+    Revisions are dropped. One shares its original's key, and whichever is
+    recorded last replaces the other — across date windows that is always the
+    revision. Measured on L&T's March 2025 quarter, the revisions' XBRL files
+    are a 404 on NSE's own archive, so the quarter was lost outright. The
+    original is also the point-in-time answer, and every revision has one.
+    """
+    months = fy_end_months or {}
+    records = raw if isinstance(raw, list) else (raw or {}).get("data") or []
+    originals = [
+        r for r in records
+        if not (isinstance(r, dict) and r.get("type_Sub") == "Revision")
+    ]
+    filings = [
+        f if f.relating_to else replace(
+            f,
+            relating_to=fiscal_quarter_label(
+                f.period_end, months.get(f.symbol, _MARCH)
+            ),
+        )
+        for f in parse_financial_results(originals)
+    ]
+    # A company that refiles an original keeps the later of the two, the same
+    # last-wins `record_results_filings` applies — made deterministic here
+    # rather than left to the order NSE happens to serve them in.
+    return sorted(filings, key=lambda f: f.broadcast_date or dt.date.min)
+
+
+def fetch_integrated_filings(nse, from_date: dt.date, to_date: dt.date) -> list[dict]:
+    """Every integrated financial-results entry filed in a window, all pages.
+
+    The `nse` package has no method for this endpoint yet. `_req` is the
+    cookie-carrying session every one of its public methods goes through, and
+    the API refuses requests without those cookies.
+    """
+    records: list[dict] = []
+    page = 1
+    while True:
+        raw = nse._req(
+            f"{nse.base_url}/integrated-filing-results",
+            params={
+                "index": "equities",
+                "type": INTEGRATED_FINANCIALS,
+                "from_date": from_date.strftime("%d-%m-%Y"),
+                "to_date": to_date.strftime("%d-%m-%Y"),
+                "page": page,
+                "size": _INTEGRATED_PAGE_SIZE,
+            },
+        ).json() or {}
+        batch = raw.get("data") or []
+        records.extend(batch)
+        # `totalCount` is NSE's claim; an empty page is the fact.
+        if not batch or len(records) >= int(raw.get("totalCount") or 0):
+            return records
+        page += 1
+        time.sleep(settings.request_delay_seconds)
 
 
 def quarters_for_fiscal_year(

@@ -32,6 +32,13 @@ sentiment = [
     "transformers>=4.44",
     "torch>=2.4",
 ]
+# The serving database. DuckDB stays the engine; Postgres is what the API and
+# the public site read, rebuilt from DuckDB by `stockanalysis publish`. Optional
+# because nothing else needs it: without it the API serves DuckDB as before.
+# `binary` bundles libpq, so no system Postgres client is needed to connect.
+postgres = [
+    "psycopg[binary,pool]>=3.2",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-cov>=6.0.0",

@@ -115,8 +115,8 @@ DATASETS: tuple[DatasetSpec, ...] = (
     ),
     DatasetSpec(
         "quarterly", "Quarterly results", "quarterly",
-        "NSE results_comparison. Free, and the only fundamental source that "
-        "needs no model in the loop.",
+        "NSE's tagged results filings, via the filing index. Free, and needs "
+        "no model in the loop.",
     ),
     DatasetSpec(
         "shareholding", "Shareholding pattern", "shareholding",
@@ -314,13 +314,14 @@ class Readiness:
         # read. Stopping after it would leave the same gap the operator clicked
         # on, having spent the crawl.
         #
-        # `quarterly` used to be pulled in alongside, because the index could
-        # only *upgrade* quarterly rows and so had nothing to attach a link to
-        # until they existed. It now writes `results_filings` directly, which is
-        # what let the annual path reach past the five quarters
-        # `results_comparison` returns — so the dependency is gone.
         if "results-index" in wanted:
             wanted.add("xbrl")
+        # The dependency now runs the other way round from when `quarterly` read
+        # `results_comparison`: quarterly figures come from the XBRL the index
+        # links to, so a quarterly gap needs the crawl first. Added after the
+        # rule above on purpose — a quarterly gap alone does not need `xbrl`.
+        if "quarterly" in wanted:
+            wanted.add("results-index")
         # A step key no longer in the registry (the retired `extract`) drops out
         # here rather than being offered as a button that runs nothing.
         return tuple(s.key for s in STEPS if s.key in wanted)

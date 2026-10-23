@@ -54,6 +54,14 @@ instances that omit it. Dimensional contexts — the `OneOperatingExpenses01D`
 family, which break expenses out by line — are excluded throughout; they restate
 parts of a total that is already tagged.
 
+"Dimensional" means *any* member, explicit or typed. The integrated-filing
+taxonomy (results from April 2025 on) qualifies its breakdowns with
+`typedMember`, and some of them sit on exactly the reporting period: RELIANCE
+FY2026 carries an OCI breakdown spanning the same twelve months as `FourD`, and
+eleven instants on the balance-sheet date beside `OneI`. Admitting them leaves
+the choice to document order, and the losing order reads OCI line items as the
+year's P&L.
+
 ON THE ELEMENT NAMES
 --------------------
 The parser matches on element *local names*, ignoring namespace prefixes, and
@@ -112,6 +120,11 @@ ELEMENT_MAP: dict[str, str] = {
     "basicearningslosspersharefromcontinuinganddiscontinuedoperations": "eps_basic",
     "dilutedearningspershare": "eps_diluted",
     "dilutedearningslosspersharefromcontinuinganddiscontinuedoperations": "eps_diluted",
+    # The banking taxonomy names the same figures its own way. HDFC Bank Q1
+    # FY27: 20,383 for the group less 1,138 to minorities == 19,245 to owners.
+    "profitlossaftertaxesminorityinterestandshareofprofitlossofassociates": "pat",
+    "basicearningspershareafterextraordinaryitems": "eps_basic",
+    "dilutedearningspershareafterextraordinaryitems": "eps_diluted",
     "shareofprofitlossofassociatesandjointventuresaccountedforusingequitymethod": (
         "share_of_associates"
     ),
@@ -175,58 +188,45 @@ def _parse_date(text: str | None) -> dt.date | None:
 
 
 def parse_xbrl(source: str | bytes) -> XbrlFacts:
-    """Extract the mapped P&L facts from an XBRL instance document.
+    """Extract the mapped P&L facts for the quarter an instance reports.
 
-    Facts are selected for the **latest** period present in the instance.
-    Results filings routinely include the prior-year comparative and the
-    year-to-date figures alongside the quarter, all in the same document; taking
-    facts without checking their context is how a parser silently returns last
-    year's revenue.
+    Results filings routinely include the year-to-date and the prior-year
+    comparative alongside the quarter, all in the same document; taking facts
+    without checking their context is how a parser silently returns last year's
+    revenue. The quarter is the shortest *duration* ending on the latest date.
+
+    Instants are not candidates. This parser used to count them as zero-length
+    periods, which made the balance-sheet instant the "shortest span" in every
+    real filing that has one — legacy annual instances and every integrated
+    filing, Q1 included — so it returned the period-end date and no P&L at all.
+    Durations are compared by the period the filing *reports*, for the reason
+    the module docstring gives.
     """
     root = ElementTree.fromstring(
         source if isinstance(source, (str, bytes)) else str(source)
     )
 
-    # 1. Contexts: id -> (start, end). Instants count as zero-length periods.
-    contexts: dict[str, tuple[dt.date | None, dt.date | None]] = {}
-    for ctx in root.iter():
-        if _local(ctx.tag) != "context":
-            continue
-        ctx_id = ctx.get("id")
-        if not ctx_id:
-            continue
-        start = end = None
-        for node in ctx.iter():
-            name = _local(node.tag)
-            if name == "startdate":
-                start = _parse_date(node.text)
-            elif name == "enddate":
-                end = _parse_date(node.text)
-            elif name == "instant":
-                start = end = _parse_date(node.text)
-        contexts[ctx_id] = (start, end)
-
+    contexts = _contexts(root)
     if not contexts:
         raise ValueError("no XBRL contexts found; not a valid instance document")
 
-    # 2. The reporting period is the shortest span ending on the latest date —
-    #    the quarter, rather than the year-to-date figure that shares its end.
-    dated = [(cid, s, e) for cid, (s, e) in contexts.items() if e is not None]
-    if not dated:
-        raise ValueError("no XBRL context carries an end date")
+    durations = [
+        c for c in _with_reported_periods(root, contexts)
+        if not c.instant and c.start is not None and c.end is not None
+    ]
+    if not durations:
+        raise ValueError("no XBRL duration context; nothing to read a quarter from")
 
-    latest_end = max(e for _, _, e in dated)
-    candidates = [(cid, s, e) for cid, s, e in dated if e == latest_end]
-    chosen_id, chosen_start, chosen_end = min(
-        candidates,
-        key=lambda t: (t[2] - t[1]).days if t[1] else 0,
+    latest_end = max(c.end for c in durations)
+    chosen = min(
+        (c for c in durations if c.end == latest_end),
+        key=lambda c: c.span_days,
     )
 
-    # 3. Facts in that context.
-    facts = XbrlFacts(period_start=chosen_start, period_end=chosen_end)
+    facts = XbrlFacts(period_start=chosen.start, period_end=chosen.end)
     for node in root.iter():
         ctx_ref = node.get("contextRef")
-        if ctx_ref != chosen_id or node.text is None:
+        if ctx_ref != chosen.cid or node.text is None:
             continue
         name = _local(node.tag)
         text = node.text.strip()
@@ -305,6 +305,9 @@ class _Context:
         return (self.end - self.start).days
 
 
+_DIMENSION_MEMBERS = frozenset({"explicitmember", "typedmember"})
+
+
 def _contexts(root) -> list[_Context]:
     """Non-dimensional contexts only. See the module docstring on why."""
     out: list[_Context] = []
@@ -314,7 +317,7 @@ def _contexts(root) -> list[_Context]:
         cid = node.get("id")
         if cid is None:
             continue
-        if any(_local(n.tag) == "explicitmember" for n in node.iter()):
+        if any(_local(n.tag) in _DIMENSION_MEMBERS for n in node.iter()):
             continue
         start = end = None
         instant = False
@@ -348,6 +351,20 @@ def _reported_periods(root) -> dict[str, tuple[dt.date | None, dt.date | None]]:
         pair = out.setdefault(cid, [None, None])
         pair[0 if name == _PERIOD_START_ELEMENT else 1] = _parse_date(node.text)
     return {cid: (pair[0], pair[1]) for cid, pair in out.items()}
+
+
+def _with_reported_periods(root, contexts: list[_Context]) -> list[_Context]:
+    """Each duration context's declared period replaced by the one it reports.
+
+    Instants are left alone — the balance-sheet date is the one date in the
+    document that is reliable as declared.
+    """
+    reported = _reported_periods(root)
+    return [
+        c if c.instant or c.cid not in reported
+        else _Context(c.cid, *reported[c.cid], instant=False)
+        for c in contexts
+    ]
 
 
 def _pick_annual(durations: list[_Context]) -> _Context:
@@ -388,15 +405,7 @@ def parse_annual_xbrl(source: str | bytes) -> AnnualFacts:
     if not contexts:
         raise ValueError("no XBRL contexts found; not a valid instance document")
 
-    # Override each duration context's declared period with the one the filing
-    # reports for it. Instants are left alone — the balance-sheet date is the
-    # one date in the document that is reliable as declared.
-    reported = _reported_periods(root)
-    contexts = [
-        c if c.instant or c.cid not in reported
-        else _Context(c.cid, *reported[c.cid], instant=False)
-        for c in contexts
-    ]
+    contexts = _with_reported_periods(root, contexts)
 
     durations = [c for c in contexts if not c.instant and c.end is not None]
     annual = _pick_annual(durations)

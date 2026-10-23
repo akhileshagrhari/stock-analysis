@@ -20,6 +20,21 @@ from stockanalysis.db.database import Database
 SECTORS = ["Financials", "IT", "Energy", "FMCG", "Pharma", "Auto"]
 
 
+@pytest.fixture(autouse=True)
+def _no_serving_postgres(monkeypatch):
+    """Keep every test off any Postgres a developer's .env points at.
+
+    `Settings` reads .env, and the pipeline's last step publishes to whatever
+    SA_PG_DSN names. Without this, a test that runs a default plan would copy
+    synthetic fixtures over a real serving schema. The Postgres tests opt back
+    in explicitly, against SA_TEST_PG_DSN — see test_postgres_serving.py.
+    """
+    from stockanalysis.config import settings
+
+    monkeypatch.setattr(settings, "pg_dsn", None)
+    monkeypatch.setattr(settings, "serve_backend", "duckdb")
+
+
 @pytest.fixture
 def db() -> Database:
     database = Database(":memory:")

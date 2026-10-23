@@ -13,6 +13,9 @@ the current schema) turn into a 503 with an explanation instead of a traceback.
 Response models use `Optional[float]` throughout and the read layer converts NaN
 to None on the way out. A NaN reaching this layer would serialise to a bare
 `NaN`, which is not valid JSON and which strict clients reject outright.
+
+With `SA_SERVE_BACKEND=postgres` the same routes read the Postgres copy that
+`stockanalysis publish` maintains instead of the DuckDB file — see `db.publish`.
 """
 
 from __future__ import annotations
@@ -52,7 +55,16 @@ SIGNALS = ("BUY", "HOLD", "SELL")
 
 
 def get_db() -> Iterator[Database]:
-    """One read-only connection per request; overridden wholesale in tests."""
+    """One read-only connection per request; overridden wholesale in tests.
+
+    DuckDB unless `SA_SERVE_BACKEND=postgres`, in which case the same `queries`
+    SQL runs against the copy `stockanalysis publish` maintains. The handle is
+    then a `PostgresReader` — not a `Database`, but the same `query` method the
+    read layer calls, which is all any route touches.
+    """
+    if settings.serve_backend == "postgres":
+        yield from _postgres_db()
+        return
     try:
         db = Database(settings.db_path, read_only=True)
     except FileNotFoundError as exc:
@@ -71,6 +83,24 @@ def get_db() -> Iterator[Database]:
         yield db
     finally:
         db.close()
+
+
+def _postgres_db() -> Iterator[Database]:
+    """A pooled Postgres connection, with "cannot serve" turned into a 503.
+
+    Imported lazily so the default DuckDB deployment never needs psycopg.
+    """
+    from stockanalysis.db.postgres import (
+        PostgresUnavailable,
+        ServingUnavailable,
+        pooled_reader,
+    )
+
+    try:
+        with pooled_reader() as reader:
+            yield reader
+    except (PostgresUnavailable, ServingUnavailable) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 DB = Annotated[Database, Depends(get_db)]

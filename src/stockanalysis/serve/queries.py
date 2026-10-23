@@ -403,6 +403,8 @@ def latest_signal(db: Database, isin: str) -> Signal | None:
 
 def signal_history(db: Database, isin: str, limit: int = 60) -> list[Signal]:
     """Recent signals for one instrument, oldest first so a chart reads left-to-right."""
+    # `AS recent`: Postgres before 16 rejects an unaliased subquery in FROM, and
+    # this SQL also runs against the published Postgres copy (`db.publish`).
     df = db.query(
         f"""
         SELECT * FROM (
@@ -412,7 +414,7 @@ def signal_history(db: Database, isin: str, limit: int = 60) -> list[Signal]:
             WHERE s.isin = ?
             ORDER BY s.as_of_date DESC
             LIMIT ?
-        ) ORDER BY as_of_date
+        ) AS recent ORDER BY as_of_date
         """,
         [isin, int(limit)],
     )

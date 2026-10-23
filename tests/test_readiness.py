@@ -339,11 +339,24 @@ def test_a_company_with_no_quarterly_rows_is_sent_down_the_free_route(db: Databa
     assert annual.step == "results-index"
 
     # And the plan has to run the free chain in the order that works: the index
-    # upgrades quarterly rows that must exist first, and is fetched so the XBRL
-    # can be read after it. Nothing here should cost money.
+    # carries the XBRL links that both the quarterly and the annual read follow,
+    # so it comes first. Nothing here should cost money.
     steps = report.next_steps()
-    assert steps.index("quarterly") < steps.index("results-index") < steps.index("xbrl")
+    assert steps.index("results-index") < steps.index("quarterly") < steps.index("xbrl")
     assert "extract" not in steps
+
+
+def test_a_quarterly_gap_alone_still_crawls_the_index_first(db: Database):
+    """Quarterly figures are read from the instances the index links to, so a
+    plan for a quarterly gap that skipped the crawl would find nothing to read.
+    The annual route is exhausted here, so nothing else pulls the index in."""
+    isins = _universe(db, n=3)
+    _with_prices(db, isins)
+    _free_route_exhausted(db, isins[0])
+
+    steps = rd.readiness(db, isins[0], AS_OF, index_name=INDEX).next_steps()
+
+    assert steps.index("results-index") < steps.index("quarterly")
 
 
 def test_the_annual_gap_offers_the_free_step_only_while_it_can_close_it(db: Database):
@@ -440,10 +453,10 @@ def test_xbrl_read_to_the_end_of_a_stale_index_does_not_become_a_paid_gap(db: Da
     annual = next(s for s in report.sources if s.key == "annual")
     assert annual.step != "extract"
 
-    # Refreshing the index is the free way forward, and it can only upgrade
-    # quarterly rows that the quarterly ingest has created first.
+    # Refreshing the index is the free way forward, and both reads after it —
+    # quarterly and annual — follow the links it brings.
     steps = report.next_steps()
-    assert steps.index("quarterly") < steps.index("results-index") < steps.index("xbrl")
+    assert steps.index("results-index") < steps.index("quarterly") < steps.index("xbrl")
     assert "extract" not in steps
 
 

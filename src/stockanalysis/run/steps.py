@@ -188,37 +188,86 @@ def _prices(ctx: StepContext) -> None:
 
 
 def _quarterly(ctx: StepContext) -> None:
-    """NSE quarterly results — free, and the cross-check LLM extraction is scored against."""
-    from stockanalysis.ingest.nse_fundamentals import ingest_quarterly
+    """Quarterly revenue, PAT and EPS from the exchange's tagged filings. Free.
 
-    n = ingest_quarterly(
-        ctx.db, isins=ctx.isins, progress=_company_progress(ctx, "results_comparison for")
+    Read from the XBRL instances the filing index links to — the legacy
+    `results_comparison` feed has not moved since the December 2024 quarter,
+    when results moved to the integrated filing. See `ingest.xbrl_quarterly`
+    for why the whole window is re-read rather than only the missing quarters.
+    """
+    from stockanalysis.ingest.xbrl_quarterly import (
+        ingest_quarterly_xbrl,
+        pending_quarterly_filings,
     )
-    ctx.report.summary(**{"quarterly rows stored": n})
-    if n == 0:
-        raise StepSkipped("NSE returned no quarterly results for this company.")
 
+    since = dt.date.today() - dt.timedelta(days=365 * ctx.options.filing_years)
+    refs = pending_quarterly_filings(
+        ctx.db, isins=ctx.isins, since=since,
+        only_missing=not ctx.options.redo_extraction,
+    )
+    if not refs:
+        latest = _latest_quarter(ctx.db, ctx.isins)
+        if latest is not None:
+            ctx.report.summary(**{"latest quarter": str(latest)})
+        raise StepSkipped(
+            "Every quarterly XBRL filing on file is already ingested."
+            if _filing_count(ctx.db, ctx.isins, since)
+            else "No results filings on file for this window. Run `Fetch NSE "
+                 "filing index` first — quarterly figures are read from the "
+                 "XBRL it links to."
+        )
+
+    ctx.report.log(f"Reading {len(refs)} tagged quarterly filing(s) from NSE")
+
+    def progress(i: int, n: int, result) -> None:
+        ref = result.ref
+        row = result.row or {}
+        ctx.report.row(
+            quarter=str(ref.period_end),
+            basis=ref.basis,
+            revenue=_num(row.get("revenue")),
+            pat=_num(row.get("pat")),
+            eps=_num(row.get("eps")),
+            filed=str(ref.knowledge_date),
+            skipped=result.error or "",
+        )
+        if result.error:
+            ctx.report.warn(f"{ref.period_end} {ref.symbol or ref.isin}: {result.error}")
+        ctx.report.progress(i, n, f"{i}/{n} filings")
+        ctx.report.check_cancelled()
+
+    results = ingest_quarterly_xbrl(ctx.db, refs, progress=progress)
+
+    stored = sum(1 for r in results if r.ok)
+    ctx.report.summary(**{"quarterly rows stored": f"{stored}/{len(results)}"})
     latest = _latest_quarter(ctx.db, ctx.isins)
     if latest is not None:
         ctx.report.summary(**{"latest quarter": str(latest)})
-    ctx.report.log(
-        f"{n} quarterly rows. Amounts are in ₹ lakhs as NSE publishes them; "
-        f"the validator converts before comparing."
-    )
+    if stored == 0:
+        if any(r.fetch_failed for r in results):
+            raise RuntimeError(
+                "No filing yielded a usable quarter, and at least one was not "
+                "read at all — see the warnings above. That is a fetch failure "
+                "rather than a verdict on the filings; re-run it."
+            )
+        raise StepSkipped(
+            "Every tagged filing was read and none carries a usable quarter — "
+            "see the warnings above."
+        )
 
 
 def _results_index(ctx: StepContext) -> None:
     """The exchange's filing index: real broadcast dates, and the XBRL links.
 
-    Two things come out of one crawl. The first is point-in-time: quarterly rows
-    are stored with the LODR deadline as an assumed knowledge date, and this
-    replaces it with the date NSE actually broadcast the filing. The second is
-    that `xbrl_url` exists at all — nothing else writes that column, and the
-    free annual path reads nothing but that column.
+    Two indexes, because NSE has two: the legacy financial-results index, which
+    stopped at the December 2024 quarter, and the integrated-filing index that
+    holds everything since. Both land in `results_filings`, and the two steps
+    after this one read nothing but the `xbrl_url` it carries — quarterly
+    figures from every filing, annual figures from the year ends.
 
     Index-wide by date range rather than per company, which is why a
-    single-company run still fetches everyone: the endpoint is index-wide, so
-    100 companies cost a handful of requests instead of a hundred.
+    single-company run still fetches everyone: the endpoints are index-wide, so
+    100 companies cost a few dozen requests instead of hundreds.
     """
     from stockanalysis.ingest.nse_fundamentals import ingest_results_index
 
@@ -226,25 +275,25 @@ def _results_index(ctx: StepContext) -> None:
     years = ctx.options.filing_years
     start = end - dt.timedelta(days=365 * years)
     ctx.report.log(
-        f"Fetching the NSE results index for {start} → {end}. One request per "
-        f"90-day window, covering every company on the exchange — not just "
-        f"{ctx.scope_label}."
+        f"Fetching the NSE results indexes (legacy and integrated) for {start} → "
+        f"{end}. A few requests per 90-day window, covering every company on the "
+        f"exchange — not just {ctx.scope_label}."
     )
 
     matched = ingest_results_index(ctx.db, from_date=start, to_date=end)
     ctx.report.summary(**{"filings matched": matched, "window": f"{years}y"})
     if matched == 0:
         raise StepSkipped(
-            "NSE returned no filings for this window, or none matched a stored "
-            "quarter. Ingest quarterly results first — this step upgrades rows "
-            "that already exist, it does not create them."
+            "NSE returned no filings for this window for any company in the "
+            "universe. Both indexes are unofficial endpoints; if this persists, "
+            "check the warnings in the log for refused requests."
         )
 
     linked = _xbrl_link_count(ctx.db, ctx.isins)
     ctx.report.summary(**{"annual filings with XBRL": linked})
     ctx.report.log(
         f"{linked} Q4/annual filing(s) for {ctx.scope_label} carry a tagged "
-        f"XBRL instance — those are the ones the next step reads for free."
+        f"XBRL instance — those are the ones the annual step reads for free."
     )
 
 
@@ -641,6 +690,44 @@ def _narrative(ctx: StepContext) -> None:
     ctx.report.log(text)
 
 
+def _publish(ctx: StepContext) -> None:
+    """Copy the site's tables to Postgres and switch the API over atomically.
+
+    Last on purpose. It publishes whatever the steps before it left in DuckDB,
+    and a failed step ends the job before reaching it, so a broken run never
+    reaches the site. Always the full set of site tables, even on a one-company
+    run: a publish is a rebuild rather than a patch, which is what makes it
+    safe to repeat. A cancel mid-copy abandons the release with nothing
+    switched — see `db.publish`.
+    """
+    from stockanalysis.db.postgres import PostgresUnavailable
+    from stockanalysis.db.publish import publish
+
+    def progress(i: int, n: int, table: str, rows: int) -> None:
+        ctx.report.row(table=table, rows=rows)
+        ctx.report.progress(i, n, f"{i}/{n} tables")
+        ctx.report.check_cancelled()
+
+    try:
+        result = publish(ctx.db, progress=progress)
+    except PostgresUnavailable as e:
+        raise StepSkipped(f"{e} The API keeps serving DuckDB.") from e
+
+    ctx.report.summary(**{
+        "release": result.release_id,
+        "rows published": f"{result.total_rows:,}",
+        "replaced": result.previous or "nothing — first publish",
+    })
+    ctx.report.log(
+        f"Schema {result.schema!r} now serves release {result.release_id} "
+        f"({len(result.row_counts)} tables, {result.seconds:.1f}s)"
+    )
+    for name in result.drop_failures:
+        ctx.report.warn(
+            f"Could not drop the old release {name}; the next publish retries it."
+        )
+
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -677,12 +764,28 @@ def _price_stats(db: Database, isins: list[str] | None) -> dict | None:
 
 
 def _xbrl_link_count(db: Database, isins: list[str] | None) -> int:
-    """Annual filings with a tagged instance — what `xbrl` has left to read."""
+    """Company-years with a tagged annual instance — what `xbrl` can read.
+
+    From `results_filings`, which is what `pending_annual_filings` reads.
+    `fundamentals_quarterly` holds at most one row per quarter and only for the
+    window the quarterly step covered, so counting there under-reported.
+    """
     where, params = ("AND isin = ?", [isins[0]]) if isins else ("", [])
     df = db.query(
-        f"SELECT COUNT(*) AS c FROM fundamentals_quarterly "
+        f"SELECT COUNT(DISTINCT (isin, period_end_date)) AS c FROM results_filings "
         f"WHERE relating_to = 'Fourth Quarter' AND xbrl_url LIKE '%.xml' {where}",
         params,
+    )
+    return int(df["c"].iloc[0]) if not df.empty else 0
+
+
+def _filing_count(db: Database, isins: list[str] | None, since: dt.date) -> int:
+    """Results filings with an instance on file for the scope and window."""
+    where, params = ("AND isin = ?", [isins[0]]) if isins else ("", [])
+    df = db.query(
+        f"SELECT COUNT(*) AS c FROM results_filings "
+        f"WHERE xbrl_url LIKE '%.xml' AND period_end_date >= ? {where}",
+        [since, *params],
     )
     return int(df["c"].iloc[0]) if not df.empty else 0
 
@@ -776,20 +879,24 @@ STEPS: tuple[StepSpec, ...] = (
         cost=NETWORK,
     ),
     StepSpec(
-        key="quarterly",
-        label="Ingest quarterly results",
-        description="NSE results_comparison — free, and the LLM cross-check.",
-        run=_quarterly,
-        cost=NETWORK,
-    ),
-    StepSpec(
         key="results-index",
         label="Fetch NSE filing index",
         description=(
-            "Real broadcast dates for the quarterly rows, and the XBRL links "
-            "the free annual step reads. Exchange-wide crawl."
+            "Every results filing on NSE — the legacy index and, since April "
+            "2025, the integrated filing — with broadcast dates and the XBRL "
+            "links the quarterly and annual steps read. Exchange-wide crawl."
         ),
         run=_results_index,
+        cost=NETWORK,
+    ),
+    StepSpec(
+        key="quarterly",
+        label="Ingest quarterly results",
+        description=(
+            "Revenue, PAT and EPS per quarter from NSE's tagged results "
+            "filings. Free, and needs no model."
+        ),
+        run=_quarterly,
         cost=NETWORK,
     ),
     StepSpec(
@@ -862,6 +969,16 @@ STEPS: tuple[StepSpec, ...] = (
         cost=PAID,
         default_on=False,
         scopes=("company",),
+    ),
+    StepSpec(
+        key="publish",
+        label="Publish to Postgres",
+        description=(
+            "Copy the tables the API reads into Postgres and switch the live "
+            "schema over in one transaction. Skips when SA_PG_DSN is unset."
+        ),
+        run=_publish,
+        cost=FREE,
     ),
 )
 
