@@ -357,6 +357,40 @@ def ingest_shareholding_cmd(
         console.print(f"[green]Stored[/green] {n} shareholding rows")
 
 
+@app.command("ingest-corporate-actions")
+def ingest_corporate_actions_cmd(
+    limit: int = typer.Option(None, "--limit"),
+    years: int = typer.Option(10, "--years"),
+) -> None:
+    """Splits, bonuses, dividends and rights from NSE. Free, no LLM.
+
+    What puts a pre-split filing's EPS and share count on the same share basis
+    as the yfinance prices. Each split and bonus is then checked against the
+    stored closes, and a series Yahoo did not adjust is named.
+    """
+    from stockanalysis.ingest.corporate_actions import (
+        ingest_corporate_actions,
+        unadjusted_in_prices,
+    )
+
+    settings.ensure_dirs()
+    until = dt.date.today()
+    with open_db() as db:
+        isins = db.query("SELECT isin FROM instruments ORDER BY isin")["isin"].tolist()
+        if limit:
+            isins = isins[:limit]
+        n = ingest_corporate_actions(
+            db, isins=isins, since=until - dt.timedelta(days=365 * years), until=until
+        )
+        seams = unadjusted_in_prices(db, isins)
+    console.print(f"[green]Stored[/green] {n} corporate actions")
+    for check in seams:
+        console.print(
+            f"  [yellow]{check.symbol} {check.ex_date}[/yellow] prices not adjusted "
+            f"for the {check.ratio:g}x action (moved {check.observed:.2f}x)"
+        )
+
+
 @app.command("ingest-results-index")
 def ingest_results_index_cmd(
     years: int = typer.Option(3, "--years"),

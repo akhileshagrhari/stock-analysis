@@ -67,10 +67,14 @@ CREATE TABLE IF NOT EXISTS prices_daily (
     PRIMARY KEY (isin, date)
 );
 
+-- Populated from NSE's corporate-actions feed (ingest/corporate_actions.py,
+-- which says why NSE rather than Yahoo). `ratio` is read per type: shares
+-- after / shares before for SPLIT and BONUS, new shares offered per share held
+-- for RIGHTS, NULL for DIVIDEND (see `amount`). `details` is NSE's subject.
 CREATE TABLE IF NOT EXISTS corporate_actions (
     isin        VARCHAR NOT NULL,
     ex_date     DATE NOT NULL,
-    action_type VARCHAR NOT NULL,  -- SPLIT | BONUS | DIVIDEND | RIGHTS
+    action_type VARCHAR NOT NULL,  -- SPLIT | BONUS | DIVIDEND | RIGHTS | DEMERGER | BUYBACK
     ratio       DOUBLE,
     details     VARCHAR,
     PRIMARY KEY (isin, ex_date, action_type)
@@ -356,6 +360,12 @@ ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS paid_up_capital DOUB
 ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS face_value DOUBLE;
 ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS paid_up_capital DOUBLE;
 ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS face_value DOUBLE;
+
+-- Dividend per share (₹, on the share basis of the ex-date), the record date,
+-- and where the row came from.
+ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS amount DOUBLE;
+ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS record_date DATE;
+ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS source VARCHAR;
 
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS disclosed_date_source VARCHAR;
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS employee_trust_pct DOUBLE;

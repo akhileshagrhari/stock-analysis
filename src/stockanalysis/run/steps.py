@@ -187,6 +187,47 @@ def _prices(ctx: StepContext) -> None:
         )
 
 
+def _corporate_actions(ctx: StepContext) -> None:
+    """Splits, bonuses, dividends and rights from NSE — the share-basis record.
+
+    After prices on purpose: the step checks each split and bonus against the
+    stored closes, and a series fetched in this same run is the one to check.
+    """
+    from stockanalysis.ingest.corporate_actions import (
+        ingest_corporate_actions,
+        unadjusted_in_prices,
+    )
+
+    n = ingest_corporate_actions(
+        ctx.db, isins=ctx.isins, progress=_company_progress(ctx, "corporate actions for")
+    )
+    ctx.report.summary(**{"actions stored": n})
+
+    where, params = ("WHERE isin = ?", [ctx.isins[0]]) if ctx.isins else ("", [])
+    counts = ctx.db.query(
+        f"SELECT action_type, COUNT(*) AS n FROM corporate_actions {where} "
+        f"GROUP BY action_type ORDER BY action_type",
+        params,
+    )
+    for r in counts.itertuples(index=False):
+        ctx.report.summary(**{r.action_type.lower(): int(r.n)})
+
+    for check in unadjusted_in_prices(ctx.db, ctx.isins):
+        ctx.report.warn(
+            f"{check.symbol or check.isin}: the price series is not adjusted for "
+            f"the {check.ratio:g}x split/bonus on {check.ex_date} — the close moved "
+            f"{check.observed:.2f}x across it. Per-share figures restated by it "
+            f"will be wrong on one side; refetch the prices.",
+            ex_date=str(check.ex_date),
+        )
+    if n == 0:
+        raise StepSkipped(
+            "NSE returned no corporate actions. That is normal for a company "
+            "that has paid no dividend in the window; for the universe it "
+            "usually means the endpoint refused the session."
+        )
+
+
 def _quarterly(ctx: StepContext) -> None:
     """Quarterly revenue, PAT and EPS from the exchange's tagged filings. Free.
 
@@ -876,6 +917,16 @@ STEPS: tuple[StepSpec, ...] = (
         label="Ingest prices",
         description="Daily OHLCV from yfinance, split/bonus adjusted.",
         run=_prices,
+        cost=NETWORK,
+    ),
+    StepSpec(
+        key="corporate-actions",
+        label="Ingest corporate actions",
+        description=(
+            "Splits, bonuses, dividends and rights from NSE. What restates a "
+            "filing's EPS and share count onto the price series' share basis."
+        ),
+        run=_corporate_actions,
         cost=NETWORK,
     ),
     StepSpec(
