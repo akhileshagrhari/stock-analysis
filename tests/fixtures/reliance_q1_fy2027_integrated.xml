@@ -83,6 +83,8 @@
   <in-capmkt:ProfitOrLossAttributableToNonControllingInterests contextRef="OneD" decimals="-7" unitRef="INR">22500000000</in-capmkt:ProfitOrLossAttributableToNonControllingInterests>
   <in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="OneD" decimals="INF" unitRef="INRPerShare">15.48</in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
   <in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="OneD" decimals="INF" unitRef="INRPerShare">15.48</in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:PaidUpValueOfEquityShareCapital contextRef="OneD" decimals="-7" unitRef="INR">135330000000</in-capmkt:PaidUpValueOfEquityShareCapital>
+  <in-capmkt:FaceValueOfEquityShareCapital contextRef="OneD" decimals="INF" unitRef="INRPerShare">10</in-capmkt:FaceValueOfEquityShareCapital>
   <in-capmkt:DescriptionOfItemThatWillNotBeReclassifiedToProfitAndLoss contextRef="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss11">Items that will not be reclassified to Profit or Loss</in-capmkt:DescriptionOfItemThatWillNotBeReclassifiedToProfitAndLoss>
   <in-capmkt:AmountOfItemThatWillNotBeReclassifiedToProfitAndLoss contextRef="D_ItemsThatWillNotBeReclassifiedToProfitAndLoss11" decimals="-7" unitRef="INR">13050000000</in-capmkt:AmountOfItemThatWillNotBeReclassifiedToProfitAndLoss>
 </xbrli:xbrl>

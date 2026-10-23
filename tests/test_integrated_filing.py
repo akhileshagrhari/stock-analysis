@@ -99,6 +99,25 @@ def test_quarterly_parser_reads_the_quarter_not_the_balance_sheet_instant():
     assert v["eps_basic"] == pytest.approx(15.48)
 
 
+def test_the_share_count_is_read_and_face_value_is_not_scaled():
+    """Paid-up capital is an amount, so it is scaled to crore like any other;
+    face value is rupees per share, like EPS, and must not be — scaled, it
+    would put RELIANCE's share count at ten million times what it is."""
+    v = parse_xbrl(RELIANCE_Q1_FY2027.read_bytes()).to_crore()
+    assert v["paid_up_capital"] == pytest.approx(13_533)
+    assert v["face_value"] == pytest.approx(10)
+    assert v["paid_up_capital"] / v["face_value"] == pytest.approx(1_353.3)  # crore shares
+
+
+def test_the_annual_parser_reads_the_share_count_from_the_year():
+    """Legacy format too. Infosys FY2024: 2,075 crore at ₹5 is 415 crore
+    shares, which PAT over EPS (27,234 / 65.62) agrees with."""
+    v = parse_annual_xbrl(INFOSYS_FY2024.read_bytes()).to_crore()
+    shares = v["paid_up_capital"] / v["face_value"]
+    assert shares == pytest.approx(415.0)
+    assert shares == pytest.approx(v["pat"] / v["eps_basic"], rel=1e-3)
+
+
 def test_quarterly_parser_takes_the_quarter_from_a_year_end_filing():
     """The Q4 instance carries the quarter (`OneD`) and the year (`FourD`).
     The quarterly table wants the quarter — the year belongs to the annual
@@ -498,6 +517,8 @@ def test_an_xbrl_quarter_replaces_the_frozen_results_comparison_row(db_with_univ
     assert pd.Timestamp(row["filing_date"]).date() == dt.date(2026, 7, 17)
     assert row["filing_date_source"] == FILING_DATE_FROM_NSE
     assert bool(row["is_consolidated"]) is True
+    assert row["paid_up_capital"] == pytest.approx(13_533)
+    assert row["face_value"] == pytest.approx(10)
 
     # Read once; a second run has nothing left to do.
     assert pending_quarterly_filings(db) == []

@@ -252,6 +252,8 @@ def to_row(ref: QuarterlyFilingRef, facts: XbrlFacts) -> dict:
         "revenue": revenue,
         "pat": v.get("pat"),
         "eps": v.get("eps_basic"),
+        "paid_up_capital": v.get("paid_up_capital"),
+        "face_value": v.get("face_value"),
         "source": SOURCE_XBRL,
         "filing_date_source": (
             FILING_DATE_FROM_NSE if ref.broadcast_date else FILING_DATE_ASSUMED

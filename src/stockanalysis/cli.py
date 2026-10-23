@@ -1378,6 +1378,13 @@ def update_cmd(
     index_name: str = typer.Option(settings.default_index, "--index"),
     as_of: str = typer.Option(None, "--as-of", help="Decision date for scoring"),
     min_coverage: float = typer.Option(0.5, "--min-coverage"),
+    reread_filings: bool = typer.Option(
+        False,
+        "--reread-filings",
+        help="Re-read every XBRL filing on file, not only new ones — what a "
+             "parser change needs to reach rows already stored. Instances are "
+             "cached, so this costs parsing, not requests.",
+    ),
 ) -> None:
     """Run the ingest → extract → score pipeline as one job.
 
@@ -1418,6 +1425,7 @@ def update_cmd(
         index_name=index_name,
         min_coverage=min_coverage,
         as_of=dt.date.fromisoformat(as_of) if as_of else None,
+        redo_extraction=reread_filings,
     )
 
     try:

@@ -128,6 +128,12 @@ ELEMENT_MAP: dict[str, str] = {
     "shareofprofitlossofassociatesandjointventuresaccountedforusingequitymethod": (
         "share_of_associates"
     ),
+    # The share count, as the filing states it: paid-up equity capital over
+    # face value. Tagged on the duration contexts (`OneD`, `FourD`) in every
+    # format on file — legacy, integrated, banking and NBFC alike. RELIANCE
+    # FY2026: 13,532 crore at ₹10 a share is 1,353.2 crore shares.
+    "paidupvalueofequitysharecapital": "paid_up_capital",
+    "facevalueofequitysharecapital": "face_value",
     # ---- balance sheet (instant context) ----
     "assets": "total_assets",
     "equity": "total_equity",
@@ -154,7 +160,7 @@ _PERIOD_END_ELEMENT = "dateofendofreportingperiod"
 ANNUAL_MIN_DAYS = 300
 
 # Figures reported per share are never scaled by the instance's unit.
-_PER_SHARE = frozenset({"eps_basic", "eps_diluted"})
+_PER_SHARE = frozenset({"eps_basic", "eps_diluted", "face_value"})
 
 _NS = re.compile(r"^\{[^}]*\}")
 

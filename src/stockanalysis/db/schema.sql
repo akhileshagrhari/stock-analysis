@@ -347,6 +347,16 @@ CREATE TABLE IF NOT EXISTS results_filings (
     PRIMARY KEY (isin, period_end_date, basis)
 );
 
+-- The share count as each results filing states it: paid-up equity capital
+-- (crore) and face value (rupees). Their ratio is shares outstanding in crore,
+-- on the share basis of that filing's date — see factors/share_basis.py for
+-- how it is restated across a later split or bonus. Stored as the two tagged
+-- figures rather than their ratio, so a reader can check the arithmetic.
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS paid_up_capital DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS face_value DOUBLE;
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS paid_up_capital DOUBLE;
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS face_value DOUBLE;
+
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS disclosed_date_source VARCHAR;
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS employee_trust_pct DOUBLE;
 

@@ -328,6 +328,8 @@ def to_row(ref: AnnualFilingRef, facts: AnnualFacts) -> dict:
         "cash": v.get("cash"),
         "interest_expense": v.get("interest_expense"),
         "tax_expense": v.get("tax_expense"),
+        "paid_up_capital": v.get("paid_up_capital"),
+        "face_value": v.get("face_value"),
         # No element exists for this in the taxonomy. NULL means unknown, and
         # the red flag that reads it must treat it as unknown rather than clean.
         "contingent_liabilities": None,
