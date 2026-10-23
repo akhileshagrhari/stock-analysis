@@ -417,3 +417,61 @@ class TestValueFactorsOnOneBasis:
         panel = load_panel(db, [RELIANCE], self.AS_OF)
         assert panel.price[RELIANCE] == 1310.0
 
+
+# ----------------------------------------------------------------------
+# D1a / D2: a one-company job must not score everyone else on stale prices
+# silently
+# ----------------------------------------------------------------------
+
+
+class TestStalePrices:
+    """The 24 Oct 2026 run fetched one company's prices and scored 78."""
+
+    def _universe(self, db, last_day: dt.date):
+        from conftest import make_instruments, make_membership, make_prices
+
+        instruments = make_instruments(10)
+        db.upsert_df("instruments", instruments, ["isin"])
+        isins = instruments["isin"].tolist()
+        db.upsert_df(
+            "prices_daily", make_prices(isins, dt.date(2022, 1, 3), last_day), ["isin", "date"]
+        )
+        db.upsert_df(
+            "index_membership", make_membership(isins, "TESTIDX", dt.date(2020, 1, 1)),
+            ["index_name", "isin", "from_date"],
+        )
+        return isins
+
+    def test_trend_and_relative_strength_refuse_a_stale_close(self, db):
+        """The value factors already refused it; these read it as today's."""
+        from stockanalysis.factors.momentum import PriceTo200DMA, RelativeStrength
+
+        isins = self._universe(db, last_day=dt.date(2026, 8, 11))
+        fresh = dt.date(2026, 8, 14)
+        stale = dt.date(2026, 10, 24)                  # 74 days on
+        for factor in (PriceTo200DMA(), RelativeStrength()):
+            assert factor.compute(db, isins, fresh).notna().all(), factor.name
+            assert factor.compute(db, isins, stale).isna().all(), factor.name
+
+    def test_the_score_step_says_how_many_were_scored_on_stale_prices(self, db):
+        from stockanalysis.run.events import Reporter
+        from stockanalysis.run.runner import new_job
+        from stockanalysis.run.steps import (
+            STEPS_BY_KEY,
+            Plan,
+            RunOptions,
+            StepContext,
+            _score,
+        )
+
+        isins = self._universe(db, last_day=dt.date(2026, 8, 11))
+        options = RunOptions(index_name="TESTIDX", as_of=dt.date(2026, 10, 24), min_coverage=0.0)
+        job = new_job(Plan(title="t", scope="company", steps=(STEPS_BY_KEY["score"],),
+                           symbol="TEST001", options=options))
+        ctx = StepContext(db=db, report=Reporter(job, "score"), isins=[isins[1]],
+                          symbol="TEST001", options=options)
+        _score(ctx)
+
+        assert job.step("score").summary["stale prices"] == "10/10"
+        warning = next(e.message for e in job.events if "latest price" in e.message)
+        assert "10 of 10" in warning and "TEST001's inputs only" in warning

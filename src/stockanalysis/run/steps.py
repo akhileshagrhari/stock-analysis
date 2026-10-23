@@ -27,12 +27,17 @@ import pandas as pd
 
 from stockanalysis.config import settings
 from stockanalysis.db.database import Database
+from stockanalysis.factors.panel import PRICE_TOLERANCE_DAYS
 from stockanalysis.run.events import Reporter
 
 # What a step costs to run. The UI turns this into a badge and a default.
 FREE = "free"          # local only
 NETWORK = "network"    # unofficial NSE/Yahoo endpoints — rate-limited, slow
 PAID = "paid"          # spends money per call
+
+# A last close older than this, relative to the scoring date, is reported as
+# stale — the same week the prices step already warns at.
+STALE_PRICE_DAYS = 7
 
 
 class StepSkipped(Exception):
@@ -632,6 +637,27 @@ def _score(ctx: StepContext) -> None:
         "signals written": n_signals,
     })
 
+    # Data issues D1-D3: the 24 Oct 2026 run was a one-company job. It fetched
+    # ADANIENSOL's prices and then — scoring being universe-wide — wrote a new
+    # date for 78 companies whose prices stopped ten weeks earlier, with their
+    # value factors uncomputable. Nothing said so. Now the run does.
+    stale = _stale_price_isins(ctx.db, list(table.index), as_of)
+    if stale:
+        ctx.report.summary(**{"stale prices": f"{len(stale)}/{len(table)}"})
+        scope = (
+            f" This job refreshed {ctx.scope_label}'s inputs only, but scoring "
+            f"covers the whole universe, so the others' rows for {as_of} rest "
+            f"on whatever was last fetched for them."
+            if ctx.isins else ""
+        )
+        ctx.report.warn(
+            f"{len(stale)} of {len(table)} companies' latest price is more than "
+            f"{STALE_PRICE_DAYS} days before {as_of}. Past "
+            f"{PRICE_TOLERANCE_DAYS} days their value and momentum factors are "
+            f"not computed at all, and coverage falls accordingly.{scope}",
+            stale=len(stale),
+        )
+
     if ctx.isins and ctx.isins[0] in table.index:
         row = table.loc[ctx.isins[0]]
         signal = row["signal"]
@@ -802,6 +828,21 @@ def _price_stats(db: Database, isins: list[str] | None) -> dict | None:
         "last": pd.Timestamp(df["last"].iloc[0]).date(),
         "n": int(df["n"].iloc[0]),
     }
+
+
+def _stale_price_isins(db: Database, isins: list[str], as_of: dt.date) -> list[str]:
+    """Companies whose last close on or before `as_of` is over a week old, or absent."""
+    if not isins:
+        return []
+    placeholders = ", ".join("?" for _ in isins)
+    df = db.query(
+        f"SELECT isin, MAX(date) AS last FROM prices_daily "
+        f"WHERE isin IN ({placeholders}) AND date <= ? GROUP BY isin",
+        [*isins, as_of],
+    )
+    last = {r.isin: pd.Timestamp(r.last).date() for r in df.itertuples(index=False)}
+    cutoff = as_of - dt.timedelta(days=STALE_PRICE_DAYS)
+    return [i for i in isins if last.get(i) is None or last[i] < cutoff]
 
 
 def _xbrl_link_count(db: Database, isins: list[str] | None) -> int:
