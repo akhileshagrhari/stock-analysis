@@ -441,12 +441,20 @@ def explain(
     as_of: dt.date | None = None,
     config: ScoringConfig | None = None,
 ) -> Explanation | None:
-    """Full reasoning behind one stored signal. None if there is no signal."""
-    signal = queries.latest_signal(db, isin)
+    """Full reasoning behind one stored signal. None if there is no signal.
+
+    The latest signal when `as_of` is None, else the one stored for exactly that
+    date — never the nearest. Everything below reads the same date the signal
+    was stored for: an explanation pairing today's score with another day's
+    factors would describe a number nobody was shown.
+    """
+    signal = (
+        queries.latest_signal(db, isin) if as_of is None
+        else queries.signal_on(db, isin, as_of)
+    )
     if signal is None:
         return None
-    if as_of is None:
-        as_of = signal.as_of
+    as_of = signal.as_of
 
     config = config or ScoringConfig()
     model = CompositeModel(config=config)

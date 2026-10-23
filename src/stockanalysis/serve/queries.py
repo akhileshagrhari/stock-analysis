@@ -448,6 +448,27 @@ def signals_on(
     return [_signal(row) for _, row in df.iterrows()]
 
 
+def signal_on(db: Database, isin: str, as_of: dt.date) -> Signal | None:
+    """The instrument's signal stored for exactly `as_of`, or None.
+
+    No fall-back to the nearest date: a holder comparing today with the day
+    they bought must be told there is no score for that day, not shown the
+    week after's as though it were.
+    """
+    df = db.query(
+        f"""
+        SELECT {_SIGNAL_COLUMNS}
+        FROM signals s
+        JOIN instruments i ON i.isin = s.isin
+        WHERE s.isin = ? AND s.as_of_date = ?
+        """,
+        [isin, as_of],
+    )
+    if df.empty:
+        return None
+    return _signal(df.iloc[0])
+
+
 def latest_signal(db: Database, isin: str) -> Signal | None:
     df = db.query(
         f"""

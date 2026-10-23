@@ -580,17 +580,34 @@ def signal_history(
     response_model=ExplanationOut,
     tags=["signals"],
 )
-def signal_explanation(db: DB, isin: Annotated[str, Path()]) -> ExplanationOut:
-    """Why the latest signal is what it is: the families that carried it, the
-    factors for and against, the news mix, and any red flag that forced it.
+def signal_explanation(
+    db: DB,
+    isin: Annotated[str, Path()],
+    as_of: Annotated[
+        str | None,
+        Query(
+            description=(
+                "YYYY-MM-DD. Explain the signal stored on exactly this date; "
+                "defaults to the latest. A date with no stored signal is a 404, "
+                "never the nearest date's."
+            )
+        ),
+    ] = None,
+) -> ExplanationOut:
+    """Why a signal is what it is: the families that carried it, the factors
+    for and against, the news mix, and any red flag that forced it.
 
-    Rebuilt from the stored factor scores, never re-scored, so it describes the
-    number the other routes return — see `serve.explain`.
+    Rebuilt from that date's stored factor scores, never re-scored, so it
+    describes the number the other routes return — see `serve.explain`. A past
+    date stored under another scoring config is `stale`, exactly as the latest
+    one would be.
     """
     require_instrument(db, isin)
-    reasoning = explain.explain(db, isin)
+    date = parse_as_of(as_of)
+    reasoning = explain.explain(db, isin, date)
     if reasoning is None:
-        raise HTTPException(status_code=404, detail=f"No signal stored for {isin!r}")
+        on = "" if date is None else f" on {date}"
+        raise HTTPException(status_code=404, detail=f"No signal stored for {isin!r}{on}")
     return ExplanationOut.of(reasoning)
 
 
