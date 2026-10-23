@@ -83,6 +83,14 @@ _BUYBACK = re.compile(r"\bbuy\s*-?\s*back\b", re.IGNORECASE)
 _NAMES_A_SHARE_CHANGE = re.compile(
     r"\b(bonus|split|sub-?division|consolidation)\b", re.IGNORECASE
 )
+# A "bonus" of something other than equity shares. TVSMOTOR's August 2025
+# "Scheme Of Arrangement - Bonus Ncrps 4:1" issued preference shares, and
+# Britannia's "Bonus - 1 Debenture For 1 Equity Share Held" debentures; read as
+# equity bonuses they would have cut the EPS of a company whose share count
+# never moved by four-fifths.
+_NOT_EQUITY = re.compile(
+    r"\b(ncrps?|preference|debentures?|ncds?|bonds?)\b", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -108,7 +116,7 @@ def parse_subject(subject: str) -> list[tuple[str, float | None, float | None]]:
     out: list[tuple[str, float | None, float | None]] = []
 
     bonus = _BONUS.search(text)
-    if bonus:
+    if bonus and not _NOT_EQUITY.search(text):
         new, held = float(bonus.group(1)), float(bonus.group(2))
         if held > 0:
             out.append((BONUS, (new + held) / held, None))
@@ -166,12 +174,9 @@ def parse_actions(raw: list[dict] | None, isin: str) -> list[CorporateAction]:
         subject = " ".join(str(record.get("subject") or "").split())
         record_date = _date(record.get("recDate"))
         parsed = parse_subject(subject)
-        # Britannia's "Bonus - 1 Debenture For 1 Equity Share Held" is a bonus
-        # of debentures: the share count does not move, and there is no ratio
-        # to miss.
         if (
             _NAMES_A_SHARE_CHANGE.search(subject)
-            and "debenture" not in subject.lower()
+            and not _NOT_EQUITY.search(subject)
             and not any(t in SHARE_BASIS_ACTIONS for t, _r, _a in parsed)
         ):
             # A share-count change whose ratio could not be read would leave

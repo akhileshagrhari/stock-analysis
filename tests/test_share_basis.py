@@ -169,6 +169,17 @@ class TestParsingNseSubjects:
         assert ca.parse_subject("Demerger") == [(ca.DEMERGER, None, None)]
         assert ca.parse_subject("Annual General Meeting") == []
 
+    def test_a_bonus_of_something_other_than_equity_is_not_a_share_change(self):
+        """Read as equity bonuses, these cut EPS by four-fifths and a half for
+        companies whose share count never moved."""
+        for subject in (
+            "Scheme Of Arrangement - Bonus Ncrps 4:1",
+            "Scheme Of Arangement- Bonus - 1 Debenture For 1 Equity Share Held",
+            "Bonus Issue Of Preference Shares 1:1",
+        ):
+            types = [t for t, _r, _a in ca.parse_subject(subject)]
+            assert not set(types) & set(ca.SHARE_BASIS_ACTIONS), subject
+
     def test_a_response_becomes_one_row_per_date_and_type(self):
         actions = ca.parse_actions(BAJFINANCE_ACTIONS, BAJFINANCE)
         by_type = {(a.ex_date, a.action_type): a for a in actions}
