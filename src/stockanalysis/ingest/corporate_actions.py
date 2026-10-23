@@ -166,8 +166,13 @@ def parse_actions(raw: list[dict] | None, isin: str) -> list[CorporateAction]:
         subject = " ".join(str(record.get("subject") or "").split())
         record_date = _date(record.get("recDate"))
         parsed = parse_subject(subject)
-        if _NAMES_A_SHARE_CHANGE.search(subject) and not any(
-            t in SHARE_BASIS_ACTIONS for t, _r, _a in parsed
+        # Britannia's "Bonus - 1 Debenture For 1 Equity Share Held" is a bonus
+        # of debentures: the share count does not move, and there is no ratio
+        # to miss.
+        if (
+            _NAMES_A_SHARE_CHANGE.search(subject)
+            and "debenture" not in subject.lower()
+            and not any(t in SHARE_BASIS_ACTIONS for t, _r, _a in parsed)
         ):
             # A share-count change whose ratio could not be read would leave
             # every per-share figure across it on the wrong basis, silently.
