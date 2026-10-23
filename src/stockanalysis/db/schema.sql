@@ -58,7 +58,9 @@ CREATE TABLE IF NOT EXISTS prices_daily (
     open          DOUBLE,
     high          DOUBLE,
     low           DOUBLE,
-    close         DOUBLE,          -- raw traded price
+    -- NOT the traded price: Yahoo's Close, split- and bonus-adjusted to the
+    -- share basis at fetch time (not for dividends). See ingest/prices.py.
+    close         DOUBLE,
     adj_close     DOUBLE,          -- adjusted for splits/bonuses/dividends
     volume        BIGINT,
     traded_value  DOUBLE,          -- for liquidity / slippage modelling

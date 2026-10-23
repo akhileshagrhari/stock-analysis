@@ -242,9 +242,11 @@ class QuarterlyFinancials:
 class PriceBar:
     """One trading day from `prices_daily`, in rupees.
 
-    Both closes, because they answer different questions: `close` is the
-    price that traded that day, `adj_close` the one a return across a split
-    or bonus can be computed from.
+    Both closes, because they answer different questions. `close` is the day's
+    close restated to today's share basis — split- and bonus-adjusted, not
+    dividend-adjusted — so before a bonus it is not the price that traded
+    (RELIANCE's 2024 closes are half what it traded at). `adj_close` is also
+    dividend-adjusted, the one a total return is computed from.
     """
 
     date: dt.date
