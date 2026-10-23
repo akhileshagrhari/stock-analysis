@@ -416,7 +416,7 @@ renderView('RELIANCE'):
   expect(within(breakdown()).getByText(/Sentiment wasn't measured/)).toBeInTheDocument();
   // drivers
   expect(screen.getByText('+15.2 SD vs sector')).toBeInTheDocument(); expect(screen.getByText('1.04×')).toBeInTheDocument();
-  expect(screen.getByText('High = cheap on book value')).toBeInTheDocument();
+  expect(screen.getByText('Positive = cheap on book value')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Pulling down' })); expect(screen.getByText('−1.4 SD vs sector')).toBeInTheDocument();
   // news
   expect(screen.getAllByText('Not scored yet').length).toBeGreaterThan(0);   // after switching to "All 19"

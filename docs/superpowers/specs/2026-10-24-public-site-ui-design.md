@@ -55,7 +55,7 @@ The "why" is the centrepiece of the page, not a footnote.
 
 **Data as it stands today (2026-10-24).** These states are real and the UI must handle all of them:
 - **Stale prices.** Prices end **14 Aug 2026**. The pipeline hasn't been re-run since.
-- **Partial latest run.** The latest scored date is **16 Aug 2026**, but only **4** companies were scored that day (RELIANCE, ABB, ADANIGREEN, ADANIENSOL). That looks like a partial run. `/v1/signals` and `/v1/health` treat 16 Aug as "latest", so the signals list shows 4 rows by default. 73 more companies were last scored on **14 Aug 2026**.
+- **Partial latest run.** The latest scored date is **16 Aug 2026**, but only **4** companies were scored that day (RELIANCE, ABB, ADANIGREEN, ADANIENSOL). That looks like a partial run. `/v1/signals` and `/v1/health` treat 16 Aug as "latest", so the signals list shows 4 rows by default. 74 more companies were last scored on **14 Aug 2026**.
 - **Low coverage.** Most companies' latest scores have **coverage 0.23**, meaning 23% of factors were measured. Only the 16 Aug four have 0.65–0.90.
 - **Unscored companies.** **22 of 100** instruments have no signal at all: `/latest` and `/explanation` return 404 "No signal stored". These are mostly banks, NBFCs and insurers (HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, BANKBARODA, CANBK, PNB, UNIONBANK, HDFCLIFE, SBILIFE, BAJAJHLDNG, MUTHOOTFIN, SHRIRAMFIN, TATACAP, RECLTD), plus GAIL, HYUNDAI, LODHA, ULTRACEMCO, TMCV and ENRIN. Banks also have no annual financials, only quarterly revenue, PAT and EPS.
 - **Short history.** Each company has 1–4 snapshots (31 Jul, 14 Aug, 15 Aug, 16 Aug). The model version changed between 14 and 16 Aug (`…a8756fe2` → `…4b05e87d`).
@@ -92,14 +92,14 @@ Resolve `symbol` with `/v1/instruments/by-symbol/{symbol}` and treat it as case-
 | **Score trend** | Total return | Change since first scored (`−4.1`), a sparkline of every snapshot (dots, purple area), a dashed **"model updated"** marker wherever `model_version` changes, "N snapshots · scroll back in Score history". | `/history?limit=500` |
 | **Price** | Price chart | Last close large, change pill and absolute change for the selected period, "NSE close · 14 Aug 2026". Period toggles 1M 3M 6M 1Y 3Y Max (Max = all stored, back to Aug 2020). Line chart with right-hand axis, crosshair and tooltip. Stats row: 52-week high and low, % off the 52-week high, last volume. | `/prices?from=…` |
 | **Checks: news tone** | Sentiment gauge | Half-gauge for the 30-day mix, the label (Positive / Mixed / Negative), counts "1 positive · 1 negative · 1 neutral", and "Too few articles to score sentiment" when the sentiment family is not measured. `news: null` means *no scored news*, which is different from neutral. | `/explanation.news`, `.families` |
-| **Checks: red flags** | Sentiment gauge | Count triggered (big number), then one chip per flag in the model's six: ✓ checked and clear, ✗ triggered (red), **?** couldn't be checked (dashed). Footer: "Unchecked ≠ clean". | `/explanation.red_flags`, `.unknown_flags` + the frontend flag catalogue (§9 gap 4) |
+| **Checks: red flags** | Sentiment gauge | Count triggered (big number), then one chip per flag in the model's six: ✓ checked and clear, ✗ triggered (red), **?** couldn't be checked (dashed). Footer: "Unchecked ≠ clean". | `/explanation.red_flags`, `.unknown_flags` + the frontend flag catalogue (API requirement R3) |
 | **Why this score** | Trade idea | Signal chip and as-of date. A grey panel with a one-line summary built from family verdicts ("Value pulls the score up; quality and momentum pull it down"), badges for the strongest and weakest families with percentiles, and a **coverage pill** ("90% of factors measured"). Underneath, a **scale bar** 0–100 with ticks at the SELL and BUY lines, the score as a dot, and a "17 pts to HOLD" / "6 pts to BUY" pill (the stop/entry/target analog). If `narrative` is non-null, show it here. | `/explanation` |
 
 **Bottom row (three columns on desktop):**
 - **Score breakdown:** one row per family with a diverging contribution bar (zero in the middle, green right, red left), percentile, and weight. A family that wasn't measured gets a hatched bar and "n/m". Footnote: "Percentile within the scored universe on {date}. Contribution = weight × family z. {Unmeasured families} weren't measured, so the others were re-weighted."
 - **Factor drivers:** segmented control *Pulling up / Pulling down*. Each item has a z pill ("+15.2 SD vs sector"), the factor label, the raw value formatted by unit, the meaning line and the family tag. Show the top 4 by default with "show all".
-  - **Meaning line.** The API's `meaning` describes what a *high* value means after the model's sign flip, for example "stronger price trend" for momentum. So render it as **"High = {meaning}"** in both lists. Never write "Weak: stronger price trend".
-  - **Units.** Until gap 5 lands, raw-value units come from a frontend map, `web/src/config/factors.ts`. Verify each one against `src/stockanalysis/factors/*.py` while building:
+  - **Meaning line.** The API's `z` is *sign-adjusted*: positive is always good for the company, whichever way the raw metric runs. `meaning` describes a positive z ("carries less debt" for debt/equity, "stronger price trend" for momentum). So render it as **"Positive = {meaning}"** in both lists. Never "High = …", which would be wrong for debt/equity and accruals, and never "Weak: stronger price trend".
+  - **Units.** Until R3 in the API requirements lands, raw-value units come from a frontend map, `web/src/config/factors.ts`. Verify each one against `src/stockanalysis/factors/*.py` while building:
     - As a percent with one decimal: `earnings_yield`, `ebitda_to_ev`, `fcf_yield`, `roe`, `roce`, `revenue_cagr_3y`, `pat_cagr_3y`, `quarterly_revenue_yoy`, `quarterly_pat_yoy`, `momentum_12_1`, `relative_strength_6m`, `accruals`.
     - As percentage points: `margin_trend`.
     - As a multiple with two decimals: `book_to_price`, `debt_to_equity`, `cfo_to_pat`, `interest_coverage`, `peg_inverse`.
@@ -112,19 +112,19 @@ Resolve `symbol` with `/v1/instruments/by-symbol/{symbol}` and treat it as case-
 - A larger chart of every snapshot: score on y (0–100), shaded SELL/HOLD/BUY bands, model-change markers, coverage shown on hover.
 - A **"Compare with…"** date picker over the snapshot dates. It shows *then vs now* side by side: score, signal, coverage, red flags and unknown flags, and model version. If the model versions differ, show a "not strictly comparable" warning.
 - A table of all snapshots, newest first.
-- *Family-level then-vs-now needs a past-date explanation, which the API doesn't have (§9 gap 1).* Leave visible room for it, for example a "Family changes: coming soon" row. Don't fake it.
+- *Family-level then-vs-now needs a past-date explanation, which the API doesn't have (API requirement R1).* Leave visible room for it, for example a "Family changes: coming soon" row. Don't fake it.
 
 **Financials section:**
 - Segmented *Quarterly / Annual*. Tables scroll horizontally on a phone with a sticky first column.
 - Quarterly (up to 12): revenue, PAT, PAT margin (derived), EPS, and a "Filed" row.
 - Annual: all line items in `line_items` order. A null value renders "—" with the tooltip "Not in the filing". The last rows are derived Debt/Equity and a "Filed · auditor" row.
 - Column labels come from the period end: "Jun '26" for quarters. For annual, "FY26" for a March year-end, otherwise "FY25 (Dec)".
-- Header note: "₹ crore · consolidated/standalone per `basis` · each column dated by when it was filed". The unit is an assumption; see §9 gap 8.
+- Header note: "₹ crore · consolidated/standalone per `basis` · each column dated by when it was filed". The unit is ₹ crore (₹ per share for EPS), as `LineItemOut` documents in code; R17 asks for it in the schema.
 - Banks: no annual rows → show "No annual figures in this company's filings" instead of an empty table.
 
 **Peers section:** same-sector companies scored on the same date (`/v1/signals?sector=…&as_of=…`). Columns: symbol and name, score, signal, coverage. The current company is highlighted. If no other company in the sector was scored that day (true for RELIANCE on 16 Aug today), say so: "No other {sector} company was scored on {date}". Don't silently mix in another date. Unscored companies show peers from the latest scored date, because they have no date of their own.
 
-**Red-flag catalogue.** Until gap 4 lands, the six flags live in `web/src/config/redflags.ts`, copied from `src/stockanalysis/factors/redflags.py::DEFINITIONS`:
+**Red-flag catalogue.** Until R3 lands, the six flags live in `web/src/config/redflags.ts`, copied from `src/stockanalysis/factors/redflags.py::DEFINITIONS`:
 - `promoter_pledge`: Promoter pledge > 25% of promoter holding. No data source.
 - `auditor_qualification`: Auditor qualification, adverse opinion or disclaimer.
 - `weak_cash_conversion`: CFO/PAT < 0.5 for 3 consecutive years.
@@ -153,7 +153,7 @@ A flag is **clear** when it is in neither `red_flags` nor `unknown_flags`. Prefe
   - Change since the previous scored date: computed by fetching `/v1/signals?as_of=<previous date>` and joining on ISIN. Blank if the company wasn't scored then, with a dagger if the model version differs.
 - **Phone:** a card per row.
 - Rows with a null score (below the coverage floor) sort to the bottom labelled "Not scored".
-- Header line: "{N} stocks scored on {date}". When the selected date has far fewer rows than the previous one (today: 4 vs 77), show a notice: *"Only N companies were scored on {date}. Switch to {previous date} for the full list."* The notice links to that date. This is how the partial-run problem shows today (§3, §9 gap 10).
+- Header line: "{N} stocks scored on {date}". When the selected date scored fewer than half the instruments (today: 4 of 100), show a notice: *"Only 4 of 100 companies were scored on 16 Aug 2026. The most recent fuller list is 14 Aug 2026 (77 companies)."* The notice links to that date. This is how the partial-run problem shows today (§3, API requirement R4).
 
 ## 6. Cross-cutting behaviour
 
@@ -239,7 +239,7 @@ These are my decisions, not the owner's. The owner may override them.
   - A small **Playwright** smoke suite loads `/`, `/stocks/RELIANCE`, `/stocks/HDFCBANK`, `/stocks/CHOLAFIN` and `/signals` at 1440 px and 390 px against the running local API, and checks there are no console errors.
 - **Launch config.** Add a `web` entry to `.claude/launch.json` (`npm run dev` in `web/`, port 3000) beside the existing `api` one.
 - **Brand name.** "StockAnalysis" is a placeholder. It lives in one config constant, alongside the signal labels.
-- **Partial latest date.** Home and the signals list default to the API's latest date and *explain* the small count, with a link to the previous date. They don't silently switch to a fuller date. Revisit when gap 10 lands or the pipeline re-runs fully.
+- **Partial latest date.** Home and the signals list default to the API's latest date and *explain* the small count, with a link to the previous date. They don't silently switch to a fuller date. Revisit when R4 lands or the pipeline re-runs fully.
 
 **Left to the builder:**
 - Component breakdown and file layout inside `web/`.
@@ -254,32 +254,36 @@ Backend or API changes, pipeline re-runs, data fixes, deployment and hosting, an
 
 ## 9. API gaps for a follow-up
 
-None of these block v1. Each lists the route, the fields, and why the site wants them.
+These are written up for the backend worker in **[`2026-10-24-site-api-requirements.md`](2026-10-24-site-api-requirements.md)**. Each requirement there has its route, fields, why, a real example, a "done when" check and the site's fallback. None of them blocks v1.
 
-| # | Route / change | Fields | Why |
-|---|---|---|---|
-| 1 | `GET /v1/instruments/{isin}/explanation?as_of=YYYY-MM-DD` | same shape as today, for a past date | **Family-level then-vs-now** in Score history, the core differentiator. Today only the latest breakdown exists. |
-| 2 | `GET /v1/instruments/{isin}/history`: add to each row | `families: [{family, percentile, contribution}]` | Per-family trend lines without one call per date |
-| 3 | `/latest` and `/explanation` 404 bodies, or a new `/v1/instruments/{isin}/status` | `scored: false`, `reason` (`no_signal_row` / `below_coverage_floor` / `sector_unsupported`), `coverage` | Lets an unscored page say *why*. The 22 unscored names (mostly banks) currently get a generic message. |
-| 4 | `GET /v1/model`: add | `coverage_floor`; `red_flags: [{name, description, reachable}]`; `factors: [{name, label, meaning, family, unit}]` | The frontend currently has to hard-code the six flag descriptions (a copy of `factors/redflags.py::DEFINITIONS`) and the factor catalogue. Unreachable flags (pledge, rating) could also be labelled "no data source". |
-| 5 | `FactorOut` / `DriverOut`: add | `unit` (`percent`, `ratio`, `multiple`, `inr`, `days`) | The frontend has to guess whether 0.0785 is 7.85% or 0.0785× |
-| 6 | New `GET /v1/instruments/{isin}/market` (or fields on `/latest`) | market cap, shares outstanding, P/E, P/B, dividend yield, 52-week high/low, as-of date | Standard "key ratios" that investors expect. Deriving them in the browser would be inconsistent with the factors. |
-| 7 | Corporate actions / adjusted EPS | `eps_adjusted` in quarterly and annual rows, or a `/corporate-actions` route | RELIANCE EPS halves at Dec 2024 (1:1 bonus, Oct 2024), so the EPS series isn't comparable across it |
-| 8 | `GET …/financials`: add | `unit` (e.g. `"INR crore"`) | The unit is unstated. Values look like ₹ crore, but that's an assumption. |
-| 9 | Quarterly rows | operating profit / EBITDA, other income, total expenses | Quarterly results have only revenue, PAT and EPS, which is thin for this audience |
-| 10 | `GET /v1/signals?latest=per_instrument` (or `/v1/model.scored_dates` with row counts and a `complete` flag) | — | A partial run (16 Aug, 4 companies) currently becomes "latest" for the list, home counts and `/health`, hiding 73 companies scored on 14 Aug |
-| 11 | `SignalOut`: add | `previous_as_of`, `previous_score`, `previous_signal`, `previous_model_version` | Removes the second `/signals` call and the client join for the "change" column |
-| 12 | `GET /v1/health`: add | `latest_price_date`, `latest_filing_date`, `latest_news_date` | The site-wide freshness card |
-| 13 | `InstrumentOut` | description, website, logo URL. `bse_code` and `listing_date` are null today. | An "About" card and logos |
-| 14 | `NewsOut`: add | `relevance` (primary / incidental) | Market roundups that only mention a company currently count toward its news tone |
-| 15 | `GET /v1/instruments/search`: add (nice to have) | `signal`, `composite_score`, `as_of` | Richer autocomplete rows |
-| 16 | Factor context (nice to have) | sector median / percentile per factor | "vs sector" context beside raw values |
+**P1:**
+- **R1:** explanation for a past date
+- **R2:** why a company isn't scored
+- **R3:** model catalogue (flags, factor units, coverage floor)
+- **R4:** latest-per-instrument signals and run completeness
+- **R5:** previous score on every signal row
+
+**P2:**
+- **R6:** shareholding
+- **R7:** key metrics consistent with the factors
+- **R8:** corporate actions and adjusted EPS
+- **R9:** richer quarterly results
+- **R10:** filing links
+- **R11:** per-family history
+- **R12:** news relevance and sentiment status
+- **R13:** industry and profile
+- **R14:** freshness in health
+
+**P3:**
+- **R15:** score on search results
+- **R16:** sector context per factor
+- **R17:** units in the financials schema
 
 ## 10. Data issues noticed (pipeline, not UI)
 
 Reported for the owner. These are out of scope here.
 
-1. **RELIANCE valuation factors don't match price and EPS.** `earnings_yield` = 7.85%, but EPS ₹59.69 ÷ ₹1,310 ≈ 4.6%. That implies a market cap of about ₹10.3 lakh crore against about ₹17.7 lakh crore actual. The likely cause is a pre-bonus (Oct 2024, 1:1) share count. This also inflates `book_to_price` (+15.2 SD vs sector), which is the **top reason** RELIANCE's value family scores at the 92nd percentile. Other companies with recent bonuses or splits may be affected too.
+1. **RELIANCE's value factors use FY2024 pre-bonus per-share figures against a bonus-adjusted price.** `earnings_yield` 0.07855 = FY24 EPS 102.90 ÷ ₹1,310. `book_to_price` 1.0445 = FY24 equity ÷ 676.6 cr pre-bonus shares ÷ ₹1,310. That's despite FY26 figures having been filed on 24 Apr 2026. `book_to_price` (+15.2 SD) is RELIANCE's **top** stated reason. Details are in the API requirements doc, D1 and D4.
 2. **A partial run on 16 Aug** (4 companies) and a **single-company row on 15 Aug** (ABB, HOLD 50.0) sit in `signals` as if they were full runs.
 3. **Coverage is 0.23 for most companies' latest score.** Only the 16 Aug four were scored with fundamentals.
 4. **News quality.** The newest items aren't sentiment-scored yet. Some items tagged to a company are unrelated market roundups, for example a "stocks to buy" article about other companies scored negative for RELIANCE.
