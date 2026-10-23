@@ -80,3 +80,10 @@ describe("rounding", () => {
     expect(num(0.5)).toBe("1");
   });
 });
+
+describe("todayIso", () => {
+  it("is the date in India, not UTC", async () => {
+    const { todayIso } = await import("@/lib/format");
+    expect(todayIso(new Date("2026-10-23T20:00:00Z"))).toBe("2026-10-24");
+  });
+});

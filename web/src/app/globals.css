@@ -1,49 +1,51 @@
+/* Design tokens, from the approved mock. Colours live only here so a dark
+   theme later is a token swap. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #F5F5F8;
+  --card: #FFFFFF;
+  --line: #ECECF1;
+  --line2: #E2E2E9;
+  --ink: #16161D;
+  --ink2: #55556A;
+  --ink3: #8C8C9C;
+  --accent: #6B3CF0;
+  --accent-soft: #F0EBFE;
+  --accent-ink: #5326D6;
+  --pos: #0F7B57;
+  --pos-soft: #E5F5EE;
+  --neg: #C9302C;
+  --neg-soft: #FDECEA;
+  --hold: #A15C00;
+  --hold-soft: #FFF3DE;
+  --hold-ink: #7A4A00;
+  --price: #2B59E8;
+  --price-soft: #EAF0FF;
+  --muted: #F2F2F6;
+  --muted2: #F7F7FA;
+  --track: #B8B8C6;
+  --radius: 18px;
+  --shadow: 0 1px 2px rgba(20, 20, 40, .04), 0 0 0 1px rgba(20, 20, 40, .035);
+  --font: var(--font-inter), Inter, system-ui, -apple-system, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+* { box-sizing: border-box; }
 
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
+html, body {
   margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--accent-ink); }
+
+.tnum { font-variant-numeric: tabular-nums; }
+.asof { font-size: 12px; color: var(--ink3); }
+.srOnly {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

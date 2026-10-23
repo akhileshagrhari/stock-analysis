@@ -1,0 +1,73 @@
+/* The page container drives every breakpoint (container queries), as in the
+   mock: >=1560 four columns, 1180-1560 three, 720-1180 two, <720 phone. */
+.viewport { container-type: inline-size; container-name: vp; min-height: 100vh; background: var(--bg); }
+.app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+
+.sidebar {
+  background: #FBFBFD; border-right: 1px solid var(--line); padding: 22px 16px;
+  display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px;
+  letter-spacing: -.02em; padding: 0 10px 22px; color: var(--ink); text-decoration: none;
+}
+.mark { width: 28px; height: 28px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; color: #fff; font-size: 14px; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a, .nav .disabled {
+  display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 11px;
+  color: var(--ink2); text-decoration: none; font-size: 14.5px; font-weight: 500;
+}
+.nav a[aria-current="page"] { background: #fff; color: var(--accent-ink); box-shadow: 0 1px 2px rgba(20, 20, 40, .06), 0 0 0 1px var(--line); }
+.nav a:hover { color: var(--ink); }
+.nav .disabled { color: var(--ink3); cursor: default; }
+.soon { margin-left: auto; font-size: 11px; color: var(--ink3); background: #F0F0F4; border-radius: 6px; padding: 1px 6px; }
+.nav svg { width: 18px; height: 18px; flex: none; }
+.navH { font-size: 12.5px; color: var(--ink3); font-weight: 600; padding: 18px 12px 6px; }
+
+.fresh { margin-top: auto; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; font-size: 12.5px; }
+.fresh .t { font-weight: 600; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+.fresh .r { display: flex; justify-content: space-between; color: var(--ink2); padding: 2px 0; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--pos); }
+.r[data-stale="true"] .dot { background: var(--hold); }
+.r[data-stale="unknown"] .dot { background: var(--track); }
+.sideFoot { font-size: 12px; color: var(--ink3); padding: 12px 10px 0; display: flex; justify-content: space-between; }
+
+.main { padding: 20px 28px 40px; min-width: 0; }
+.topbar { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.crumbs { display: flex; align-items: center; gap: 10px; color: var(--ink2); font-size: 15px; min-width: 0; }
+.crumbs a { color: var(--ink2); text-decoration: none; display: inline-flex; }
+.crumbs a:hover { color: var(--ink); }
+.crumbs b { color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topSearch { margin-left: auto; width: 340px; max-width: 100%; }
+
+.mobileTop { display: none; }
+.drawer {
+  border: 0; padding: 22px 16px; margin: 0; height: 100%; max-height: 100%; width: min(300px, 86vw);
+  background: #FBFBFD; display: none; flex-direction: column; gap: 4px;
+}
+.drawer[open] { display: flex; }
+.drawer::backdrop { background: rgba(22, 22, 29, .35); }
+.drawerClose { align-self: flex-end; border: 1px solid var(--line2); background: #fff; border-radius: 10px; width: 36px; height: 36px; cursor: pointer; }
+.mobileSearch { margin: 0 0 14px; }
+
+.disc { border-top: 1px solid var(--line2); padding-top: 18px; margin-top: 34px; font-size: 12.5px; color: var(--ink3); line-height: 1.55; }
+.disc p { margin: 0 0 6px; }
+.disc b { color: var(--ink2); }
+
+@container vp (max-width: 720px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .main { padding: 0 16px 28px; }
+  .topbar { display: none; }
+  .mobileTop {
+    display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 20;
+    background: var(--bg); padding: 12px 0; margin-bottom: 6px;
+  }
+  .mobileTop .brand { padding: 0; font-size: 16px; }
+  .ic {
+    width: 38px; height: 38px; border-radius: 11px; background: #fff; border: 1px solid var(--line2);
+    display: grid; place-items: center; color: var(--ink2); cursor: pointer; padding: 0;
+  }
+  .ic:last-child { margin-left: auto; }
+}

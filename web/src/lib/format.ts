@@ -117,3 +117,8 @@ export function zLabel(z: number): string {
 export function shortModel(version: string): string {
   return version.slice(version.lastIndexOf("-") + 1);
 }
+
+/** Today's date in India, YYYY-MM-DD. */
+export function todayIso(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
