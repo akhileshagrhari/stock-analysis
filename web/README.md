@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StockAnalysis public site
 
-## Getting Started
+Next.js app that renders the read-only FastAPI `/v1` API: home with search, a
+stock page per NSE symbol, and the signals list.
 
-First, run the development server:
+- Design: `docs/superpowers/specs/2026-10-24-public-site-ui-design.md`
+- Plan: `docs/superpowers/plans/2026-10-24-public-site-ui.md`
+- API gaps for the backend: `docs/superpowers/specs/2026-10-24-site-api-requirements.md`
+
+## Run
+
+The API must be running first (`.venv/bin/stockanalysis serve-api`, port 8000).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`SA_API_URL` (default `http://localhost:8000`) is where the API is. Server
+components call it directly; the browser goes through the `/api/v1/*` rewrite in
+`next.config.ts`, so the API needs no CORS settings.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Check
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm test             # unit tests (Vitest, TZ=Asia/Kolkata) against captured fixtures
+npm run typecheck
+npm run lint
+npm run build        # needs no API: every data page renders on request
+npm run e2e          # Playwright smoke at 1440x900 and 390x844; needs the API
+```
 
-## Learn More
+`npm run e2e` uses Playwright's own Chromium (`npx playwright install chromium`).
+To use an installed Google Chrome instead: `PLAYWRIGHT_CHANNEL=chrome npm run e2e`.
 
-To learn more about Next.js, take a look at the following resources:
+## Keep in sync with the API
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `npm run gen:api` after `stockanalysis export-openapi web/openapi.json` (from the repo root) regenerates `src/lib/api/schema.d.ts`.
+- `npm run fixtures` re-captures the test fixtures from a running API. Tests pin values from today's data (for example RELIANCE 28 on 16 Aug 2026), so expect to update assertions after a pipeline run.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Where things live
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/config/`: signal labels (the only place BUY / HOLD / SELL are written), brand, red-flag and factor catalogues.
+- `src/lib/`: formatting and all view logic as plain functions (tested).
+- `src/components/`: shell, charts (hand-rolled SVG), stock page, signals, home, learn pages.
