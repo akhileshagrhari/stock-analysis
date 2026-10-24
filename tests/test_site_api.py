@@ -998,3 +998,40 @@ class TestR13InstrumentProfile:
         assert listed[isin]["industry"] == "Refineries"
         symbol = body["nse_symbol"]
         assert client.get(f"/v1/instruments/by-symbol/{symbol}").json()["industry"] == "Refineries"
+
+
+# ----------------------------------------------------------------------
+# R14 — freshness in /v1/health
+# ----------------------------------------------------------------------
+
+
+class TestR14Freshness:
+    def test_health_says_how_far_each_input_reaches(self, client, two_dates_db):
+        newest = two_dates_db.query(
+            "SELECT (SELECT MAX(date) FROM prices_daily) AS p, "
+            "(SELECT MAX(filing_date) FROM fundamentals_annual) AS f, "
+            "(SELECT MAX(published_at) FROM news) AS n"
+        ).iloc[0]
+        body = client.get("/v1/health").json()
+        assert body["latest_price_date"] == newest["p"].date().isoformat()
+        assert body["latest_filing_date"] == newest["f"].date().isoformat()
+        assert body["latest_news_date"] == newest["n"].date().isoformat()
+
+    def test_the_newer_of_the_two_results_tables_is_the_filing_date(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _upsert_quarters(two_dates_db, [_quarter(isin, dt.date(2023, 9, 30), 4.0)])
+        assert client.get("/v1/health").json()["latest_filing_date"] == "2023-11-09"
+
+    def test_an_unattributed_article_does_not_count_as_news(self, client, two_dates_db):
+        two_dates_db.upsert_df("news", pd.DataFrame([{
+            "news_id": "orphan", "isin": None,
+            "published_at": dt.datetime(2030, 1, 1, 9, 0), "headline": "Nobody's",
+        }]), ["news_id"])
+        assert client.get("/v1/health").json()["latest_news_date"] < "2030-01-01"
+
+    def test_an_empty_database_has_no_dates(self, db):
+        from stockanalysis.serve import queries
+
+        assert vars(queries.freshness(db)) == {
+            "latest_price_date": None, "latest_filing_date": None, "latest_news_date": None,
+        }

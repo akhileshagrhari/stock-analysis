@@ -458,6 +458,29 @@ def latest_complete_as_of(
     return None
 
 
+@dataclass(frozen=True)
+class Freshness:
+    latest_price_date: dt.date | None
+    latest_filing_date: dt.date | None
+    latest_news_date: dt.date | None
+
+
+def freshness(db: Database) -> Freshness:
+    """The newest date each kind of input reaches, across every company."""
+    row = db.query(
+        "SELECT (SELECT MAX(date) FROM prices_daily) AS prices, "
+        "(SELECT MAX(filing_date) FROM fundamentals_quarterly) AS quarterly, "
+        "(SELECT MAX(filing_date) FROM fundamentals_annual) AS annual, "
+        "(SELECT MAX(published_at) FROM news WHERE isin IS NOT NULL) AS news"
+    ).iloc[0]
+    filings = [d for d in (_opt_date(row["quarterly"]), _opt_date(row["annual"])) if d]
+    return Freshness(
+        latest_price_date=_opt_date(row["prices"]),
+        latest_filing_date=max(filings, default=None),
+        latest_news_date=_opt_date(row["news"]),
+    )
+
+
 def latest_as_of(db: Database) -> dt.date | None:
     """Most recent scored date, or None when nothing has been scored yet."""
     df = db.query("SELECT MAX(as_of_date) AS d FROM signals")

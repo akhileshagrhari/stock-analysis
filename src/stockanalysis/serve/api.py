@@ -356,6 +356,20 @@ class HealthOut(BaseModel):
         "of 100); this is the newest date a full list can be read from. Null "
         "when no date qualifies.",
     )
+    latest_price_date: dt.date | None = Field(
+        default=None,
+        description="Newest close stored for any company. A company's own is "
+        "key-metrics.as_of.",
+    )
+    latest_filing_date: dt.date | None = Field(
+        default=None,
+        description="Newest filing date of any stored quarterly or annual "
+        "results, the date the figures became public.",
+    )
+    latest_news_date: dt.date | None = Field(
+        default=None,
+        description="Newest publication date of any article attributed to a company.",
+    )
 
 
 class ScoredDateCountOut(BaseModel):
@@ -942,6 +956,7 @@ def health(db: DB) -> HealthOut:
         instruments=int(counts.iloc[0]["instruments"]),
         signals=int(counts.iloc[0]["signals"]),
         latest_complete_as_of=queries.latest_complete_as_of(db),
+        **vars(queries.freshness(db)),
     )
 
 
