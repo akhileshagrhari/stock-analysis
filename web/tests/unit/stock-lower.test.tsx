@@ -36,6 +36,22 @@ describe("RELIANCE lower sections", () => {
     expect(screen.queryByText(/^Weak:/)).toBeNull();
   });
 
+  it("news: links only http and https URLs", () => {
+    const d = fixtureStock("RELIANCE");
+    const item = d.news.find((n) => n.score !== null)!;
+    const news = [
+      { ...item, headline: "Safe link", url: "https://example.com/a" },
+      { ...item, headline: "Script link", url: "javascript:alert(1)" },
+      { ...item, headline: "Data link", url: "data:text/html,hi" },
+    ];
+    render(<StockPageView data={{ ...d, news }} />);
+    const n = section("news");
+    expect(within(n).getByRole("link", { name: "Safe link" })).toHaveAttribute("href", "https://example.com/a");
+    expect(within(n).queryByRole("link", { name: "Script link" })).toBeNull();
+    expect(within(n).getByText("Script link")).toBeInTheDocument();
+    expect(within(n).queryByRole("link", { name: "Data link" })).toBeNull();
+  });
+
   it("news: scored first, unscored items labelled", async () => {
     const user = userEvent.setup();
     renderView("RELIANCE");

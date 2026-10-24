@@ -17,6 +17,16 @@ function tone(item: NewsItem): { tone: string; text: string } {
 }
 
 /** Recent headlines with their sentiment. An unscored item is never shown as neutral. */
+/** Only http(s) links: a news URL comes from a feed, so anything else (javascript:, data:) isn't linked. */
+function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function NewsCard({ news }: { news: NewsItem[] }) {
   const scoredCount = news.filter((n) => n.label !== null).length;
   const [mode, setMode] = useState<"scored" | "all">(scoredCount ? "scored" : "all");
@@ -51,7 +61,7 @@ export function NewsCard({ news }: { news: NewsItem[] }) {
                 <span className="tnum">{n.published_at ? fmtDate(n.published_at) : "Undated"}</span>
               </div>
               <div className={s.t2} style={{ fontSize: 14.5 }}>
-                {n.url ? (
+                {n.url && isWebUrl(n.url) ? (
                   <a href={n.url} target="_blank" rel="noopener noreferrer">
                     {n.headline ?? n.url}
                   </a>
