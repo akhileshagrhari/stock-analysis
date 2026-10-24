@@ -233,6 +233,13 @@ class FactorOut(BaseModel):
         )
 
 
+class PreviousSignalOut(BaseModel):
+    as_of: dt.date
+    composite_score: float | None = None
+    signal: str | None = None
+    model_version: str | None = None
+
+
 class SignalOut(BaseModel):
     isin: str
     nse_symbol: str
@@ -248,6 +255,12 @@ class SignalOut(BaseModel):
     unknown_flags: list[str] = Field(default_factory=list)
     narrative: str | None = None
     model_version: str | None = None
+    previous: PreviousSignalOut | None = Field(
+        default=None,
+        description="The same instrument's most recent signal strictly before "
+        "this row's as_of, whatever the rows a query returns; null for its first. "
+        "A different model_version means the change is partly the model's.",
+    )
 
     @classmethod
     def of(cls, row: queries.Signal) -> SignalOut:
@@ -264,6 +277,15 @@ class SignalOut(BaseModel):
             unknown_flags=row.unknown_flags,
             narrative=row.narrative,
             model_version=row.model_version,
+            previous=(
+                None if row.previous is None
+                else PreviousSignalOut(
+                    as_of=row.previous.as_of,
+                    composite_score=row.previous.composite_score,
+                    signal=row.previous.signal,
+                    model_version=row.previous.model_version,
+                )
+            ),
         )
 
 

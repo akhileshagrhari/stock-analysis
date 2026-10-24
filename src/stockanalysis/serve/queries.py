@@ -126,6 +126,16 @@ class FactorScore:
 
 
 @dataclass(frozen=True)
+class PreviousSignal:
+    """The same instrument's most recent signal strictly before a row's date."""
+
+    as_of: dt.date
+    composite_score: float | None
+    signal: str | None
+    model_version: str | None
+
+
+@dataclass(frozen=True)
 class Signal:
     isin: str
     nse_symbol: str
@@ -139,6 +149,7 @@ class Signal:
     narrative: str | None = None
     model_version: str | None = None
     sector: str | None = None
+    previous: PreviousSignal | None = None
 
     @property
     def has_red_flag(self) -> bool:
@@ -275,6 +286,13 @@ def _instrument(row: pd.Series) -> Instrument:
 
 
 def _signal(row: pd.Series) -> Signal:
+    previous_date = _opt_date(row.get("prev_as_of_date"))
+    previous = None if previous_date is None else PreviousSignal(
+        as_of=previous_date,
+        composite_score=_opt_float(row.get("prev_composite_score")),
+        signal=_opt_str(row.get("prev_signal")),
+        model_version=_opt_str(row.get("prev_model_version")),
+    )
     return Signal(
         isin=_req_str(row.get("isin")),
         nse_symbol=_req_str(row.get("nse_symbol")),
@@ -288,13 +306,30 @@ def _signal(row: pd.Series) -> Signal:
         unknown_flags=_flag_list(row.get("unknown_flags")),
         narrative=_opt_str(row.get("narrative")),
         model_version=_opt_str(row.get("model_version")),
+        previous=previous,
     )
 
+
+# Every signal row beside the same instrument's row just before it. A window
+# over the whole table, not over whatever a query then filters to: the previous
+# row of a 16 Aug signal is its 14 Aug one even when the query asks only for
+# 16 Aug, or for one row of history. Aliased because Postgres before 16 rejects
+# an unaliased subquery in FROM.
+_SIGNALS = """(
+    SELECT sig.*,
+        LAG(sig.as_of_date) OVER prior AS prev_as_of_date,
+        LAG(sig.composite_score) OVER prior AS prev_composite_score,
+        LAG(sig.signal) OVER prior AS prev_signal,
+        LAG(sig.model_version) OVER prior AS prev_model_version
+    FROM signals sig
+    WINDOW prior AS (PARTITION BY sig.isin ORDER BY sig.as_of_date)
+)"""
 
 _SIGNAL_COLUMNS = """
     s.isin, i.nse_symbol, i.name, i.sector, s.as_of_date, s.composite_score,
     s.signal, s.coverage, s.red_flags, s.unknown_flags, s.narrative,
-    s.model_version
+    s.model_version, s.prev_as_of_date, s.prev_composite_score, s.prev_signal,
+    s.prev_model_version
 """
 
 
@@ -499,7 +534,7 @@ def signals_on(
 
     sql = f"""
         SELECT {_SIGNAL_COLUMNS}
-        FROM signals s
+        FROM {_SIGNALS} AS s
         {newest}
         JOIN instruments i ON i.isin = s.isin
         WHERE {date_filter}
@@ -532,7 +567,7 @@ def signal_on(db: Database, isin: str, as_of: dt.date) -> Signal | None:
     df = db.query(
         f"""
         SELECT {_SIGNAL_COLUMNS}
-        FROM signals s
+        FROM {_SIGNALS} AS s
         JOIN instruments i ON i.isin = s.isin
         WHERE s.isin = ? AND s.as_of_date = ?
         """,
@@ -547,7 +582,7 @@ def latest_signal(db: Database, isin: str) -> Signal | None:
     df = db.query(
         f"""
         SELECT {_SIGNAL_COLUMNS}
-        FROM signals s
+        FROM {_SIGNALS} AS s
         JOIN instruments i ON i.isin = s.isin
         WHERE s.isin = ?
         ORDER BY s.as_of_date DESC
@@ -568,7 +603,7 @@ def signal_history(db: Database, isin: str, limit: int = 60) -> list[Signal]:
         f"""
         SELECT * FROM (
             SELECT {_SIGNAL_COLUMNS}
-            FROM signals s
+            FROM {_SIGNALS} AS s
             JOIN instruments i ON i.isin = s.isin
             WHERE s.isin = ?
             ORDER BY s.as_of_date DESC

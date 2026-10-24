@@ -485,3 +485,78 @@ class TestR4SignalsPerInstrument:
         )
         counts = {c.as_of: c.instruments for c in queries.scored_date_counts(partial_run_db)}
         assert counts[LATER] == 29 and counts[AS_OF] == 30
+
+
+# ----------------------------------------------------------------------
+# R5 — the previous score on every signal row
+# ----------------------------------------------------------------------
+
+
+def _stored(db: Database, isin: str, as_of: dt.date) -> dict:
+    row = db.query(
+        "SELECT as_of_date, composite_score, signal, model_version FROM signals "
+        "WHERE isin = ? AND as_of_date = ?",
+        [isin, as_of],
+    ).iloc[0]
+    return {
+        "as_of": as_of.isoformat(),
+        "composite_score": float(row["composite_score"]),
+        "signal": row["signal"],
+        "model_version": row["model_version"],
+    }
+
+
+class TestR5PreviousScore:
+    def test_a_row_carries_the_one_before_it(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        latest = client.get(f"/v1/instruments/{isin}/latest").json()
+        assert latest["as_of"] == AS_OF.isoformat()
+        assert latest["previous"] == _stored(two_dates_db, isin, EARLIER)
+
+    def test_a_first_row_has_none(self, client, two_dates_db):
+        rows = client.get(f"/v1/signals?as_of={EARLIER}").json()
+        assert rows and all(r["previous"] is None for r in rows)
+
+    def test_the_previous_row_of_a_partial_run_is_the_full_one_before_it(
+        self, client, partial_run_db
+    ):
+        """16 Aug's previous is 14 Aug — not a date the list itself returns."""
+        rows = client.get("/v1/signals").json()
+        assert {r["as_of"] for r in rows} == {LATER.isoformat()}
+        for row in rows:
+            assert row["previous"] == _stored(partial_run_db, row["isin"], AS_OF)
+
+    def test_every_list_carries_it(self, client, partial_run_db):
+        per_instrument = client.get("/v1/signals?latest=per_instrument").json()
+        assert all(r["previous"] is not None for r in per_instrument)
+        later = {r["isin"] for r in per_instrument if r["as_of"] == LATER.isoformat()}
+        for row in per_instrument:
+            expected = AS_OF if row["isin"] in later else EARLIER
+            assert row["previous"]["as_of"] == expected.isoformat()
+
+        flagged = client.get(f"/v1/signals/red-flags?as_of={AS_OF}").json()
+        assert flagged and all(r["previous"]["as_of"] == EARLIER.isoformat() for r in flagged)
+
+    def test_history_reads_previous_from_the_table_not_the_page(self, client, partial_run_db):
+        isin = client.get("/v1/signals").json()[0]["isin"]
+        full = client.get(f"/v1/instruments/{isin}/history").json()
+        assert [r["as_of"] for r in full] == [d.isoformat() for d in (EARLIER, AS_OF, LATER)]
+        assert full[0]["previous"] is None
+        for before, row in zip(full, full[1:], strict=False):
+            assert row["previous"]["as_of"] == before["as_of"]
+            assert row["previous"]["composite_score"] == before["composite_score"]
+
+        one = client.get(f"/v1/instruments/{isin}/history?limit=1").json()
+        assert [r["as_of"] for r in one] == [LATER.isoformat()]
+        assert one[0]["previous"]["as_of"] == AS_OF.isoformat()
+
+    def test_a_model_change_is_visible_on_the_pair(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute(
+            "UPDATE signals SET model_version = 'phase2-composite-oldmodel' "
+            "WHERE isin = ? AND as_of_date = ?",
+            [isin, EARLIER],
+        )
+        latest = client.get(f"/v1/instruments/{isin}/latest").json()
+        assert latest["previous"]["model_version"] == "phase2-composite-oldmodel"
+        assert latest["model_version"] != "phase2-composite-oldmodel"
