@@ -97,8 +97,8 @@ class SiteTable:
 #: Left out on purpose, because nothing a visitor sees is built from them:
 #: the pipeline's bookkeeping (`results_filings`, `filings`, `extraction_*`,
 #: `news_backfill_log`), backtest output (`backtest_*`), the resolver's
-#: `instrument_aliases`, and the universe tables (`index_membership*`,
-#: `corporate_actions`) that only scoring reads. Adding one later is one line.
+#: `instrument_aliases`, and the universe tables (`index_membership*`) that
+#: only scoring reads. Adding one later is one line.
 SITE_TABLES: tuple[SiteTable, ...] = (
     # serve.queries — every API route reads through these.
     SiteTable("instruments"),
@@ -114,6 +114,9 @@ SITE_TABLES: tuple[SiteTable, ...] = (
     # than arriving as a surprise with the route that needs them.
     SiteTable("prices_daily", indexes=(("date",),)),       # PK covers (isin, date)
     SiteTable("shareholding"),
+    # key_metrics restates per-share figures across splits and bonuses, the way
+    # the value factors do (factors.share_basis).
+    SiteTable("corporate_actions"),
 )
 
 # DuckDB column type -> Postgres column type. Anything not listed stops the

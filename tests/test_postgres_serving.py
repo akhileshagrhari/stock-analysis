@@ -99,12 +99,14 @@ class TestSiteTables:
         A route that starts reading a new table must fail here, in the default
         suite, rather than as a 503 on the Postgres backend in production.
         """
+        import stockanalysis.factors.share_basis as share_basis_mod
         import stockanalysis.serve.api as api_mod
         import stockanalysis.serve.explain as explain_mod
         import stockanalysis.serve.queries as queries_mod
 
         referenced: set[str] = set()
-        for module in (queries_mod, explain_mod, api_mod):
+        # share_basis too: key_metrics reads through it.
+        for module in (queries_mod, explain_mod, api_mod, share_basis_mod):
             source = Path(module.__file__).read_text()
             # Upper-case keywords only: SQL here is written that way and prose
             # is not, so "from the" in a docstring is not mistaken for a table.
@@ -301,6 +303,20 @@ def _edge_cases(db: Database) -> None:
             FIRST, [dt.date(2022, 6, 30), dt.date(2022, 9, 30)], [50.5, 50.1]
         ),
         ["isin", "quarter_end"],
+    )
+    # A split and a dividend, so key-metrics restates on both engines: dates
+    # come back as datetime.date from psycopg and as Timestamps from DuckDB.
+    db.upsert_df(
+        "corporate_actions",
+        pd.DataFrame([
+            {"isin": FIRST, "ex_date": dt.date(2023, 3, 1), "action_type": "SPLIT",
+             "ratio": 2.0, "amount": None, "details": "Face value split 10 to 5",
+             "source": "NSE"},
+            {"isin": FIRST, "ex_date": dt.date(2023, 2, 1), "action_type": "DIVIDEND",
+             "ratio": None, "amount": 3.5, "details": "Interim dividend Rs 3.50",
+             "source": "NSE"},
+        ]),
+        ["isin", "ex_date", "action_type"],
     )
     # NaN beside NULL again, and a NULL in the one integer column a route
     # returns: psycopg hands back None in an object column, DuckDB a float NaN.
@@ -774,6 +790,11 @@ PARITY_URLS = [
     f"/v1/instruments/{BAJAJ}/score-status",
     f"/v1/instruments/{NOSIGNAL}/score-status",
     "/v1/instruments/INE_MISSING/score-status",
+    f"/v1/instruments/{FIRST}/key-metrics",
+    f"/v1/instruments/{MM}/key-metrics",
+    f"/v1/instruments/{BAJAJ}/key-metrics",
+    f"/v1/instruments/{NOSIGNAL}/key-metrics",
+    "/v1/instruments/INE_MISSING/key-metrics",
     f"/v1/instruments/{FIRST}/shareholding",
     f"/v1/instruments/{FIRST}/shareholding?quarters=1",
     f"/v1/instruments/{FIRST}/shareholding?quarters=0",

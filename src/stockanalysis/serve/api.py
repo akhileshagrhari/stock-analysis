@@ -34,6 +34,7 @@ browsers on other origins are refused unless named in `SA_API_CORS_ORIGINS`.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 from collections.abc import Iterator
 from typing import Annotated, Literal
@@ -643,6 +644,102 @@ class ScoreStatusOut(BaseModel):
         )
 
 
+_RUPEES = "₹ per share, on the price series' share basis (see restated)."
+
+
+class KeyMetricsOut(BaseModel):
+    """Valuation on the value factors' own share count and price basis.
+
+    Taken at the newest stored close and read only from filings made by then.
+    `pe_annual` is 1 / earnings_yield and `pb` 1 / book_to_price, so the page
+    cannot contradict the score. Every per-share figure is restated onto the
+    share basis of the price series across splits and bonuses after its
+    filing. Null always means unknown or not meaningful, never zero.
+    """
+
+    as_of: dt.date | None = Field(
+        default=None,
+        description="The close every figure is taken at; filings after it are "
+        "ignored. Null when the company has no prices.",
+    )
+    price: float | None = Field(
+        default=None,
+        description="Close on as_of, ₹. The stored series is split- and "
+        "bonus-adjusted to the share basis it was fetched on.",
+    )
+    shares_outstanding_cr: float | None = Field(
+        default=None, description="Shares outstanding, crore, on the price basis."
+    )
+    share_source: Literal["stated", "implied"] | None = Field(
+        default=None,
+        description="stated: paid-up capital over face value, from the newest "
+        "filing that tags them. implied: PAT / EPS of the latest annual results, "
+        "where no filing states the count.",
+    )
+    shares_filing_date: dt.date | None = Field(
+        default=None, description="Filing date of the share count's source."
+    )
+    market_cap_cr: float | None = Field(default=None, description="price × shares, ₹ crore.")
+    eps_ttm: float | None = Field(
+        default=None,
+        description=_RUPEES + " Sum of the four newest quarters; null unless "
+        "four consecutive quarters with EPS are filed.",
+    )
+    pe_ttm: float | None = Field(
+        default=None, description="price / eps_ttm. Null when EPS is zero or negative."
+    )
+    ttm_through: dt.date | None = Field(
+        default=None, description="Period end of the newest quarter in eps_ttm."
+    )
+    ttm_filing_date: dt.date | None = Field(
+        default=None, description="Filing date of the newest quarter in eps_ttm."
+    )
+    eps_annual: float | None = Field(
+        default=None,
+        description=_RUPEES + " Latest annual EPS — the figure earnings_yield uses.",
+    )
+    pe_annual: float | None = Field(
+        default=None,
+        description="price / eps_annual, the inverse of earnings_yield. Null when "
+        "EPS is zero or negative.",
+    )
+    annual_fiscal_year: int | None = None
+    annual_basis: str | None = Field(
+        default=None,
+        description="CONSOLIDATED where the company files it, else STANDALONE.",
+    )
+    annual_filing_date: dt.date | None = Field(
+        default=None, description="Filing date of the annual results used."
+    )
+    book_value_per_share: float | None = Field(
+        default=None, description=_RUPEES + " Total equity / shares; can be negative."
+    )
+    pb: float | None = Field(
+        default=None,
+        description="price / book_value_per_share, the inverse of book_to_price. "
+        "Null when book value is zero or negative.",
+    )
+    dividends_ttm: float | None = Field(
+        default=None,
+        description=_RUPEES + " Dividends with an ex-date in the year to as_of, "
+        "from NSE corporate actions. Null when none were ever fetched for the "
+        "company; 0 when fetched and none paid.",
+    )
+    dividend_yield: float | None = Field(
+        default=None, description="dividends_ttm / price, a fraction (0.0051 is 0.51%)."
+    )
+    high_52w: float | None = Field(
+        default=None, description="Highest high in the year to as_of, ₹."
+    )
+    low_52w: float | None = Field(
+        default=None, description="Lowest low in the year to as_of, ₹."
+    )
+
+    @classmethod
+    def of(cls, row: queries.KeyMetrics) -> KeyMetricsOut:
+        return cls(**dataclasses.asdict(row))
+
+
 _PCT = "Percent of total shares, 0-100 (not a fraction)."
 
 
@@ -969,6 +1066,17 @@ def price_history(
         PriceBarOut(**vars(bar))
         for bar in queries.price_history(db, isin, start_date, end_date)
     ]
+
+
+@route(
+    "/instruments/{isin}/key-metrics",
+    response_model=KeyMetricsOut,
+    tags=["instruments"],
+)
+def instrument_key_metrics(db: DB, isin: Annotated[str, Path()]) -> KeyMetricsOut:
+    """Market cap, P/E, P/B and dividend yield, consistent with the value factors."""
+    require_instrument(db, isin)
+    return KeyMetricsOut.of(queries.key_metrics(db, isin))
 
 
 @route(

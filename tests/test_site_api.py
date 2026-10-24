@@ -609,3 +609,136 @@ class TestR6Shareholding:
     def test_a_company_with_none_is_an_empty_list_and_an_unknown_one_404(self, client):
         assert client.get("/v1/instruments/INE000000029/shareholding").json() == []
         assert client.get("/v1/instruments/INE_MISSING/shareholding").status_code == 404
+
+
+# ----------------------------------------------------------------------
+# R7 — key metrics consistent with the value factors
+# ----------------------------------------------------------------------
+
+
+def _quarter(isin: str, end: dt.date, eps: float, **extra) -> dict:
+    return {
+        "isin": isin,
+        "period_end_date": end,
+        "filing_date": end + dt.timedelta(days=40),
+        "revenue": 250.0,
+        "pat": 40.0,
+        "eps": eps,
+        "is_consolidated": True,
+        **extra,
+    }
+
+
+def _upsert_quarters(db: Database, rows: list[dict]) -> None:
+    db.upsert_df("fundamentals_quarterly", pd.DataFrame(rows), ["isin", "period_end_date"])
+
+
+def _action(db: Database, isin: str, ex: dt.date, kind: str, ratio=None, amount=None):
+    db.upsert_df(
+        "corporate_actions",
+        pd.DataFrame([{
+            "isin": isin, "ex_date": ex, "action_type": kind, "ratio": ratio,
+            "amount": amount, "details": kind, "source": "NSE",
+        }]),
+        ["isin", "ex_date", "action_type"],
+    )
+
+
+class TestR7KeyMetrics:
+    def test_pe_and_pb_are_the_inverse_of_the_factors_on_the_same_close(
+        self, client, two_dates_db
+    ):
+        from stockanalysis.factors.panel import PanelCache
+        from stockanalysis.factors.value import BookToPrice, EarningsYield
+
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        as_of = dt.date.fromisoformat(body["as_of"])
+
+        cache = PanelCache()
+        ey = EarningsYield(cache=cache).compute(two_dates_db, [isin], as_of)[isin]
+        bp = BookToPrice(cache=cache).compute(two_dates_db, [isin], as_of)[isin]
+        panel = cache.get(two_dates_db, [isin], as_of)
+        assert body["pe_annual"] == pytest.approx(1 / ey)
+        assert body["pb"] == pytest.approx(1 / bp)
+        assert body["price"] == pytest.approx(panel.price[isin])
+        assert body["market_cap_cr"] == pytest.approx(panel.market_cap[isin])
+        assert body["share_source"] == panel.share_source[isin]
+
+    def test_the_newest_stated_count_wins_and_names_its_filing(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _upsert_quarters(two_dates_db, [
+            _quarter(isin, dt.date(2023, 6, 30), 4.0, paid_up_capital=120.0, face_value=10.0)
+        ])
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["share_source"] == "stated"
+        assert body["shares_outstanding_cr"] == pytest.approx(12.0)
+        assert body["shares_filing_date"] == "2023-08-09"
+        assert body["market_cap_cr"] == pytest.approx(body["price"] * 12.0)
+
+    def test_a_split_after_the_filing_restates_eps_and_shares(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _upsert_quarters(two_dates_db, [
+            _quarter(isin, dt.date(2023, 6, 30), 4.0, paid_up_capital=120.0, face_value=10.0)
+        ])
+        before = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        _action(two_dates_db, isin, dt.date(2023, 10, 2), "SPLIT", ratio=2.0)
+        after = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+
+        assert after["eps_annual"] == pytest.approx(before["eps_annual"] / 2)
+        assert after["shares_outstanding_cr"] == pytest.approx(24.0)
+        assert after["book_value_per_share"] == pytest.approx(before["book_value_per_share"] / 2)
+
+    def test_ttm_needs_four_consecutive_quarters(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        ends = [dt.date(2022, 12, 31), dt.date(2023, 3, 31), dt.date(2023, 6, 30),
+                dt.date(2023, 9, 30)]
+        _upsert_quarters(two_dates_db, [_quarter(isin, e, 2.5 + i) for i, e in enumerate(ends)])
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["eps_ttm"] == pytest.approx(2.5 + 3.5 + 4.5 + 5.5)
+        assert body["ttm_through"] == "2023-09-30"
+        assert body["pe_ttm"] == pytest.approx(body["price"] / body["eps_ttm"])
+
+        two_dates_db.conn.execute(
+            "DELETE FROM fundamentals_quarterly WHERE isin = ? AND period_end_date = ?",
+            [isin, dt.date(2023, 3, 31)],
+        )
+        gapped = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert gapped["eps_ttm"] is None and gapped["pe_ttm"] is None
+
+    def test_dividends_are_unknown_until_fetched_then_summed_over_the_year(
+        self, client, two_dates_db
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        assert client.get(f"/v1/instruments/{isin}/key-metrics").json()["dividends_ttm"] is None
+
+        _action(two_dates_db, isin, dt.date(2022, 6, 1), "DIVIDEND", amount=9.0)  # too old
+        _action(two_dates_db, isin, dt.date(2023, 3, 1), "DIVIDEND", amount=4.0)
+        _action(two_dates_db, isin, dt.date(2023, 8, 1), "DIVIDEND", amount=2.0)
+        # A 1:1 bonus after the March dividend halves it on today's basis.
+        _action(two_dates_db, isin, dt.date(2023, 5, 1), "BONUS", ratio=2.0)
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["dividends_ttm"] == pytest.approx(4.0 / 2 + 2.0)
+        assert body["dividend_yield"] == pytest.approx(body["dividends_ttm"] / body["price"])
+
+    def test_the_52_week_range_is_the_year_to_the_close(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        year = two_dates_db.query(
+            "SELECT MAX(high) AS hi, MIN(low) AS lo FROM prices_daily "
+            "WHERE isin = ? AND date > ? AND date <= ?",
+            [isin, dt.date.fromisoformat(body["as_of"]) - dt.timedelta(days=365), body["as_of"]],
+        ).iloc[0]
+        assert body["high_52w"] == pytest.approx(year["hi"])
+        assert body["low_52w"] == pytest.approx(year["lo"])
+
+    def test_a_company_without_prices_has_no_valuation(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("DELETE FROM prices_daily WHERE isin = ?", [isin])
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["as_of"] is None and body["price"] is None
+        assert body["market_cap_cr"] is None and body["pe_annual"] is None
+        assert body["eps_annual"] is not None, "the filings are still there"
+
+    def test_an_unknown_isin_is_404(self, client):
+        assert client.get("/v1/instruments/INE_MISSING/key-metrics").status_code == 404

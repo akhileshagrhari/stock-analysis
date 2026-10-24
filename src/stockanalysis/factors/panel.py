@@ -159,15 +159,32 @@ def _latest_price(db: Database, isins: list[str], as_of: dt.date) -> pd.Series:
 
 
 def _shares(panel: Panel) -> tuple[pd.Series, pd.Series]:
+    return share_count(
+        panel.quarterly, panel.annual, panel.col("pat"), panel.col("eps"), panel.isins
+    )
+
+
+def share_count(
+    quarterly: pd.DataFrame,
+    annual: pd.DataFrame,
+    pat: pd.Series,
+    eps: pd.Series,
+    isins: list[str],
+) -> tuple[pd.Series, pd.Series]:
     """Absolute share count per ISIN, and which route produced it.
 
     The newest filing that states the count wins — quarterly before annual,
-    since the quarterly table holds the more recent filing — and PAT / EPS
-    fills in only where no filing states it. Both arrive restated onto the
-    price series' basis.
+    since the quarterly table holds the more recent filing — and PAT / EPS of
+    the latest annual row fills in only where no filing states it. Both arrive
+    restated onto the price series' basis: the frames have been through
+    `share_basis.restate`, and `eps` is the restated figure.
+
+    Takes frames rather than a `Panel` so the API's key metrics apply the very
+    same rule; a market cap on the site that used another count would contradict
+    the book-to-price behind the score.
     """
-    stated = pd.Series(np.nan, index=panel.isins, dtype=float)
-    for frame in (panel.quarterly, panel.annual):
+    stated = pd.Series(np.nan, index=isins, dtype=float)
+    for frame in (quarterly, annual):
         if frame.empty or "shares_crore" not in frame.columns:
             continue
         # Newest first per ISIN in both frames, so the first stated count is
@@ -176,18 +193,18 @@ def _shares(panel: Panel) -> tuple[pd.Series, pd.Series]:
             frame.dropna(subset=["shares_crore"])
             .groupby("isin", sort=False)["shares_crore"].first()
         )
-        stated = stated.fillna(newest.reindex(panel.isins) * 1e7)
+        stated = stated.fillna(newest.reindex(isins) * 1e7)
 
-    implied = _implied_shares(panel)
+    implied = implied_shares(pat.reindex(isins), eps.reindex(isins))
     shares = stated.fillna(implied)
-    source = pd.Series(np.nan, index=panel.isins, dtype=object)
+    source = pd.Series(np.nan, index=isins, dtype=object)
     source[implied.notna()] = SHARES_IMPLIED
     source[stated.notna()] = SHARES_STATED
     return shares.where(shares > 0), source
 
 
-def _implied_shares(panel: Panel) -> pd.Series:
-    """PAT / EPS, in absolute share count. NaN where the ratio is meaningless.
+def implied_shares(pat: pd.Series, eps: pd.Series) -> pd.Series:
+    """PAT (₹ crore) / EPS, in absolute share count. NaN where the ratio is meaningless.
 
     The fallback for a filing that does not state its share count. Both inputs
     come from one filing, so the result inherits that filing's knowledge date
@@ -201,8 +218,8 @@ def _implied_shares(panel: Panel) -> pd.Series:
     And a company that issued stock mid-year has a weighted-average EPS
     denominator that no longer matches its closing share count.
     """
-    pat = panel.col("pat") * 1e7        # crore -> rupees
-    eps = panel.col("eps")
+    pat = pat.astype(float) * 1e7        # crore -> rupees
+    eps = eps.astype(float)
     ok = (eps.abs() >= MIN_ABS_EPS) & (eps > 0) & (pat > 0)
     return (pat / eps).where(ok)
 

@@ -28,6 +28,8 @@ from typing import Any
 import pandas as pd
 
 from stockanalysis.db.database import Database
+from stockanalysis.factors.panel import SHARES_STATED, share_count
+from stockanalysis.factors.share_basis import ShareBasis, restate
 
 # ----------------------------------------------------------------------
 # Coercion
@@ -782,6 +784,195 @@ def shareholding(db: Database, isin: str, quarters: int = 12) -> list[Shareholdi
         )
         for _, row in df.iterrows()
     ]
+
+
+@dataclass(frozen=True)
+class KeyMetrics:
+    """Valuation figures on the value factors' own share count and price basis."""
+
+    as_of: dt.date | None              # the close everything is taken at
+    price: float | None
+    shares_outstanding_cr: float | None
+    share_source: str | None           # panel.SHARES_STATED | SHARES_IMPLIED
+    shares_filing_date: dt.date | None
+    market_cap_cr: float | None
+    eps_ttm: float | None
+    pe_ttm: float | None
+    ttm_through: dt.date | None
+    ttm_filing_date: dt.date | None
+    eps_annual: float | None
+    pe_annual: float | None
+    annual_fiscal_year: int | None
+    annual_basis: str | None
+    annual_filing_date: dt.date | None
+    book_value_per_share: float | None
+    pb: float | None
+    dividends_ttm: float | None
+    dividend_yield: float | None
+    high_52w: float | None
+    low_52w: float | None
+
+
+TTM_QUARTERS = 4
+_YEAR = dt.timedelta(days=365)
+_NO_CUTOFF = dt.date(9999, 12, 31)
+
+# Consolidated where the company files it, else its one basis — the rule
+# `Database.as_of_fundamentals_history` applies for scoring, in SQL the
+# Postgres copy can run.
+_ANNUAL_ON_ONE_BASIS = """
+    SELECT a.* FROM fundamentals_annual a
+    WHERE a.isin = ? AND a.filing_date <= ?
+      AND a.basis = (
+          SELECT CASE
+              WHEN SUM(CASE WHEN b.basis = 'CONSOLIDATED' THEN 1 ELSE 0 END) > 0
+              THEN 'CONSOLIDATED' ELSE MIN(b.basis) END
+          FROM fundamentals_annual b
+          WHERE b.isin = ? AND b.filing_date <= ?
+      )
+    ORDER BY a.period_end_date DESC
+    LIMIT 5
+"""
+
+
+def _first_with(frame: pd.DataFrame, column: str) -> pd.Series | None:
+    """The first (newest) row of `frame` with a value in `column`."""
+    if frame.empty or column not in frame.columns:
+        return None
+    rows = frame[pd.to_numeric(frame[column], errors="coerce").notna()]
+    return None if rows.empty else rows.iloc[0]
+
+
+def _consecutive_quarters(ends: list[dt.date]) -> bool:
+    """Newest first, each about a quarter before the last."""
+    return all(80 <= (a - b).days <= 100 for a, b in zip(ends, ends[1:], strict=False))
+
+
+def key_metrics(db: Database, isin: str) -> KeyMetrics:
+    """Market cap, P/E, P/B and the rest, as the value factors would compute them.
+
+    Taken at the company's newest stored close and read only from what was
+    filed by that day. The share count is the one `factors.panel` scores with —
+    the newest stated count, quarterly first, else PAT / EPS — and every
+    per-share figure is restated onto the price series' share basis by the
+    same `share_basis` rule, so `pe_annual` is exactly 1 / earnings_yield and
+    `pb` exactly 1 / book_to_price on a scoring date.
+    """
+    newest = db.query("SELECT MAX(date) AS d FROM prices_daily WHERE isin = ?", [isin])
+    last = _opt_date(newest.iloc[0]["d"]) if not newest.empty else None
+    bars = pd.DataFrame(columns=["date", "high", "low", "close"])
+    if last is not None:
+        bars = db.query(
+            "SELECT date, high, low, close FROM prices_daily "
+            "WHERE isin = ? AND date > ? ORDER BY date",
+            [isin, last - _YEAR - dt.timedelta(days=45)],
+        )
+        for column in ("high", "low", "close"):
+            bars[column] = pd.to_numeric(bars[column], errors="coerce")
+        bars = bars[bars["close"] > 0]
+    as_of = _opt_date(bars["date"].iloc[-1]) if not bars.empty else None
+    price = _opt_float(bars["close"].iloc[-1]) if not bars.empty else None
+
+    high_52w = low_52w = None
+    if as_of is not None:
+        year = bars[pd.to_datetime(bars["date"]).dt.date > as_of - _YEAR]
+        high_52w = _opt_float(year["high"].fillna(year["close"]).max())
+        low_52w = _opt_float(year["low"].fillna(year["close"]).min())
+
+    cutoff = as_of or _NO_CUTOFF
+    basis = ShareBasis.load(db, [isin])
+    annual = restate(db.query(_ANNUAL_ON_ONE_BASIS, [isin, cutoff, isin, cutoff]), basis)
+    quarterly = restate(
+        db.query(
+            "SELECT * FROM fundamentals_quarterly WHERE isin = ? AND filing_date <= ? "
+            "ORDER BY period_end_date DESC LIMIT 8",
+            [isin, cutoff],
+        ),
+        basis,
+    )
+    latest = annual.iloc[0] if not annual.empty else None
+
+    def latest_value(column: str) -> float | None:
+        return None if latest is None else _opt_float(latest.get(column))
+
+    eps_annual = latest_value("eps")
+    shares, source = share_count(
+        quarterly,
+        annual,
+        pd.Series([latest_value("pat")], index=[isin], dtype=float),
+        pd.Series([eps_annual], index=[isin], dtype=float),
+        [isin],
+    )
+    n_shares = _opt_float(shares.iloc[0])
+    share_source = _opt_str(source.iloc[0])
+    stated_from = _first_with(quarterly, "shares_crore")
+    if stated_from is None:
+        stated_from = _first_with(annual, "shares_crore")
+    shares_row = stated_from if share_source == SHARES_STATED else latest
+
+    ttm_rows = quarterly.head(TTM_QUARTERS)
+    eps_ttm = ttm_through = ttm_filing = None
+    if (
+        len(ttm_rows) == TTM_QUARTERS
+        and pd.to_numeric(ttm_rows["eps"], errors="coerce").notna().all()
+        and _consecutive_quarters([_opt_date(d) for d in ttm_rows["period_end_date"]])
+    ):
+        eps_ttm = _opt_float(pd.to_numeric(ttm_rows["eps"]).sum())
+        ttm_through = _opt_date(ttm_rows["period_end_date"].iloc[0])
+        ttm_filing = _opt_date(ttm_rows["filing_date"].iloc[0])
+
+    equity = latest_value("total_equity")
+    bvps = equity * 1e7 / n_shares if equity is not None and n_shares else None
+
+    dividends = None
+    if as_of is not None:
+        actions = db.query(
+            "SELECT ex_date, action_type, amount FROM corporate_actions WHERE isin = ?",
+            [isin],
+        )
+        if not actions.empty:      # never fetched is unknown, not zero
+            paid = 0.0
+            for row in actions.itertuples(index=False):
+                ex = _opt_date(row.ex_date)
+                amount = _opt_float(row.amount)
+                if (
+                    row.action_type == "DIVIDEND" and amount is not None
+                    and ex is not None and as_of - _YEAR < ex <= as_of
+                ):
+                    paid += amount / basis.factor(isin, ex)
+            dividends = paid
+
+    def over(numerator: float | None, denominator: float | None) -> float | None:
+        if numerator is None or denominator is None or denominator <= 0:
+            return None
+        return numerator / denominator
+
+    market_cap = price * n_shares / 1e7 if price is not None and n_shares else None
+    return KeyMetrics(
+        as_of=as_of,
+        price=price,
+        shares_outstanding_cr=n_shares / 1e7 if n_shares else None,
+        share_source=share_source,
+        shares_filing_date=(
+            None if shares_row is None else _opt_date(shares_row.get("filing_date"))
+        ),
+        market_cap_cr=market_cap,
+        eps_ttm=eps_ttm,
+        pe_ttm=over(price, eps_ttm),
+        ttm_through=ttm_through,
+        ttm_filing_date=ttm_filing,
+        eps_annual=eps_annual,
+        pe_annual=over(price, eps_annual),
+        annual_fiscal_year=None if latest is None else _opt_int(latest.get("fiscal_year")),
+        annual_basis=None if latest is None else _opt_str(latest.get("basis")),
+        annual_filing_date=None if latest is None else _opt_date(latest.get("filing_date")),
+        book_value_per_share=bvps,
+        pb=over(price, bvps),
+        dividends_ttm=dividends,
+        dividend_yield=over(dividends, price),
+        high_52w=high_52w,
+        low_52w=low_52w,
+    )
 
 
 def latest_price_date(db: Database, isin: str) -> dt.date | None:
