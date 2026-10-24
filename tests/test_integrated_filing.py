@@ -109,6 +109,21 @@ def test_the_share_count_is_read_and_face_value_is_not_scaled():
     assert v["paid_up_capital"] / v["face_value"] == pytest.approx(1_353.3)  # crore shares
 
 
+def test_an_annual_row_links_the_instance_it_was_read_from():
+    from stockanalysis.ingest.xbrl_annual import AnnualFilingRef, to_row
+
+    url = (
+        "https://nsearchives.nseindia.com/corporate/xbrl/"
+        "INTEGRATED_FILING_INDAS_1658776_24042026105712_WEB.xml"
+    )
+    ref = AnnualFilingRef(
+        isin=RELIANCE, symbol="RELIANCE", period_end=dt.date(2026, 3, 31),
+        broadcast_date=dt.date(2026, 4, 24), is_consolidated=True, xbrl_url=url,
+    )
+    row = to_row(ref, parse_annual_xbrl(RELIANCE_FY2026.read_bytes()))
+    assert row["source_url"] == url
+
+
 def test_the_annual_parser_reads_the_share_count_from_the_year():
     """Legacy format too. Infosys FY2024: 2,075 crore at ₹5 is 415 crore
     shares, which PAT over EPS (27,234 / 65.62) agrees with."""

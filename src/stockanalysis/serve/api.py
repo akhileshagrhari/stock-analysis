@@ -436,6 +436,13 @@ class AnnualOut(BaseModel):
     # which is not the same thing as a zero.
     values: dict[str, float | None] = Field(default_factory=dict)
     eps_adjusted: float | None = Field(default=None, description=_EPS_ADJUSTED)
+    source_url: str | None = Field(
+        default=None,
+        description="The document the figures were read from: the results "
+        "filing's XBRL instance on nsearchives.nseindia.com (source XBRL), or "
+        "the annual report PDF (source LLM). Null for rows stored before links "
+        "were recorded.",
+    )
 
 
 class QuarterOut(BaseModel):
@@ -466,6 +473,12 @@ class QuarterOut(BaseModel):
         description="Derived, ₹ crore: profit_before_tax + interest_expense + "
         "depreciation, the value factor's own formula. Null for banks and "
         "insurers, and where PBT or depreciation is missing.",
+    )
+    source_url: str | None = Field(
+        default=None,
+        description="The results filing's XBRL instance the figures were read "
+        "from, on nsearchives.nseindia.com. Null for rows from NSE's results "
+        "comparison.",
     )
 
 

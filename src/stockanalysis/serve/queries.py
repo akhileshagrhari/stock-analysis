@@ -233,6 +233,7 @@ class AnnualFinancials:
     confidence: float | None
     values: dict[str, float | None] = field(default_factory=dict)
     eps_adjusted: float | None = None   # values["eps"] on today's share basis
+    source_url: str | None = None       # the XBRL instance or report PDF read
 
 
 # Results formats the annual reader cannot build statements from, by a word in
@@ -283,6 +284,7 @@ class QuarterlyFinancials:
     profit_before_tax: float | None = None
     tax_expense: float | None = None
     ebitda: float | None = None         # derived; see quarterly_financials
+    source_url: str | None = None       # the XBRL instance read
 
 
 @dataclass(frozen=True)
@@ -732,6 +734,7 @@ def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
                     key: _opt_float(row.get(key)) for key, _label in ANNUAL_LINE_ITEMS
                 },
                 eps_adjusted=_adjusted(eps, basis, isin, filed),
+                source_url=_opt_str(row.get("source_url")),
             )
         )
     return out
@@ -792,6 +795,7 @@ def quarterly_financials(
                 ),
                 **{name: _opt_float(row.get(name)) for name in _QUARTERLY_PNL},
                 ebitda=_quarterly_ebitda(row),
+                source_url=_opt_str(row.get("xbrl_url")),
             )
         )
     return out

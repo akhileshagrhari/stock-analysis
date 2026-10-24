@@ -341,6 +341,7 @@ def to_row(ref: AnnualFilingRef, facts: AnnualFacts) -> dict:
         "source": SOURCE_XBRL,
         "extraction_model": "xbrl",
         "source_filing_id": None,
+        "source_url": ref.xbrl_url,
         "extracted_at": dt.datetime.now(),
     }
 

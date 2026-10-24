@@ -846,3 +846,38 @@ class TestR9RicherQuarters:
         (quarter,) = client.get(f"/v1/instruments/{isin}/financials").json()["quarterly"]
         assert quarter["total_income"] is None and quarter["profit_before_tax"] is None
         assert quarter["ebitda"] is None
+
+
+# ----------------------------------------------------------------------
+# R10 — filing links
+# ----------------------------------------------------------------------
+
+
+class TestR10FilingLinks:
+    def test_each_row_links_the_document_it_was_read_from(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        annual_url = "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_1_2.xml"
+        two_dates_db.conn.execute(
+            "UPDATE fundamentals_annual SET source_url = ? WHERE isin = ? AND fiscal_year = 2022",
+            [annual_url, isin],
+        )
+        _upsert_quarters(two_dates_db, [
+            _quarter(isin, dt.date(2022, 12, 31), 4.0, xbrl_url=BANK_FILING),
+            _quarter(isin, dt.date(2022, 9, 30), 4.0, source="NSE_RESULTS_COMPARISON"),
+        ])
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        links = {y["fiscal_year"]: y["source_url"] for y in body["annual"]}
+        assert links[2022] == annual_url
+        assert links[2021] is None, "a row stored before links were recorded"
+        assert [q["source_url"] for q in body["quarterly"]] == [BANK_FILING, None]
+
+    def test_the_pdf_path_links_the_report_it_read(self, scored_db):
+        from stockanalysis.extract.pipeline import _filing_url
+
+        scored_db.upsert_df("filings", pd.DataFrame([{
+            "filing_id": "F1", "isin": "INE000000000", "doc_type": "ANNUAL_REPORT",
+            "broadcast_date": dt.date(2022, 8, 1),
+            "source_url": "https://nsearchives.nseindia.com/annual_reports/AR_1.pdf",
+        }]), ["filing_id"])
+        assert _filing_url(scored_db, "F1").endswith("AR_1.pdf")
+        assert _filing_url(scored_db, "F-missing") is None

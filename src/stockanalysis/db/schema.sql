@@ -381,6 +381,11 @@ ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS interest_expense DOU
 ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS profit_before_tax DOUBLE;
 ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS tax_expense DOUBLE;
 
+-- The document an annual row's figures were read from: the results filing's
+-- XBRL instance, or the annual report PDF the model read. Quarterly rows have
+-- carried theirs as xbrl_url from the start.
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS source_url VARCHAR;
+
 -- ====================================================================
 -- PHASE 2 — factor model
 -- ====================================================================
