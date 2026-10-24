@@ -70,6 +70,7 @@ export function PeersSection({
                     </td>
                     <td style={p.coverage !== null && p.coverage < LOW_COVERAGE ? { color: "var(--hold)" } : undefined}>
                       {p.coverage === null ? "—" : pct(p.coverage, 0)}
+                      {p.coverage !== null && p.coverage < LOW_COVERAGE && <span className="srOnly"> (low coverage)</span>}
                     </td>
                   </tr>
                 );

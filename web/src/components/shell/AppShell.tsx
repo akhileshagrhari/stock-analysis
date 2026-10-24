@@ -31,6 +31,9 @@ export function AppShell({
   const fresh = <FreshnessCard today={today} {...freshness} />;
   return (
     <div className={s.viewport}>
+      <a href="#main" className="skipLink">
+        Skip to content
+      </a>
       <div className={s.app}>
         <aside className={s.sidebar}>
           <Brand />
@@ -41,7 +44,7 @@ export function AppShell({
             <span>{UNIVERSE}</span>
           </div>
         </aside>
-        <main className={s.main}>
+        <main className={s.main} id="main" tabIndex={-1}>
           <MobileNav
             drawer={
               <>

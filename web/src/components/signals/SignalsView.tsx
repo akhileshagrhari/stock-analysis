@@ -179,6 +179,7 @@ export function SignalsView({ data, focusSector = false }: { data: SignalsData; 
                       </td>
                       <td data-low-coverage={r.coverage !== null && r.coverage < LOW_COVERAGE ? "" : undefined}>
                         {r.coverage === null ? "—" : pct(r.coverage, 0)}
+                        {r.coverage !== null && r.coverage < LOW_COVERAGE && <span className="srOnly"> (low coverage)</span>}
                       </td>
                       <td>{flagsText(r)}</td>
                       <td>
@@ -201,6 +202,7 @@ export function SignalsView({ data, focusSector = false }: { data: SignalsData; 
                     <span>Score {r.composite_score === null ? "n/m" : scoreText(r.composite_score)}</span>
                     <span style={r.coverage !== null && r.coverage < LOW_COVERAGE ? { color: "var(--hold)" } : undefined}>
                       Coverage {r.coverage === null ? "—" : pct(r.coverage, 0)}
+                      {r.coverage !== null && r.coverage < LOW_COVERAGE && <span className="srOnly"> (low coverage)</span>}
                     </span>
                     <span>Flags {flagsText(r)}</span>
                     {r.delta !== null && (

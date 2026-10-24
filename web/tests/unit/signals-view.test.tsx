@@ -31,7 +31,9 @@ describe("SignalsView", () => {
     render(<SignalsView data={await loadSignals({ as_of: "2026-08-14" }, get)} />);
     const table = screen.getByRole("table");
     expect(within(table).getByRole("link", { name: /ADANIGREEN/ })).toHaveAttribute("href", "/stocks/ADANIGREEN");
-    expect(table.querySelectorAll("[data-low-coverage]").length).toBeGreaterThan(0);
+    const low = table.querySelectorAll("[data-low-coverage]");
+    expect(low.length).toBeGreaterThan(0);
+    expect(low[0]).toHaveTextContent("(low coverage)");
     expect(screen.getByTestId("signal-cards")).toBeInTheDocument();
   });
 

@@ -85,6 +85,9 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
     renderView("RELIANCE");
     const flags = screen.getByTestId("redflags-card");
     expect(within(flags).getByText("4 unchecked")).toBeInTheDocument();
+    // State in words, not only ✓ / ✗ / ? and colour.
+    expect(flags).toHaveTextContent("? Pledge (unchecked)");
+    expect(flags).toHaveTextContent(/✓ \S.* \(clear\)/);
     expect(within(flags).getByTestId("flags-triggered")).toHaveTextContent("0");
   });
 });

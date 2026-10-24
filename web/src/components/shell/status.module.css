@@ -1,4 +1,4 @@
-.page { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); }
+.page { min-height: 60vh; display: grid; place-items: center; padding: 24px 16px; }
 .box { max-width: 520px; width: 100%; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 28px; }
 .box h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -.02em; }
 .box p { margin: 0 0 18px; color: var(--ink2); line-height: 1.5; }

@@ -28,7 +28,10 @@ export function FreshnessCard({ today, scores, prices, filings }: Props) {
                 <span className={s.dot} aria-hidden="true" />
                 {label}
               </span>
-              <span className="tnum">{date ? fmtDate(date) : "—"}</span>
+              <span className="tnum">
+                {date ? fmtDate(date) : "—"}
+                {stale === "true" && <span className="srOnly"> (over {STALE_AFTER_DAYS} days old)</span>}
+              </span>
             </div>
           );
         })}
