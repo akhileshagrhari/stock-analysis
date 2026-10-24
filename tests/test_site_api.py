@@ -1081,3 +1081,71 @@ class TestR15SearchScores:
         (row,) = client.get("/v1/instruments/search?q=newco").json()
         assert (row["as_of"], row["composite_score"], row["signal"]) == (None, None, None)
         assert row["nse_symbol"] == "NEWCO"
+
+
+# ----------------------------------------------------------------------
+# R16 — sector context per factor
+# ----------------------------------------------------------------------
+
+
+class TestR16SectorContext:
+    def _peers(self, db: Database, isin: str, factor: str) -> pd.Series:
+        return db.query(
+            "SELECT f.raw_value FROM factor_scores f JOIN instruments i ON i.isin = f.isin "
+            "WHERE f.as_of_date = ? AND f.factor_name = ? AND f.raw_value IS NOT NULL "
+            "AND i.sector = (SELECT sector FROM instruments WHERE isin = ?)",
+            [AS_OF, factor, isin],
+        )["raw_value"]
+
+    def test_each_factor_says_where_it_sits_in_its_sector(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        factors = client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+        assert factors
+        for f in factors:
+            peers = self._peers(two_dates_db, isin, f["factor_name"])
+            assert f["sector_n"] == len(peers)
+            assert f["sector_median"] == pytest.approx(peers.median())
+            below = (peers < f["raw_value"]).sum() + (peers == f["raw_value"]).sum() / 2
+            assert f["sector_percentile"] == pytest.approx(100 * below / len(peers))
+            assert f["zscore_basis"] == ("sector" if len(peers) >= 5 else "universe")
+        # Six sectors of five: the fundamental factors are taken within the sector.
+        assert {f["zscore_basis"] for f in factors if f["factor_name"] == "roe"} == {"sector"}
+
+    def test_drivers_carry_the_same_context(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        factors = {
+            f["factor_name"]: f
+            for f in client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+        }
+        explanation = client.get(f"/v1/instruments/{isin}/explanation").json()
+        for d in explanation["strengths"] + explanation["weaknesses"]:
+            for key in ("sector_median", "sector_n", "sector_percentile", "zscore_basis"):
+                assert d[key] == factors[d["name"]][key]
+
+    def test_a_sector_too_small_for_its_own_z_says_so(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        sector = two_dates_db.query(
+            "SELECT sector FROM instruments WHERE isin = ?", [isin]
+        )["sector"].iloc[0]
+        two_dates_db.conn.execute(
+            "DELETE FROM factor_scores WHERE as_of_date = ? AND factor_name = 'roe' "
+            "AND isin IN (SELECT isin FROM instruments WHERE sector = ? AND isin <> ?) "
+            "AND isin IN (SELECT isin FROM instruments WHERE sector = ? ORDER BY isin LIMIT 3)",
+            [AS_OF, sector, isin, sector],
+        )
+        roe = next(
+            f for f in client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+            if f["factor_name"] == "roe"
+        )
+        assert roe["sector_n"] < 5 and roe["zscore_basis"] == "universe"
+
+    def test_a_company_without_a_sector_is_scored_against_the_universe(
+        self, client, two_dates_db
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("UPDATE instruments SET sector = NULL WHERE isin = ?", [isin])
+        factors = client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+        assert all(
+            (f["zscore_basis"], f["sector_n"], f["sector_median"]) == ("universe", None, None)
+            for f in factors
+        )

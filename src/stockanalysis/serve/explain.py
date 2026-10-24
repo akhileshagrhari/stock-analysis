@@ -203,6 +203,20 @@ class FactorDriver:
 
 
 @dataclass(frozen=True)
+class SectorContext:
+    """Where one company's raw value sits among its sector's that day."""
+
+    median: float | None
+    n: int | None           # sector companies with a value, this one included
+    percentile: float | None  # 0-100, raw value ascending
+    zscore_basis: str       # SECTOR, or UNIVERSE when the sector was too small
+
+
+SECTOR = "sector"
+UNIVERSE = "universe"
+
+
+@dataclass(frozen=True)
 class Explanation:
     signal: Signal
     headline: str
@@ -217,6 +231,7 @@ class Explanation:
     stale: bool = False
     stored_version: str | None = None
     current_version: str | None = None
+    sector_context: dict[str, SectorContext] = field(default_factory=dict)
 
 
 # ----------------------------------------------------------------------
@@ -296,6 +311,52 @@ def _family_rows(
     order = {name: i for i, name in enumerate(FAMILY_ORDER)}
     rows.sort(key=lambda r: order.get(r.family, len(order)))
     return rows
+
+
+def sector_context(
+    db: Database, isin: str, as_of: dt.date, config: ScoringConfig | None = None
+) -> dict[str, SectorContext]:
+    """Per factor, the company's sector peers on `as_of`: median, count, rank.
+
+    The group a stored z-score was taken against, which is what makes a "+15 SD
+    vs sector" readable: a robust z over six companies can be very large. The
+    model falls back to the whole universe for a sector with fewer than
+    `min_sector_size` values, and `zscore_basis` says when it did — the sector
+    figures are then context, not the z-score's denominator.
+    """
+    min_size = (config or ScoringConfig()).min_sector_size
+    rows = db.query(
+        "SELECT f.isin, f.factor_name, f.raw_value, i.sector FROM factor_scores f "
+        "JOIN instruments i ON i.isin = f.isin "
+        "WHERE f.as_of_date = ? AND f.raw_value IS NOT NULL",
+        [as_of],
+    )
+    if rows.empty or isin not in set(rows["isin"]):
+        return {}
+    rows["raw_value"] = pd.to_numeric(rows["raw_value"], errors="coerce")
+    sectors = rows.drop_duplicates("isin").set_index("isin")["sector"]
+    sector = queries._opt_str(sectors.get(isin))
+
+    out: dict[str, SectorContext] = {}
+    own = rows[rows["isin"] == isin].set_index("factor_name")["raw_value"]
+    for name, value in own.items():
+        if pd.isna(value):
+            continue
+        if sector is None:
+            out[str(name)] = SectorContext(None, None, None, UNIVERSE)
+            continue
+        peers = rows[(rows["factor_name"] == name) & (rows["sector"] == sector)]
+        values = peers["raw_value"].dropna()
+        n = len(values)
+        below = float((values < value).sum())
+        ties = float((values == value).sum())
+        out[str(name)] = SectorContext(
+            median=queries._opt_float(values.median()),
+            n=n,
+            percentile=100.0 * (below + ties / 2) / n,
+            zscore_basis=SECTOR if n >= min_size else UNIVERSE,
+        )
+    return out
 
 
 def family_history(
@@ -559,6 +620,7 @@ def explain(
         ),
         stored_version=signal.model_version,
         current_version=current_version,
+        sector_context=sector_context(db, isin, as_of, config),
     )
 
 

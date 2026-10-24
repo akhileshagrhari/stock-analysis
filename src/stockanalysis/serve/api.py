@@ -241,19 +241,59 @@ class SearchResultOut(InstrumentOut):
     signal: str | None = None
 
 
-class FactorOut(BaseModel):
+class SectorContextFields(BaseModel):
+    """Where a raw value sits among the company's sector peers that day."""
+
+    sector_median: float | None = Field(
+        default=None,
+        description="Median raw_value of the company's sector that day, in its unit.",
+    )
+    sector_n: int | None = Field(
+        default=None,
+        description="Sector companies with a value that day, this one included.",
+    )
+    sector_percentile: float | None = Field(
+        default=None,
+        description="0-100 rank of raw_value within the sector, ascending: 100 "
+        "is the highest raw value, which for a lower-is-better metric "
+        "(higher_is_better false in /model) is the worst.",
+    )
+    zscore_basis: Literal["sector", "universe"] | None = Field(
+        default=None,
+        description="What the z-score was taken against: the sector, or the "
+        "whole scored universe when fewer than five sector companies had a "
+        "value (or the company has no sector). With universe the sector "
+        "figures are context only.",
+    )
+
+    @staticmethod
+    def context(row: explain.SectorContext | None) -> dict:
+        if row is None:
+            return {}
+        return {
+            "sector_median": row.median,
+            "sector_n": row.n,
+            "sector_percentile": row.percentile,
+            "zscore_basis": row.zscore_basis,
+        }
+
+
+class FactorOut(SectorContextFields):
     factor_name: str
     raw_value: float | None = None
     sector_zscore: float | None = None
     unit: FactorUnit | None = Field(default=None, description=_UNIT_DESCRIPTION)
 
     @classmethod
-    def of(cls, row: queries.FactorScore) -> FactorOut:
+    def of(
+        cls, row: queries.FactorScore, context: explain.SectorContext | None = None
+    ) -> FactorOut:
         return cls(
             factor_name=row.factor_name,
             raw_value=row.raw_value,
             sector_zscore=row.sector_zscore,
             unit=explain.factor_unit(row.factor_name),
+            **SectorContextFields.context(context),
         )
 
 
@@ -318,11 +358,15 @@ class SignalDetailOut(SignalOut):
 
     @classmethod
     def detailed(
-        cls, row: queries.Signal, factors: list[queries.FactorScore]
+        cls,
+        row: queries.Signal,
+        factors: list[queries.FactorScore],
+        context: dict[str, explain.SectorContext] | None = None,
     ) -> SignalDetailOut:
+        context = context or {}
         return cls(
             **SignalOut.of(row).model_dump(),
-            factors=[FactorOut.of(f) for f in factors],
+            factors=[FactorOut.of(f, context.get(f.factor_name)) for f in factors],
         )
 
 
@@ -609,7 +653,7 @@ class HistoryPointOut(SignalOut):
     )
 
 
-class DriverOut(BaseModel):
+class DriverOut(SectorContextFields):
     name: str
     label: str
     meaning: str
@@ -621,7 +665,9 @@ class DriverOut(BaseModel):
     unit: FactorUnit | None = Field(default=None, description=_UNIT_DESCRIPTION)
 
     @classmethod
-    def of(cls, row: explain.FactorDriver) -> DriverOut:
+    def of(
+        cls, row: explain.FactorDriver, context: explain.SectorContext | None = None
+    ) -> DriverOut:
         return cls(
             name=row.name,
             label=row.label,
@@ -630,6 +676,7 @@ class DriverOut(BaseModel):
             raw_value=row.raw_value,
             z=row.z,
             unit=row.unit,
+            **SectorContextFields.context(context),
         )
 
 
@@ -688,8 +735,14 @@ class ExplanationOut(BaseModel):
             headline=reasoning.headline,
             reasons=reasoning.reasons,
             families=[FamilyOut.of(f) for f in reasoning.families],
-            strengths=[DriverOut.of(d) for d in reasoning.strengths],
-            weaknesses=[DriverOut.of(d) for d in reasoning.weaknesses],
+            strengths=[
+                DriverOut.of(d, reasoning.sector_context.get(d.name))
+                for d in reasoning.strengths
+            ],
+            weaknesses=[
+                DriverOut.of(d, reasoning.sector_context.get(d.name))
+                for d in reasoning.weaknesses
+            ],
             news=(
                 None if news is None
                 else NewsMixOut(
@@ -1111,7 +1164,11 @@ def latest_signal(db: DB, isin: Annotated[str, Path()]) -> SignalDetailOut:
     if row is None:
         raise HTTPException(status_code=404, detail=f"No signal stored for {isin!r}")
 
-    return SignalDetailOut.detailed(row, queries.factor_breakdown(db, isin, row.as_of))
+    return SignalDetailOut.detailed(
+        row,
+        queries.factor_breakdown(db, isin, row.as_of),
+        explain.sector_context(db, isin, row.as_of),
+    )
 
 
 @route(
