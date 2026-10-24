@@ -170,6 +170,10 @@ _QUARTER_ORDINALS = {
 # for the 52/53-week retailers and for a first year after incorporation that
 # runs short of twelve months.
 ANNUAL_MIN_DAYS = 300
+# And no longer than this: 53 weeks is the longest fiscal year there is. ENRIN's
+# March 2026 half-year reports `OneD` as fifteen months, a filer error, and an
+# unbounded span read that quarter's P&L as the year.
+ANNUAL_MAX_DAYS = 7 * 53
 
 # Figures reported per share are never scaled by the instance's unit.
 _PER_SHARE = frozenset({"eps_basic", "eps_diluted", "face_value"})
@@ -449,7 +453,8 @@ def _pick_annual(durations: list[_Context]) -> _Context:
 
     annual = [
         c for c in ending_latest
-        if c.span_days is not None and c.span_days >= ANNUAL_MIN_DAYS
+        if c.span_days is not None
+        and ANNUAL_MIN_DAYS <= c.span_days <= ANNUAL_MAX_DAYS
     ]
     if annual:
         # Longest, so a filing carrying both the year and a shorter stub picks
@@ -457,6 +462,13 @@ def _pick_annual(durations: list[_Context]) -> _Context:
         return max(annual, key=lambda c: c.span_days or 0)
 
     longest = max((c.span_days or 0) for c in ending_latest)
+    if longest > ANNUAL_MAX_DAYS:
+        raise NotAnnualFiling(
+            f"longest period ending {latest_end} spans {longest} days, more than "
+            f"the {ANNUAL_MAX_DAYS} of a 53-week year, and nothing between "
+            f"{ANNUAL_MIN_DAYS} and {ANNUAL_MAX_DAYS} days ends there — a filer "
+            f"error or a transition period, not one fiscal year"
+        )
     raise NotAnnualFiling(
         f"longest period ending {latest_end} spans {longest} days, short of the "
         f"{ANNUAL_MIN_DAYS} an annual filing needs — this is a quarterly or "

@@ -33,7 +33,12 @@ from stockanalysis.ingest.nse_fundamentals import (
     parse_integrated_filings,
     record_results_filings,
 )
-from stockanalysis.ingest.xbrl import parse_annual_xbrl, parse_xbrl, reporting_quarter
+from stockanalysis.ingest.xbrl import (
+    NotAnnualFiling,
+    parse_annual_xbrl,
+    parse_xbrl,
+    reporting_quarter,
+)
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 RELIANCE_FY2026 = FIXTURES / "reliance_fy2026_integrated.xml"
@@ -169,6 +174,49 @@ def test_bank_filings_tag_profit_and_eps_under_their_own_names():
     assert v["total_income"] == pytest.approx(133_110.36)
     assert v["pat"] == pytest.approx(19_244.71)
     assert v["eps_basic"] == pytest.approx(12.5)
+
+
+def test_enrin_year_to_september_is_read_as_a_year():
+    """The filing ENRIN's annual row comes from: audited, twelve months to
+    September 2025, with the cash flow tagged."""
+    facts = parse_annual_xbrl(ENRIN_FY2025.read_bytes())
+    v = facts.to_crore()
+
+    assert (facts.period_start, facts.period_end) == (
+        dt.date(2024, 10, 1), dt.date(2025, 9, 30)
+    )
+    assert v["revenue"] == pytest.approx(7_826.7)
+    assert v["pat"] == pytest.approx(1_100.1)
+    assert v["ocf"] == pytest.approx(3_670.1)
+    assert v["total_assets"] == pytest.approx(9_545.2)
+    assert v["total_equity"] == pytest.approx(4_381.3)
+
+
+def test_a_period_longer_than_any_fiscal_year_is_not_a_year():
+    """ENRIN's March 2026 half-year reports `OneD` as 2025-01-01 to 2026-03-31,
+    fifteen months for a quarter: a filer error. With no upper bound on the
+    span the annual reader took it for the year, and only the cash flow being
+    tagged on `FourD` instead kept a quarter's P&L out of `fundamentals_annual`."""
+    with pytest.raises(NotAnnualFiling, match="454 days"):
+        parse_annual_xbrl(ENRIN_H1_FY2026.read_bytes())
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        (dt.date(2024, 4, 1), dt.date(2025, 3, 31)),  # twelve months
+        (dt.date(2023, 4, 1), dt.date(2024, 3, 31)),  # twelve, across a 29 February
+        (dt.date(2023, 4, 2), dt.date(2024, 3, 30)),  # 52 weeks
+        (dt.date(2022, 4, 3), dt.date(2023, 4, 8)),   # 53 weeks
+    ],
+)
+def test_a_year_of_twelve_months_or_52_53_weeks_is_still_a_year(start, end):
+    from stockanalysis.ingest.xbrl import _Context, _pick_annual
+
+    year = _Context("FourD", start, end, instant=False)
+    quarter = _Context("OneD", end - dt.timedelta(days=90), end, instant=False)
+
+    assert _pick_annual([quarter, year]) == year
 
 
 def test_an_integrated_instance_states_its_own_quarter():
