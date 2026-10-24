@@ -33,7 +33,6 @@ flags that, and the caller is expected to say so rather than quietly proceed.
 from __future__ import annotations
 
 import datetime as dt
-import re
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -548,12 +547,6 @@ SCORE_REASONS = (
     NEVER_SCORED,
 )
 
-# Results formats the annual reader cannot build statements from, by a word in
-# the exchange's own file name (…/xbrl/INTEGRATED_FILING_BANKING_1740913_….xml).
-# Every annual filing in these formats has been read and refused: banks tag no
-# revenue line or total equity, life insurers no revenue, profit or equity.
-_UNSUPPORTED_FORMATS = {"BANKING": "banks", "LI": "insurers", "GI": "insurers"}
-_FORMAT = re.compile(r"/([A-Z_]+?)_\d")
 
 
 @dataclass(frozen=True)
@@ -576,21 +569,6 @@ class ScoreStatus:
     factors_measured: int | None
     factors_total: int
     detail: str | None
-
-
-def results_format(xbrl_url: str | None) -> str | None:
-    """The exchange's name for a filing's results format, from its file name."""
-    match = _FORMAT.search(xbrl_url or "")
-    return match.group(1) if match else None
-
-
-def _unsupported(xbrl_url: str | None) -> str | None:
-    """'banks' or 'insurers' when the filing is in a format the model can't read."""
-    words = (results_format(xbrl_url) or "").split("_")
-    for word, kind in _UNSUPPORTED_FORMATS.items():
-        if word in words:
-            return kind
-    return None
 
 
 def _day(date: dt.date) -> str:
@@ -722,7 +700,7 @@ def score_status(
             "ORDER BY period_end_date DESC LIMIT 1",
             [isin],
         )
-        kind = _unsupported(
+        kind = queries.unsupported_kind(
             None if latest_filing.empty else latest_filing.iloc[0]["xbrl_url"]
         )
         if kind is not None:

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -234,13 +235,35 @@ class AnnualFinancials:
     eps_adjusted: float | None = None   # values["eps"] on today's share basis
 
 
+# Results formats the annual reader cannot build statements from, by a word in
+# the exchange's own file name (…/xbrl/INTEGRATED_FILING_BANKING_1740913_….xml).
+# Every annual filing in these formats has been read and refused: banks tag no
+# revenue line or total equity, life insurers no revenue, profit or equity.
+_UNSUPPORTED_FORMATS = {"BANKING": "banks", "LI": "insurers", "GI": "insurers"}
+_FORMAT = re.compile(r"/([A-Z_]+?)_\d")
+
+
+def results_format(xbrl_url: str | None) -> str | None:
+    """The exchange's name for a filing's results format, from its file name."""
+    match = _FORMAT.search(xbrl_url or "")
+    return match.group(1) if match else None
+
+
+def unsupported_kind(xbrl_url: str | None) -> str | None:
+    """'banks' or 'insurers' when the filing is in a format the model can't read."""
+    words = (results_format(xbrl_url) or "").split("_")
+    for word, kind in _UNSUPPORTED_FORMATS.items():
+        if word in words:
+            return kind
+    return None
+
+
 @dataclass(frozen=True)
 class QuarterlyFinancials:
     """One quarter of `fundamentals_quarterly`, in crore except EPS.
 
-    Thin by comparison with the annual row because the free NSE source carries
-    only these three figures — `results_comparison` returns revenue, net profit
-    and EPS and nothing else.
+    Rows read from the quarter's XBRL carry the P&L down to tax; the few NSE's
+    `results_comparison` supplied carry only revenue, net profit and EPS.
     """
 
     period_end: dt.date
@@ -251,6 +274,15 @@ class QuarterlyFinancials:
     pat: float | None
     eps: float | None
     eps_adjusted: float | None = None   # eps on today's share basis
+    basis: str | None = None            # CONSOLIDATED | STANDALONE
+    total_income: float | None = None
+    other_income: float | None = None
+    total_expenses: float | None = None
+    depreciation: float | None = None
+    interest_expense: float | None = None
+    profit_before_tax: float | None = None
+    tax_expense: float | None = None
+    ebitda: float | None = None         # derived; see quarterly_financials
 
 
 @dataclass(frozen=True)
@@ -721,11 +753,11 @@ def quarterly_financials(
     default limit is generous rather than restrictive — it is there to bound the
     page, not to hide history.
     """
+    # `SELECT *` so a database not yet migrated to the P&L columns reads them
+    # as missing rather than failing: a read-only connection cannot migrate.
     df = db.query(
         """
-        SELECT period_end_date, filing_date, relating_to, is_consolidated,
-               revenue, pat, eps
-        FROM fundamentals_quarterly
+        SELECT * FROM fundamentals_quarterly
         WHERE isin = ?
         ORDER BY period_end_date DESC
         LIMIT ?
@@ -754,9 +786,36 @@ def quarterly_financials(
                 pat=_opt_float(row.get("pat")),
                 eps=eps,
                 eps_adjusted=_adjusted(eps, basis, isin, filed),
+                basis=(
+                    None if consolidated is None or pd.isna(consolidated)
+                    else "CONSOLIDATED" if consolidated else "STANDALONE"
+                ),
+                **{name: _opt_float(row.get(name)) for name in _QUARTERLY_PNL},
+                ebitda=_quarterly_ebitda(row),
             )
         )
     return out
+
+
+_QUARTERLY_PNL = (
+    "total_income", "other_income", "total_expenses", "depreciation",
+    "interest_expense", "profit_before_tax", "tax_expense",
+)
+
+
+def _quarterly_ebitda(row: pd.Series) -> float | None:
+    """PBT + finance costs + depreciation — the value factor's own fallback.
+
+    None for banks and insurers: a bank's finance cost is the interest it pays
+    depositors, its main operating cost, so adding it back describes nothing.
+    """
+    if unsupported_kind(_opt_str(row.get("xbrl_url"))) is not None:
+        return None
+    pbt = _opt_float(row.get("profit_before_tax"))
+    depreciation = _opt_float(row.get("depreciation"))
+    if pbt is None or depreciation is None:
+        return None
+    return pbt + (_opt_float(row.get("interest_expense")) or 0.0) + depreciation
 
 
 @dataclass(frozen=True)

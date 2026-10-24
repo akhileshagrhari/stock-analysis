@@ -519,6 +519,15 @@ def test_an_xbrl_quarter_replaces_the_frozen_results_comparison_row(db_with_univ
     assert bool(row["is_consolidated"]) is True
     assert row["paid_up_capital"] == pytest.approx(13_533)
     assert row["face_value"] == pytest.approx(10)
+    # The rest of the quarter's P&L, as RELIANCE's Q1 FY2027 filing tags it.
+    assert row["total_income"] == pytest.approx(318_400)
+    assert row["other_income"] == pytest.approx(6_550)
+    assert row["total_expenses"] == pytest.approx(287_770)
+    assert row["depreciation"] == pytest.approx(15_100)
+    assert row["interest_expense"] == pytest.approx(8_337)
+    assert row["profit_before_tax"] == pytest.approx(30_630)
+    assert row["tax_expense"] == pytest.approx(7_629)
+    assert row["revenue"] + row["other_income"] == pytest.approx(row["total_income"])
 
     # Read once; a second run has nothing left to do.
     assert pending_quarterly_filings(db) == []
@@ -545,6 +554,9 @@ def test_a_quarter_with_no_broadcast_date_is_dated_by_its_deadline(db_with_unive
     assert pd.Timestamp(row["filing_date"]).date() == dt.date(2026, 5, 30)
     assert row["filing_date_source"] == FILING_DATE_ASSUMED
     assert row["revenue"] == pytest.approx(298_621)  # the quarter, not the year
+    assert row["depreciation"] == pytest.approx(14_808)
+    assert row["profit_before_tax"] == pytest.approx(27_195)
+    assert row["revenue"] + row["other_income"] == pytest.approx(row["total_income"])
 
 
 def test_a_bank_quarter_uses_total_income_as_its_top_line(db_with_universe):
@@ -568,6 +580,11 @@ def test_a_bank_quarter_uses_total_income_as_its_top_line(db_with_universe):
     row = db.query("SELECT * FROM fundamentals_quarterly").iloc[0]
     assert row["revenue"] == pytest.approx(133_110.36)
     assert row["pat"] == pytest.approx(19_244.71)
+    assert row["total_income"] == pytest.approx(133_110.36)
+    assert row["other_income"] == pytest.approx(42_535.03)
+    assert row["tax_expense"] == pytest.approx(6_810.47)
+    # Not tagged on the bank's quarter context: unknown, not zero.
+    assert pd.isna(row["profit_before_tax"]) and pd.isna(row["depreciation"])
 
 
 def test_an_instance_for_another_period_is_not_written(db_with_universe):

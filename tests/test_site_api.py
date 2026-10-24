@@ -248,9 +248,11 @@ class TestR2WhyACompanyIsntScored:
         assert "banks'" in body["detail"]
 
     def test_the_results_format_is_read_from_the_exchanges_file_name(self):
-        assert explain.results_format(BANK_FILING) == "INTEGRATED_FILING_BANKING"
-        assert explain._unsupported(BANK_FILING) == "banks"
-        assert explain._unsupported(
+        from stockanalysis.serve import queries
+
+        assert queries.results_format(BANK_FILING) == "INTEGRATED_FILING_BANKING"
+        assert queries.unsupported_kind(BANK_FILING) == "banks"
+        assert queries.unsupported_kind(
             "https://nsearchives.nseindia.com/corporate/xbrl/"
             "INTEGRATED_FILING_LI_1739360_15102026072721_WEB.xml"
         ) == "insurers"
@@ -261,7 +263,7 @@ class TestR2WhyACompanyIsntScored:
             "INTEGRATED_FILING_INDAS_1701291_24072026084853_WEB.xml",
             None,
         ):
-            assert explain._unsupported(url) is None
+            assert queries.unsupported_kind(url) is None
 
     def test_a_company_no_run_has_measured_says_what_it_lacks(self, client, two_dates_db):
         two_dates_db.conn.execute(
@@ -796,3 +798,51 @@ class TestR8CorporateActionsAndAdjustedEps:
         body = client.get(f"/v1/instruments/{isin}/financials").json()
         assert body["annual"]
         assert all(y["eps_adjusted"] == y["values"]["eps"] for y in body["annual"])
+
+
+# ----------------------------------------------------------------------
+# R9 — richer quarterly results
+# ----------------------------------------------------------------------
+
+
+class TestR9RicherQuarters:
+    RELIANCE_Q1 = {
+        "revenue": 311_850.0, "pat": 20_946.0, "eps": 15.48, "total_income": 318_400.0,
+        "other_income": 6_550.0, "total_expenses": 287_770.0, "depreciation": 15_100.0,
+        "interest_expense": 8_337.0, "profit_before_tax": 30_630.0, "tax_expense": 7_629.0,
+    }
+
+    def _store(self, db: Database, isin: str, url: str, **values) -> None:
+        db.upsert_df("fundamentals_quarterly", pd.DataFrame([{
+            "isin": isin, "period_end_date": dt.date(2022, 12, 31),
+            "filing_date": dt.date(2023, 1, 20), "is_consolidated": True,
+            "source": "XBRL", "xbrl_url": url, **values,
+        }]), ["isin", "period_end_date"])
+
+    def test_the_quarter_carries_its_pnl_and_a_derived_ebitda(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        self._store(
+            two_dates_db, isin,
+            "https://nsearchives.nseindia.com/corporate/xbrl/"
+            "INTEGRATED_FILING_INDAS_1695741_17072026_WEB.xml",
+            **self.RELIANCE_Q1,
+        )
+        (quarter,) = client.get(f"/v1/instruments/{isin}/financials").json()["quarterly"]
+        for key, value in self.RELIANCE_Q1.items():
+            assert quarter[key] == pytest.approx(value), key
+        assert quarter["basis"] == "CONSOLIDATED"
+        assert quarter["ebitda"] == pytest.approx(30_630 + 8_337 + 15_100)
+
+    def test_a_bank_has_no_ebitda(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        self._store(two_dates_db, isin, BANK_FILING, **self.RELIANCE_Q1)
+        (quarter,) = client.get(f"/v1/instruments/{isin}/financials").json()["quarterly"]
+        assert quarter["interest_expense"] == pytest.approx(8_337)
+        assert quarter["ebitda"] is None
+
+    def test_an_untagged_line_is_null_and_so_is_what_needs_it(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        self._store(two_dates_db, isin, None, revenue=250.0, pat=40.0, eps=4.0)
+        (quarter,) = client.get(f"/v1/instruments/{isin}/financials").json()["quarterly"]
+        assert quarter["total_income"] is None and quarter["profit_before_tax"] is None
+        assert quarter["ebitda"] is None

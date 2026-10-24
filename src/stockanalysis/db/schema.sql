@@ -370,6 +370,17 @@ ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS source VARCHAR;
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS disclosed_date_source VARCHAR;
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS employee_trust_pct DOUBLE;
 
+-- The rest of the quarter's P&L, ₹ crore, read from the same XBRL instance as
+-- revenue, PAT and EPS. NULL for the rows NSE's results_comparison supplied,
+-- which carries only those three, and for a line a filing does not tag.
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS total_income DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS other_income DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS total_expenses DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS depreciation DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS interest_expense DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS profit_before_tax DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS tax_expense DOUBLE;
+
 -- ====================================================================
 -- PHASE 2 — factor model
 -- ====================================================================

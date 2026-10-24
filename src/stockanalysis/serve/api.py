@@ -417,6 +417,13 @@ _EPS_ADJUSTED = (
 )
 
 
+_QUARTER_LINE = (
+    "₹ crore, as the quarter's XBRL tags it. Null where the filing does not "
+    "tag it, and on rows from NSE's results comparison, which carries only "
+    "revenue, PAT and EPS."
+)
+
+
 class AnnualOut(BaseModel):
     fiscal_year: int
     basis: str
@@ -440,6 +447,26 @@ class QuarterOut(BaseModel):
     pat: float | None = None
     eps: float | None = None
     eps_adjusted: float | None = Field(default=None, description=_EPS_ADJUSTED)
+    basis: Literal["CONSOLIDATED", "STANDALONE"] | None = Field(
+        default=None, description="From is_consolidated; null when not recorded."
+    )
+    total_income: float | None = Field(default=None, description=_QUARTER_LINE)
+    other_income: float | None = Field(default=None, description=_QUARTER_LINE)
+    total_expenses: float | None = Field(default=None, description=_QUARTER_LINE)
+    depreciation: float | None = Field(default=None, description=_QUARTER_LINE)
+    interest_expense: float | None = Field(
+        default=None,
+        description=_QUARTER_LINE + " Finance costs; for a bank, the interest it "
+        "pays, which is its main operating cost.",
+    )
+    profit_before_tax: float | None = Field(default=None, description=_QUARTER_LINE)
+    tax_expense: float | None = Field(default=None, description=_QUARTER_LINE)
+    ebitda: float | None = Field(
+        default=None,
+        description="Derived, ₹ crore: profit_before_tax + interest_expense + "
+        "depreciation, the value factor's own formula. Null for banks and "
+        "insurers, and where PBT or depreciation is missing.",
+    )
 
 
 class FinancialsOut(BaseModel):

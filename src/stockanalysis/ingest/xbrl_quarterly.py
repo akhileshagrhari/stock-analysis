@@ -240,6 +240,20 @@ def _ingest_one(db: Database, ref: QuarterlyFilingRef, session=None) -> QuarterR
     return QuarterResult(ref, row=row)
 
 
+# The rest of the quarter's P&L, stored as tagged (₹ crore). Every one is
+# already parsed for the annual path from the same element names; a quarterly
+# instance carries them on its quarter context.
+QUARTERLY_PNL_FIELDS = (
+    "total_income",
+    "other_income",
+    "total_expenses",
+    "depreciation",
+    "interest_expense",
+    "profit_before_tax",
+    "tax_expense",
+)
+
+
 def to_row(ref: QuarterlyFilingRef, facts: XbrlFacts) -> dict:
     v = facts.to_crore()
     revenue = v.get("revenue")
@@ -254,6 +268,7 @@ def to_row(ref: QuarterlyFilingRef, facts: XbrlFacts) -> dict:
         "eps": v.get("eps_basic"),
         "paid_up_capital": v.get("paid_up_capital"),
         "face_value": v.get("face_value"),
+        **{field: v.get(field) for field in QUARTERLY_PNL_FIELDS},
         "source": SOURCE_XBRL,
         "filing_date_source": (
             FILING_DATE_FROM_NSE if ref.broadcast_date else FILING_DATE_ASSUMED
