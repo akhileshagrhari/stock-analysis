@@ -13,7 +13,7 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3000", channel },
   webServer: {
     command: "npm run dev",
-    url: "http://localhost:3000/api/v1/health",
+    url: "http://localhost:3000/api/v1/instruments/search?q=a&limit=1",
     reuseExistingServer: true,
     timeout: 120_000,
   },
