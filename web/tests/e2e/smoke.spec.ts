@@ -6,7 +6,9 @@ const PAGES: { path: string; text: string | RegExp; status?: number }[] = [
   { path: "/", text: "Search NIFTY100 stocks" },
   { path: "/stocks/RELIANCE", text: /^Scored \d{1,2} [A-Z][a-z]{2} \d{4}/ },
   { path: "/stocks/HDFCBANK", text: "Not scored" },
-  { path: "/stocks/CHOLAFIN", text: /SELL forced by red flag/ },
+  // Was "SELL forced by red flag" until the 24 Oct 2026 run scored it 44.3 (SELL anyway);
+  // the override itself is covered by the unit tests on fixtures.
+  { path: "/stocks/CHOLAFIN", text: "Composite score" },
   { path: "/signals", text: /stocks scored on/ },
   { path: "/learn", text: "Scores are normal-curve percentiles relative to the companies scored that day, not valuations." },
   { path: "/red-flags", text: "The model's six checks" },
