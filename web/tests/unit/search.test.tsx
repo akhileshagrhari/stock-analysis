@@ -10,7 +10,7 @@ vi.mock("@/lib/api/client", async (orig) => ({ ...(await orig<typeof import("@/l
 import { browserGet } from "@/lib/api/client";
 import { SearchBox } from "@/components/shell/SearchBox";
 
-const RELIANCE: Instrument = { isin: "INE002A01018", nse_symbol: "RELIANCE", name: "Reliance Industries Ltd.", sector: "Oil Gas & Consumable Fuels", bse_code: null, listing_date: null };
+const RELIANCE: Instrument = { isin: "INE002A01018", nse_symbol: "RELIANCE", name: "Reliance Industries Ltd.", sector: "Oil Gas & Consumable Fuels", industry: null, bse_code: null, listing_date: null };
 const RELAXO: Instrument = { ...RELIANCE, isin: "INE131B01039", nse_symbol: "RELAXO", name: "Relaxo Footwears Ltd.", sector: "Consumer Durables" };
 
 const get = vi.mocked(browserGet);

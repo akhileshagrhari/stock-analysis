@@ -17,7 +17,13 @@ export type StockPageData = {
   runs: Runs;
 };
 
-const EMPTY_FINANCIALS: Financials = { line_items: [], annual: [], quarterly: [] };
+const EMPTY_FINANCIALS: Financials = {
+  line_items: [],
+  annual: [],
+  quarterly: [],
+  unit: "INR crore",
+  per_share_unit: "INR",
+};
 
 /**
  * Resolve a symbol (any case, URL-special characters allowed) and load the

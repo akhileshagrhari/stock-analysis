@@ -34,6 +34,9 @@ export interface paths {
         /**
          * Model Info
          * @description What the numbers mean: live weights and thresholds, not a transcription.
+         *
+         *     The factor and flag lists are read from the model's own definitions, so a
+         *     factor added in Python appears here without anyone copying it.
          */
         get: operations["model_info_v1_model_get"];
         put?: never;
@@ -109,6 +112,7 @@ export interface paths {
          * Search Instruments
          * @description Companies matching what is being typed: exact symbol, then symbol
          *     prefix, then name prefix, then anywhere in either. Case-insensitive.
+         *     Each carries its newest score.
          */
         get: operations["search_instruments_v1_instruments_search_get"];
         put?: never;
@@ -165,7 +169,9 @@ export interface paths {
         };
         /**
          * Signal History
-         * @description Signal history, oldest first. Empty list when the instrument has none.
+         * @description Signal history, oldest first, with each day's family breakdown.
+         *
+         *     Empty list when the instrument has none.
          */
         get: operations["signal_history_v1_instruments__isin__history_get"];
         put?: never;
@@ -185,13 +191,39 @@ export interface paths {
         };
         /**
          * Signal Explanation
-         * @description Why the latest signal is what it is: the families that carried it, the
-         *     factors for and against, the news mix, and any red flag that forced it.
+         * @description Why a signal is what it is: the families that carried it, the factors
+         *     for and against, the news mix, and any red flag that forced it.
          *
-         *     Rebuilt from the stored factor scores, never re-scored, so it describes the
-         *     number the other routes return — see `serve.explain`.
+         *     Rebuilt from that date's stored factor scores, never re-scored, so it
+         *     describes the number the other routes return — see `serve.explain`. A past
+         *     date stored under another scoring config is `stale`, exactly as the latest
+         *     one would be.
          */
         get: operations["signal_explanation_v1_instruments__isin__explanation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/instruments/{isin}/score-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Score Status
+         * @description Why a company is or isn't scored. 200 for any known ISIN, 404 otherwise.
+         *
+         *     `/latest` answers 404 for a company with no signal; this says which of
+         *     "never measured", "below the coverage floor" and "the filings can't be read"
+         *     it is, from what the runs stored.
+         */
+        get: operations["score_status_v1_instruments__isin__score_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -249,6 +281,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/instruments/{isin}/corporate-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Instrument Corporate Actions
+         * @description Splits, bonuses, dividends and the rest, newest first.
+         *
+         *     The splits and bonuses here are what eps_adjusted and key-metrics restate
+         *     across. An empty list for a company also means its actions were never
+         *     fetched; dividends_ttm in key-metrics tells the two apart.
+         */
+        get: operations["instrument_corporate_actions_v1_instruments__isin__corporate_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/instruments/{isin}/key-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Instrument Key Metrics
+         * @description Market cap, P/E, P/B and dividend yield, consistent with the value factors.
+         */
+        get: operations["instrument_key_metrics_v1_instruments__isin__key_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/instruments/{isin}/shareholding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Instrument Shareholding
+         * @description Quarterly shareholding pattern, newest first.
+         *
+         *     The context for the promoter_selling red flag: the falling quarters it
+         *     fired on are the first rows here.
+         */
+        get: operations["instrument_shareholding_v1_instruments__isin__shareholding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/instruments/{isin}/news": {
         parameters: {
             query?: never;
@@ -295,7 +394,7 @@ export interface paths {
         };
         /**
          * List Signals
-         * @description Signals for one date, best score first.
+         * @description Signals for one date, best score first — or each company's newest.
          */
         get: operations["list_signals_v1_signals_get"];
         put?: never;
@@ -330,9 +429,74 @@ export interface components {
             values?: {
                 [key: string]: number | null;
             };
+            /**
+             * Eps Adjusted
+             * @description ₹ per share: eps restated onto today's share basis — the basis of the stored price series — across every split and bonus with an ex-date after the filing (see /corporate-actions). Equal to eps when there was none; comparable across years where eps is not. Null when eps is.
+             */
+            eps_adjusted?: number | null;
+            /**
+             * Source Url
+             * @description The document the figures were read from: the results filing's XBRL instance on nsearchives.nseindia.com (source XBRL), or the annual report PDF (source LLM). Null for rows stored before links were recorded.
+             */
+            source_url?: string | null;
+        };
+        /** CorporateActionOut */
+        CorporateActionOut: {
+            /**
+             * Ex Date
+             * Format: date
+             */
+            ex_date: string;
+            /**
+             * Action Type
+             * @enum {string}
+             */
+            action_type: "SPLIT" | "BONUS" | "DIVIDEND" | "RIGHTS" | "DEMERGER" | "BUYBACK";
+            /**
+             * Ratio
+             * @description SPLIT and BONUS: shares after per share before (a 1:1 bonus is 2.0, a ₹10 to ₹2 split 5.0). RIGHTS: new shares offered per share held. Null for the other types.
+             */
+            ratio?: number | null;
+            /**
+             * Amount
+             * @description DIVIDEND: ₹ per share on the share basis of the ex-date, summed when one announcement pays several. Null otherwise.
+             */
+            amount?: number | null;
+            /** Record Date */
+            record_date?: string | null;
+            /**
+             * Details
+             * @description The exchange's own wording of the action.
+             */
+            details?: string | null;
+            /**
+             * Source
+             * @description NSE.
+             */
+            source?: string | null;
         };
         /** DriverOut */
         DriverOut: {
+            /**
+             * Sector Median
+             * @description Median raw_value of the company's sector that day, in its unit.
+             */
+            sector_median?: number | null;
+            /**
+             * Sector N
+             * @description Sector companies with a value that day, this one included.
+             */
+            sector_n?: number | null;
+            /**
+             * Sector Percentile
+             * @description 0-100 rank of raw_value within the sector, ascending: 100 is the highest raw value, which for a lower-is-better metric (higher_is_better false in /model) is the worst.
+             */
+            sector_percentile?: number | null;
+            /**
+             * Zscore Basis
+             * @description What the z-score was taken against: the sector, or the whole scored universe when fewer than five sector companies had a value (or the company has no sector). With universe the sector figures are context only.
+             */
+            zscore_basis?: ("sector" | "universe") | null;
             /** Name */
             name: string;
             /** Label */
@@ -345,6 +509,11 @@ export interface components {
             raw_value?: number | null;
             /** Z */
             z?: number | null;
+            /**
+             * Unit
+             * @description How to read raw_value. percent: a fraction to show as % (0.0785 is 7.85%). pp: a difference of two fractions, in percentage points (0.012 is +1.2 pp). multiple: a ratio to show as × (0.68 is 0.68×). ratio_vs_trend: price over its 200-day average (0.89 is 11% below trend). score: signed, −1 to +1. ratio: a plain number with no unit. Null for a factor the current model does not define.
+             */
+            unit?: ("percent" | "pp" | "multiple" | "ratio_vs_trend" | "score" | "ratio") | null;
         };
         /** ExplanationOut */
         ExplanationOut: {
@@ -363,7 +532,10 @@ export interface components {
             signal?: string | null;
             /** Composite Score */
             composite_score?: number | null;
-            /** Coverage */
+            /**
+             * Coverage
+             * @description Fraction (0-1) of the model's weight backed by data — weighted by family and by each factor's weight within its family, so not a share of factors (score-status gives the factor counts). Below /model.coverage_floor no score is published.
+             */
             coverage?: number | null;
             /** Headline */
             headline: string;
@@ -392,14 +564,79 @@ export interface components {
             /** Current Version */
             current_version?: string | null;
         };
+        /** FactorInfoOut */
+        FactorInfoOut: {
+            /**
+             * Name
+             * @description The factor_name stored rows carry.
+             */
+            name: string;
+            /** Label */
+            label: string;
+            /**
+             * Meaning
+             * @description What a positive (sign-adjusted) z-score says about the company.
+             */
+            meaning: string;
+            /** Family */
+            family: string;
+            /**
+             * Unit
+             * @description How to read raw_value. percent: a fraction to show as % (0.0785 is 7.85%). pp: a difference of two fractions, in percentage points (0.012 is +1.2 pp). multiple: a ratio to show as × (0.68 is 0.68×). ratio_vs_trend: price over its 200-day average (0.89 is 11% below trend). score: signed, −1 to +1. ratio: a plain number with no unit. Null for a factor the current model does not define.
+             * @enum {string}
+             */
+            unit: "percent" | "pp" | "multiple" | "ratio_vs_trend" | "score" | "ratio";
+            /**
+             * Higher Is Better
+             * @description Direction of the raw metric before the model's sign flip. False for debt/equity and accruals, whose z-scores are negated so that a positive z is always good.
+             */
+            higher_is_better: boolean;
+        };
         /** FactorOut */
         FactorOut: {
+            /**
+             * Sector Median
+             * @description Median raw_value of the company's sector that day, in its unit.
+             */
+            sector_median?: number | null;
+            /**
+             * Sector N
+             * @description Sector companies with a value that day, this one included.
+             */
+            sector_n?: number | null;
+            /**
+             * Sector Percentile
+             * @description 0-100 rank of raw_value within the sector, ascending: 100 is the highest raw value, which for a lower-is-better metric (higher_is_better false in /model) is the worst.
+             */
+            sector_percentile?: number | null;
+            /**
+             * Zscore Basis
+             * @description What the z-score was taken against: the sector, or the whole scored universe when fewer than five sector companies had a value (or the company has no sector). With universe the sector figures are context only.
+             */
+            zscore_basis?: ("sector" | "universe") | null;
             /** Factor Name */
             factor_name: string;
             /** Raw Value */
             raw_value?: number | null;
             /** Sector Zscore */
             sector_zscore?: number | null;
+            /**
+             * Unit
+             * @description How to read raw_value. percent: a fraction to show as % (0.0785 is 7.85%). pp: a difference of two fractions, in percentage points (0.012 is +1.2 pp). multiple: a ratio to show as × (0.68 is 0.68×). ratio_vs_trend: price over its 200-day average (0.89 is 11% below trend). score: signed, −1 to +1. ratio: a plain number with no unit. Null for a factor the current model does not define.
+             */
+            unit?: ("percent" | "pp" | "multiple" | "ratio_vs_trend" | "score" | "ratio") | null;
+        };
+        /** FamilyInfoOut */
+        FamilyInfoOut: {
+            /** Family */
+            family: string;
+            /** Meaning */
+            meaning?: string | null;
+            /**
+             * Weight
+             * @description Share of the composite, as a fraction (0-1).
+             */
+            weight: number;
         };
         /** FamilyOut */
         FamilyOut: {
@@ -407,13 +644,25 @@ export interface components {
             family: string;
             /** Meaning */
             meaning?: string | null;
-            /** Weight */
+            /**
+             * Weight
+             * @description Declared family weight, a fraction (0-1).
+             */
             weight: number;
-            /** Percentile */
+            /**
+             * Percentile
+             * @description 0-100 within the universe scored that day; null when the family was not measured.
+             */
             percentile?: number | null;
-            /** Z */
+            /**
+             * Z
+             * @description Family z, standardised across the universe so the declared weights bind.
+             */
             z?: number | null;
-            /** Contribution */
+            /**
+             * Contribution
+             * @description z × weight ÷ (sum of the weights of the families measured for this company). Renormalised over the measured families, as the composite is, so the contributions sum to the composite z.
+             */
             contribution?: number | null;
             /** Factors Measured */
             factors_measured: number;
@@ -421,6 +670,21 @@ export interface components {
             factors_total: number;
             /** Verdict */
             verdict: string;
+        };
+        /** FamilyPointOut */
+        FamilyPointOut: {
+            /** Family */
+            family: string;
+            /**
+             * Percentile
+             * @description 0-100 within the universe scored that day; null when no factor in the family was measured.
+             */
+            percentile?: number | null;
+            /**
+             * Contribution
+             * @description Signed share of that day's composite z (negative pulled the score down); the families' contributions sum to it.
+             */
+            contribution?: number | null;
         };
         /** FinancialsOut */
         FinancialsOut: {
@@ -430,6 +694,20 @@ export interface components {
             annual: components["schemas"]["AnnualOut"][];
             /** Quarterly */
             quarterly: components["schemas"]["QuarterOut"][];
+            /**
+             * Unit
+             * @description Unit of every figure except per-share ones: ₹ crore (1 crore = 10 million).
+             * @default INR crore
+             * @constant
+             */
+            unit: "INR crore";
+            /**
+             * Per Share Unit
+             * @description Unit of per-share figures (eps, eps_adjusted, and lines with per_share true): rupees per share.
+             * @default INR
+             * @constant
+             */
+            per_share_unit: "INR";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -452,6 +730,66 @@ export interface components {
              * @default 0
              */
             signals: number;
+            /**
+             * Latest Complete As Of
+             * @description Newest scoring date on which at least 50% of the instruments active that day got a signal. latest_as_of can be a partial run (16 Aug 2026 scored 4 of 100); this is the newest date a full list can be read from. Null when no date qualifies.
+             */
+            latest_complete_as_of?: string | null;
+            /**
+             * Latest Price Date
+             * @description Newest close stored for any company. A company's own is key-metrics.as_of.
+             */
+            latest_price_date?: string | null;
+            /**
+             * Latest Filing Date
+             * @description Newest filing date of any stored quarterly or annual results, the date the figures became public.
+             */
+            latest_filing_date?: string | null;
+            /**
+             * Latest News Date
+             * @description Newest publication date of any article attributed to a company.
+             */
+            latest_news_date?: string | null;
+        };
+        /** HistoryPointOut */
+        HistoryPointOut: {
+            /** Isin */
+            isin: string;
+            /** Nse Symbol */
+            nse_symbol: string;
+            /** Name */
+            name: string;
+            /** Sector */
+            sector?: string | null;
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Composite Score */
+            composite_score?: number | null;
+            /** Signal */
+            signal?: string | null;
+            /**
+             * Coverage
+             * @description Fraction (0-1) of the model's weight backed by data — weighted by family and by each factor's weight within its family, so not a share of factors (score-status gives the factor counts). Below /model.coverage_floor no score is published.
+             */
+            coverage?: number | null;
+            /** Red Flags */
+            red_flags?: string[];
+            /** Unknown Flags */
+            unknown_flags?: string[];
+            /** Narrative */
+            narrative?: string | null;
+            /** Model Version */
+            model_version?: string | null;
+            /** @description The same instrument's most recent signal strictly before this row's as_of, whatever the rows a query returns; null for its first. A different model_version means the change is partly the model's. */
+            previous?: components["schemas"]["PreviousSignalOut"] | null;
+            /**
+             * Families
+             * @description The day's family breakdown, replayed from that day's stored z-scores with the current model's weights — a row whose model_version differs is re-derived, as /explanation's stale flag says. Empty when the day stored no factor rows.
+             */
+            families?: components["schemas"]["FamilyPointOut"][];
         };
         /** InstrumentOut */
         InstrumentOut: {
@@ -463,10 +801,135 @@ export interface components {
             name: string;
             /** Sector */
             sector?: string | null;
-            /** Bse Code */
+            /**
+             * Bse Code
+             * @description BSE scrip code, as the company's own results filings identify it. Null until a filing has been read.
+             */
             bse_code?: string | null;
-            /** Listing Date */
+            /**
+             * Listing Date
+             * @description Null: no source for it is ingested yet.
+             */
             listing_date?: string | null;
+            /**
+             * Industry
+             * @description The exchange's industry classification. For the NIFTY 100 universe today it repeats the sector.
+             */
+            industry?: string | null;
+        };
+        /**
+         * KeyMetricsOut
+         * @description Valuation on the value factors' own share count and price basis.
+         *
+         *     Taken at the newest stored close and read only from filings made by then.
+         *     `pe_annual` is 1 / earnings_yield and `pb` 1 / book_to_price, so the page
+         *     cannot contradict the score. Every per-share figure is restated onto the
+         *     share basis of the price series across splits and bonuses after its
+         *     filing. Null always means unknown or not meaningful, never zero.
+         */
+        KeyMetricsOut: {
+            /**
+             * As Of
+             * @description The close every figure is taken at; filings after it are ignored. Null when the company has no prices.
+             */
+            as_of?: string | null;
+            /**
+             * Price
+             * @description Close on as_of, ₹. The stored series is split- and bonus-adjusted to the share basis it was fetched on.
+             */
+            price?: number | null;
+            /**
+             * Shares Outstanding Cr
+             * @description Shares outstanding, crore, on the price basis.
+             */
+            shares_outstanding_cr?: number | null;
+            /**
+             * Share Source
+             * @description stated: paid-up capital over face value, from the newest filing that tags them. implied: PAT / EPS of the latest annual results, where no filing states the count.
+             */
+            share_source?: ("stated" | "implied") | null;
+            /**
+             * Shares Filing Date
+             * @description Filing date of the share count's source.
+             */
+            shares_filing_date?: string | null;
+            /**
+             * Market Cap Cr
+             * @description price × shares, ₹ crore.
+             */
+            market_cap_cr?: number | null;
+            /**
+             * Eps Ttm
+             * @description ₹ per share, on the price series' share basis (see restated). Sum of the four newest quarters; null unless four consecutive quarters with EPS are filed.
+             */
+            eps_ttm?: number | null;
+            /**
+             * Pe Ttm
+             * @description price / eps_ttm. Null when EPS is zero or negative.
+             */
+            pe_ttm?: number | null;
+            /**
+             * Ttm Through
+             * @description Period end of the newest quarter in eps_ttm.
+             */
+            ttm_through?: string | null;
+            /**
+             * Ttm Filing Date
+             * @description Filing date of the newest quarter in eps_ttm.
+             */
+            ttm_filing_date?: string | null;
+            /**
+             * Eps Annual
+             * @description ₹ per share, on the price series' share basis (see restated). Latest annual EPS — the figure earnings_yield uses.
+             */
+            eps_annual?: number | null;
+            /**
+             * Pe Annual
+             * @description price / eps_annual, the inverse of earnings_yield. Null when EPS is zero or negative.
+             */
+            pe_annual?: number | null;
+            /** Annual Fiscal Year */
+            annual_fiscal_year?: number | null;
+            /**
+             * Annual Basis
+             * @description CONSOLIDATED where the company files it, else STANDALONE.
+             */
+            annual_basis?: string | null;
+            /**
+             * Annual Filing Date
+             * @description Filing date of the annual results used.
+             */
+            annual_filing_date?: string | null;
+            /**
+             * Book Value Per Share
+             * @description ₹ per share, on the price series' share basis (see restated). Total equity / shares; can be negative.
+             */
+            book_value_per_share?: number | null;
+            /**
+             * Pb
+             * @description price / book_value_per_share, the inverse of book_to_price. Null when book value is zero or negative.
+             */
+            pb?: number | null;
+            /**
+             * Dividends Ttm
+             * @description ₹ per share, on the price series' share basis (see restated). Dividends with an ex-date in the year to as_of, from NSE corporate actions. Null when none were ever fetched for the company; 0 when fetched and none paid.
+             */
+            dividends_ttm?: number | null;
+            /**
+             * Dividend Yield
+             * @description dividends_ttm / price, a fraction (0.0051 is 0.51%).
+             */
+            dividend_yield?: number | null;
+            /**
+             * High 52W
+             * @description Highest high in the year to as_of, ₹.
+             */
+            high_52w?: number | null;
+            /**
+             * Low 52W
+             * @description Lowest low in the year to as_of, ₹.
+             */
+            low_52w?: number | null;
         };
         /**
          * LineItemOut
@@ -479,6 +942,7 @@ export interface components {
             label: string;
             /**
              * Per Share
+             * @description True: the line is in rupees per share (FinancialsOut.per_share_unit). False: it is in ₹ crore (FinancialsOut.unit).
              * @default false
              */
             per_share: boolean;
@@ -495,6 +959,30 @@ export interface components {
             sell_threshold: number;
             /** Scored Dates */
             scored_dates: string[];
+            /**
+             * Version
+             * @description The current model_version. Stored signals carry their own; one that differs was scored under another configuration.
+             */
+            version: string;
+            /**
+             * Coverage Floor
+             * @description Fraction (0-1) of the model's weight that must be backed by data before a company is scored.
+             */
+            coverage_floor: number;
+            /** Families */
+            families?: components["schemas"]["FamilyInfoOut"][];
+            /** Factors */
+            factors?: components["schemas"]["FactorInfoOut"][];
+            /**
+             * Red Flags
+             * @description Every flag the model checks. A flag is clear only when it is in neither a signal's red_flags nor its unknown_flags.
+             */
+            red_flags?: components["schemas"]["RedFlagInfoOut"][];
+            /**
+             * Scored Date Counts
+             * @description How many companies each date in scored_dates covered, newest first, so a partial run can be told from a full one.
+             */
+            scored_date_counts?: components["schemas"]["ScoredDateCountOut"][];
         };
         /** NewsMixOut */
         NewsMixOut: {
@@ -521,6 +1009,38 @@ export interface components {
             source?: string | null;
             /** Url */
             url?: string | null;
+            /**
+             * Relevance
+             * @description primary: the company is named in the headline of an article about it. mention: named only in the body, or one of more than three companies a roundup lists. Null when the match was not recorded.
+             */
+            relevance?: ("primary" | "mention") | null;
+            /**
+             * Sentiment Status
+             * @description scored: label and score are set. pending: the company match clears the attribution threshold and the next scoring run will score it. not_scored: the match is below the threshold (an uncertain match or a roundup), so it is never scored. A failed scoring run leaves its articles pending; the pipeline records no per-article failure.
+             * @default not_scored
+             * @enum {string}
+             */
+            sentiment_status: "scored" | "pending" | "not_scored";
+            /**
+             * Counts Toward Sentiment
+             * @description Whether the 30-day news factor reads this article: scored, and its company match clears the attribution threshold. False for a roundup scored before it was demoted, though its label is shown.
+             * @default false
+             */
+            counts_toward_sentiment: boolean;
+        };
+        /** PreviousSignalOut */
+        PreviousSignalOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Composite Score */
+            composite_score?: number | null;
+            /** Signal */
+            signal?: string | null;
+            /** Model Version */
+            model_version?: string | null;
         };
         /** PriceBarOut */
         PriceBarOut: {
@@ -561,6 +1081,73 @@ export interface components {
             pat?: number | null;
             /** Eps */
             eps?: number | null;
+            /**
+             * Eps Adjusted
+             * @description ₹ per share: eps restated onto today's share basis — the basis of the stored price series — across every split and bonus with an ex-date after the filing (see /corporate-actions). Equal to eps when there was none; comparable across years where eps is not. Null when eps is.
+             */
+            eps_adjusted?: number | null;
+            /**
+             * Basis
+             * @description From is_consolidated; null when not recorded.
+             */
+            basis?: ("CONSOLIDATED" | "STANDALONE") | null;
+            /**
+             * Total Income
+             * @description ₹ crore, as the quarter's XBRL tags it. Null where the filing does not tag it, and on rows from NSE's results comparison, which carries only revenue, PAT and EPS.
+             */
+            total_income?: number | null;
+            /**
+             * Other Income
+             * @description ₹ crore, as the quarter's XBRL tags it. Null where the filing does not tag it, and on rows from NSE's results comparison, which carries only revenue, PAT and EPS.
+             */
+            other_income?: number | null;
+            /**
+             * Total Expenses
+             * @description ₹ crore, as the quarter's XBRL tags it. Null where the filing does not tag it, and on rows from NSE's results comparison, which carries only revenue, PAT and EPS.
+             */
+            total_expenses?: number | null;
+            /**
+             * Depreciation
+             * @description ₹ crore, as the quarter's XBRL tags it. Null where the filing does not tag it, and on rows from NSE's results comparison, which carries only revenue, PAT and EPS.
+             */
+            depreciation?: number | null;
+            /**
+             * Interest Expense
+             * @description ₹ crore, as the quarter's XBRL tags it. Null where the filing does not tag it, and on rows from NSE's results comparison, which carries only revenue, PAT and EPS. Finance costs; for a bank, the interest it pays, which is its main operating cost.
+             */
+            interest_expense?: number | null;
+            /**
+             * Profit Before Tax
+             * @description ₹ crore, as the quarter's XBRL tags it. Null where the filing does not tag it, and on rows from NSE's results comparison, which carries only revenue, PAT and EPS.
+             */
+            profit_before_tax?: number | null;
+            /**
+             * Tax Expense
+             * @description ₹ crore, as the quarter's XBRL tags it. Null where the filing does not tag it, and on rows from NSE's results comparison, which carries only revenue, PAT and EPS.
+             */
+            tax_expense?: number | null;
+            /**
+             * Ebitda
+             * @description Derived, ₹ crore: profit_before_tax + interest_expense + depreciation, the value factor's own formula. Null for banks and insurers, and where PBT or depreciation is missing.
+             */
+            ebitda?: number | null;
+            /**
+             * Source Url
+             * @description The results filing's XBRL instance the figures were read from, on nsearchives.nseindia.com. Null for rows from NSE's results comparison.
+             */
+            source_url?: string | null;
+        };
+        /** RedFlagInfoOut */
+        RedFlagInfoOut: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Reachable
+             * @description False when no data source the system ingests can evaluate the flag, so it is unknown for every company — never clear.
+             */
+            reachable: boolean;
         };
         /** RedFlagOut */
         RedFlagOut: {
@@ -568,6 +1155,164 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * ScoreStatusOut
+         * @description Whether a company has a score and, when it does not, why.
+         */
+        ScoreStatusOut: {
+            /** Isin */
+            isin: string;
+            /**
+             * Scored
+             * @description True when the newest run that measured the company stored a signal for it. False for a company no run has measured, and for one the newest run measured but could not score — even when an older signal exists (see latest_as_of).
+             */
+            scored: boolean;
+            /**
+             * Reason
+             * @description scored: in the latest run. not_in_latest_run: scored, but the latest run did not measure it, so its score is older. below_coverage_floor: measured, but too little of the model's weight had data. missing_fundamentals: below the floor because no annual results were stored. sector_not_supported: below the floor because its results filings (banks, insurers) carry no figures the model's annual statements can be built from. never_scored: no run has measured it.
+             * @enum {string}
+             */
+            reason: "scored" | "not_in_latest_run" | "below_coverage_floor" | "missing_fundamentals" | "sector_not_supported" | "never_scored";
+            /**
+             * Latest As Of
+             * @description Newest date with a signal row; null when there is none. Older than measured_as_of when a later run could not score it.
+             */
+            latest_as_of?: string | null;
+            /**
+             * Measured As Of
+             * @description The run the reason, coverage and factor counts describe: the newest date any run stored anything for the company.
+             */
+            measured_as_of?: string | null;
+            /**
+             * Coverage
+             * @description Fraction (0-1) of the model's weight backed by data on measured_as_of. Null when no run has measured the company.
+             */
+            coverage?: number | null;
+            /**
+             * Coverage Floor
+             * @description Coverage below which the current model withholds a score, as a fraction (0-1). Older signals may have been stored under another floor; their model_version says which.
+             */
+            coverage_floor: number;
+            /**
+             * Factors Measured
+             * @description Factors with a sector z-score on measured_as_of. Null when no factor rows were stored for that date.
+             */
+            factors_measured?: number | null;
+            /**
+             * Factors Total
+             * @description Factors in the current model.
+             */
+            factors_total: number;
+            /**
+             * Detail
+             * @description One plain sentence for display, stating the measured share and what was missing.
+             */
+            detail?: string | null;
+        };
+        /** ScoredDateCountOut */
+        ScoredDateCountOut: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /**
+             * Scored
+             * @description Instruments with a signal that day.
+             */
+            scored: number;
+            /**
+             * Instruments
+             * @description Instruments listed and not delisted that day; one with no listing date counts as listed.
+             */
+            instruments: number;
+        };
+        /**
+         * SearchResultOut
+         * @description A search match with its newest score, for the autocomplete's score chip.
+         */
+        SearchResultOut: {
+            /** Isin */
+            isin: string;
+            /** Nse Symbol */
+            nse_symbol: string;
+            /** Name */
+            name: string;
+            /** Sector */
+            sector?: string | null;
+            /**
+             * Bse Code
+             * @description BSE scrip code, as the company's own results filings identify it. Null until a filing has been read.
+             */
+            bse_code?: string | null;
+            /**
+             * Listing Date
+             * @description Null: no source for it is ingested yet.
+             */
+            listing_date?: string | null;
+            /**
+             * Industry
+             * @description The exchange's industry classification. For the NIFTY 100 universe today it repeats the sector.
+             */
+            industry?: string | null;
+            /**
+             * As Of
+             * @description Date of the newest signal; null when none is stored. It may be older than /health.latest_as_of — see /score-status.
+             */
+            as_of?: string | null;
+            /** Composite Score */
+            composite_score?: number | null;
+            /** Signal */
+            signal?: string | null;
+        };
+        /** ShareholdingOut */
+        ShareholdingOut: {
+            /**
+             * Quarter End
+             * Format: date
+             */
+            quarter_end: string;
+            /**
+             * Disclosed Date
+             * @description When the pattern became public — its knowledge date. See disclosed_date_source for whether it was observed or assumed.
+             */
+            disclosed_date?: string | null;
+            /**
+             * Disclosed Date Source
+             * @description NSE: the exchange's own disclosure date. ASSUMED_LODR_DEADLINE: not reported, so the regulatory deadline (21 days after quarter end) stands in for it.
+             */
+            disclosed_date_source?: string | null;
+            /**
+             * Promoter Pct
+             * @description Percent of total shares, 0-100 (not a fraction).
+             */
+            promoter_pct?: number | null;
+            /**
+             * Promoter Pledged Pct
+             * @description Pledged shares as a percent of the promoter holding. Null means unknown — the shareholding feed carries no pledge figure — never zero pledged.
+             */
+            promoter_pledged_pct?: number | null;
+            /**
+             * Fii Pct
+             * @description Percent of total shares, 0-100 (not a fraction). Null where the source did not break it out.
+             */
+            fii_pct?: number | null;
+            /**
+             * Dii Pct
+             * @description Percent of total shares, 0-100 (not a fraction). Null where the source did not break it out.
+             */
+            dii_pct?: number | null;
+            /**
+             * Public Pct
+             * @description Percent of total shares, 0-100 (not a fraction).
+             */
+            public_pct?: number | null;
+            /**
+             * Employee Trust Pct
+             * @description Percent of total shares, 0-100 (not a fraction).
+             */
+            employee_trust_pct?: number | null;
         };
         /** SignalDetailOut */
         SignalDetailOut: {
@@ -588,7 +1333,10 @@ export interface components {
             composite_score?: number | null;
             /** Signal */
             signal?: string | null;
-            /** Coverage */
+            /**
+             * Coverage
+             * @description Fraction (0-1) of the model's weight backed by data — weighted by family and by each factor's weight within its family, so not a share of factors (score-status gives the factor counts). Below /model.coverage_floor no score is published.
+             */
             coverage?: number | null;
             /** Red Flags */
             red_flags?: string[];
@@ -598,6 +1346,8 @@ export interface components {
             narrative?: string | null;
             /** Model Version */
             model_version?: string | null;
+            /** @description The same instrument's most recent signal strictly before this row's as_of, whatever the rows a query returns; null for its first. A different model_version means the change is partly the model's. */
+            previous?: components["schemas"]["PreviousSignalOut"] | null;
             /** Factors */
             factors?: components["schemas"]["FactorOut"][];
         };
@@ -620,7 +1370,10 @@ export interface components {
             composite_score?: number | null;
             /** Signal */
             signal?: string | null;
-            /** Coverage */
+            /**
+             * Coverage
+             * @description Fraction (0-1) of the model's weight backed by data — weighted by family and by each factor's weight within its family, so not a share of factors (score-status gives the factor counts). Below /model.coverage_floor no score is published.
+             */
             coverage?: number | null;
             /** Red Flags */
             red_flags?: string[];
@@ -630,6 +1383,8 @@ export interface components {
             narrative?: string | null;
             /** Model Version */
             model_version?: string | null;
+            /** @description The same instrument's most recent signal strictly before this row's as_of, whatever the rows a query returns; null for its first. A different model_version means the change is partly the model's. */
+            previous?: components["schemas"]["PreviousSignalOut"] | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -795,7 +1550,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InstrumentOut"][];
+                    "application/json": components["schemas"]["SearchResultOut"][];
                 };
             };
             /** @description Validation Error */
@@ -890,7 +1645,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignalOut"][];
+                    "application/json": components["schemas"]["HistoryPointOut"][];
                 };
             };
             /** @description Validation Error */
@@ -905,6 +1660,40 @@ export interface operations {
         };
     };
     signal_explanation_v1_instruments__isin__explanation_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM-DD. Explain the signal stored on exactly this date; defaults to the latest. A date with no stored signal is a 404, never the nearest date's. */
+                as_of?: string | null;
+            };
+            header?: never;
+            path: {
+                isin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplanationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    score_status_v1_instruments__isin__score_status_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -921,7 +1710,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExplanationOut"];
+                    "application/json": components["schemas"]["ScoreStatusOut"];
                 };
             };
             /** @description Validation Error */
@@ -1004,10 +1793,107 @@ export interface operations {
             };
         };
     };
+    instrument_corporate_actions_v1_instruments__isin__corporate_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                isin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorporateActionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    instrument_key_metrics_v1_instruments__isin__key_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                isin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyMetricsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    instrument_shareholding_v1_instruments__isin__shareholding_get: {
+        parameters: {
+            query?: {
+                quarters?: number;
+            };
+            header?: never;
+            path: {
+                isin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareholdingOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     instrument_news_v1_instruments__isin__news_get: {
         parameters: {
             query?: {
                 limit?: number;
+                /** @description Only articles whose relevance is primary. */
+                relevant_only?: boolean;
             };
             header?: never;
             path: {
@@ -1079,6 +1965,8 @@ export interface operations {
                 /** @description YYYY-MM-DD; defaults to the latest scored date */
                 as_of?: string | null;
                 limit?: number;
+                /** @description per_instrument: each instrument's newest signal, whatever its date, ranked together; every row's as_of says which date it is from. Combines with signal and sector, not with as_of. */
+                latest?: string | null;
             };
             header?: never;
             path?: never;
