@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Iterator
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
@@ -454,6 +454,84 @@ class ExplanationOut(BaseModel):
         )
 
 
+ScoreReason = Literal[
+    "scored",
+    "not_in_latest_run",
+    "below_coverage_floor",
+    "missing_fundamentals",
+    "sector_not_supported",
+    "never_scored",
+]
+
+
+class ScoreStatusOut(BaseModel):
+    """Whether a company has a score and, when it does not, why."""
+
+    isin: str
+    scored: bool = Field(
+        description="True when the newest run that measured the company stored "
+        "a signal for it. False for a company no run has measured, and for one "
+        "the newest run measured but could not score — even when an older "
+        "signal exists (see latest_as_of)."
+    )
+    reason: ScoreReason = Field(
+        description="scored: in the latest run. not_in_latest_run: scored, but "
+        "the latest run did not measure it, so its score is older. "
+        "below_coverage_floor: measured, but too little of the model's weight "
+        "had data. missing_fundamentals: below the floor because no annual "
+        "results were stored. sector_not_supported: below the floor because "
+        "its results filings (banks, insurers) carry no figures the model's "
+        "annual statements can be built from. never_scored: no run has "
+        "measured it."
+    )
+    latest_as_of: dt.date | None = Field(
+        default=None,
+        description="Newest date with a signal row; null when there is none. "
+        "Older than measured_as_of when a later run could not score it.",
+    )
+    measured_as_of: dt.date | None = Field(
+        default=None,
+        description="The run the reason, coverage and factor counts describe: "
+        "the newest date any run stored anything for the company.",
+    )
+    coverage: float | None = Field(
+        default=None, ge=0, le=1,
+        description="Fraction (0-1) of the model's weight backed by data on "
+        "measured_as_of. Null when no run has measured the company.",
+    )
+    coverage_floor: float = Field(
+        description="Coverage below which the current model withholds a score, "
+        "as a fraction (0-1). Older signals may have been stored under another "
+        "floor; their model_version says which."
+    )
+    factors_measured: int | None = Field(
+        default=None,
+        description="Factors with a sector z-score on measured_as_of. Null when "
+        "no factor rows were stored for that date.",
+    )
+    factors_total: int = Field(description="Factors in the current model.")
+    detail: str | None = Field(
+        default=None,
+        description="One plain sentence for display, stating the measured share "
+        "and what was missing.",
+    )
+
+    @classmethod
+    def of(cls, row: explain.ScoreStatus) -> ScoreStatusOut:
+        return cls(
+            isin=row.isin,
+            scored=row.scored,
+            reason=row.reason,
+            latest_as_of=row.latest_as_of,
+            measured_as_of=row.measured_as_of,
+            coverage=row.coverage,
+            coverage_floor=row.coverage_floor,
+            factors_measured=row.factors_measured,
+            factors_total=row.factors_total,
+            detail=row.detail,
+        )
+
+
 class PriceBarOut(BaseModel):
     date: dt.date
     open: float | None = None
@@ -609,6 +687,22 @@ def signal_explanation(
         on = "" if date is None else f" on {date}"
         raise HTTPException(status_code=404, detail=f"No signal stored for {isin!r}{on}")
     return ExplanationOut.of(reasoning)
+
+
+@route(
+    "/instruments/{isin}/score-status",
+    response_model=ScoreStatusOut,
+    tags=["signals"],
+)
+def score_status(db: DB, isin: Annotated[str, Path()]) -> ScoreStatusOut:
+    """Why a company is or isn't scored. 200 for any known ISIN, 404 otherwise.
+
+    `/latest` answers 404 for a company with no signal; this says which of
+    "never measured", "below the coverage floor" and "the filings can't be read"
+    it is, from what the runs stored.
+    """
+    require_instrument(db, isin)
+    return ScoreStatusOut.of(explain.score_status(db, isin))
 
 
 @route(

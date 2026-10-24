@@ -33,6 +33,7 @@ flags that, and the caller is expected to say so rather than quietly proceed.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -482,3 +483,246 @@ def explain(
         stored_version=signal.model_version,
         current_version=current_version,
     )
+
+
+# ----------------------------------------------------------------------
+# Why a company is, or is not, scored
+# ----------------------------------------------------------------------
+
+SCORED = "scored"
+NOT_IN_LATEST_RUN = "not_in_latest_run"
+BELOW_COVERAGE_FLOOR = "below_coverage_floor"
+MISSING_FUNDAMENTALS = "missing_fundamentals"
+SECTOR_NOT_SUPPORTED = "sector_not_supported"
+NEVER_SCORED = "never_scored"
+SCORE_REASONS = (
+    SCORED,
+    NOT_IN_LATEST_RUN,
+    BELOW_COVERAGE_FLOOR,
+    MISSING_FUNDAMENTALS,
+    SECTOR_NOT_SUPPORTED,
+    NEVER_SCORED,
+)
+
+# Results formats the annual reader cannot build statements from, by a word in
+# the exchange's own file name (…/xbrl/INTEGRATED_FILING_BANKING_1740913_….xml).
+# Every annual filing in these formats has been read and refused: banks tag no
+# revenue line or total equity, life insurers no revenue, profit or equity.
+_UNSUPPORTED_FORMATS = {"BANKING": "banks", "LI": "insurers", "GI": "insurers"}
+_FORMAT = re.compile(r"/([A-Z_]+?)_\d")
+
+
+@dataclass(frozen=True)
+class ScoreStatus:
+    """What the stored runs say about one company's score, read back.
+
+    `measured_as_of` is the run the reason describes: the newest date a run
+    stored anything for the company. It can be later than `latest_as_of` — a
+    run that measured the company and could not score it stores factor rows but
+    no signal, so the older signal is what `/latest` still returns.
+    """
+
+    isin: str
+    scored: bool
+    reason: str
+    latest_as_of: dt.date | None
+    measured_as_of: dt.date | None
+    coverage: float | None
+    coverage_floor: float
+    factors_measured: int | None
+    factors_total: int
+    detail: str | None
+
+
+def results_format(xbrl_url: str | None) -> str | None:
+    """The exchange's name for a filing's results format, from its file name."""
+    match = _FORMAT.search(xbrl_url or "")
+    return match.group(1) if match else None
+
+
+def _unsupported(xbrl_url: str | None) -> str | None:
+    """'banks' or 'insurers' when the filing is in a format the model can't read."""
+    words = (results_format(xbrl_url) or "").split("_")
+    for word, kind in _UNSUPPORTED_FORMATS.items():
+        if word in words:
+            return kind
+    return None
+
+
+def _day(date: dt.date) -> str:
+    return f"{date.day} {date:%b %Y}"
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def score_status(
+    db: Database, isin: str, config: ScoringConfig | None = None
+) -> ScoreStatus:
+    """Whether a company has a score, and when it does not, the reason.
+
+    Read from what runs stored, never re-scored: a run writes a factor row for
+    every company it could measure at all, and a signal only for the ones that
+    cleared the coverage floor. Replaying the model's family aggregation over a
+    company's stored z-scores gives back the coverage that run saw — the number
+    it compared with the floor.
+    """
+    config = config or ScoringConfig()
+    model = CompositeModel(config=config)
+    names = [f.name for f in model.factors]
+    floor = config.min_coverage
+
+    dates = db.query(
+        "SELECT (SELECT MAX(as_of_date) FROM signals WHERE isin = ?) AS last_signal, "
+        "(SELECT MAX(as_of_date) FROM factor_scores WHERE isin = ?) AS last_measured, "
+        "(SELECT MAX(as_of_date) FROM signals) AS last_scored_run, "
+        "(SELECT MAX(as_of_date) FROM factor_scores) AS last_measured_run",
+        [isin, isin],
+    ).iloc[0]
+    last_signal = queries._opt_date(dates["last_signal"])
+    last_measured = queries._opt_date(dates["last_measured"])
+    runs = [
+        d for d in (
+            queries._opt_date(dates["last_scored_run"]),
+            queries._opt_date(dates["last_measured_run"]),
+        ) if d is not None
+    ]
+    measured_on = max((d for d in (last_signal, last_measured) if d), default=None)
+
+    def status(
+        scored: bool,
+        reason: str,
+        detail: str,
+        coverage: float | None = None,
+        factors_measured: int | None = None,
+    ) -> ScoreStatus:
+        return ScoreStatus(
+            isin=isin,
+            scored=scored,
+            reason=reason,
+            latest_as_of=last_signal,
+            measured_as_of=measured_on,
+            coverage=coverage,
+            coverage_floor=floor,
+            factors_measured=factors_measured,
+            factors_total=len(names),
+            detail=detail,
+        )
+
+    if measured_on is None:
+        return status(False, NEVER_SCORED, _never_measured(db, isin))
+
+    rows = db.query(
+        "SELECT factor_name, sector_zscore FROM factor_scores "
+        "WHERE isin = ? AND as_of_date = ?",
+        [isin, measured_on],
+    )
+    n_measured = coverage = None
+    unmeasured: list[str] = []
+    if not rows.empty:
+        panel = (
+            rows.set_index("factor_name")["sector_zscore"]
+            .astype(float).reindex(names).to_frame(isin).T
+        )
+        _family_z, replayed = model._aggregate_families(panel)
+        coverage = queries._opt_float(replayed.iloc[0])
+        n_measured = int(panel.iloc[0].notna().sum())
+        unmeasured = [
+            fam for fam in FAMILY_ORDER
+            if not panel.iloc[0][[f.name for f in model.factors if f.family == fam]]
+            .notna().any()
+        ]
+    counted = (
+        f" ({n_measured} of {len(names)} factors)" if n_measured is not None else ""
+    )
+
+    if last_signal is not None and last_signal >= measured_on:
+        signal = queries.signal_on(db, isin, last_signal)
+        if signal is not None and signal.coverage is not None:
+            coverage = signal.coverage
+        share = f"{coverage:.0%} of the model's weight" if coverage is not None else None
+        latest_run = max(runs, default=last_signal)
+        if last_signal >= latest_run:
+            detail = f"Scored on {_day(last_signal)}" + (
+                f" with {share} measured{counted}." if share else "."
+            )
+            return status(
+                True, SCORED, detail, coverage=coverage, factors_measured=n_measured
+            )
+        detail = (
+            f"Last scored on {_day(last_signal)}; the latest run, on "
+            f"{_day(latest_run)}, did not measure this company."
+        )
+        return status(
+            True, NOT_IN_LATEST_RUN, detail,
+            coverage=coverage, factors_measured=n_measured,
+        )
+
+    # Measured on `measured_on` and not scored.
+    weight = f"{coverage or 0.0:.0%} of the model's weight"
+    shortfall = (
+        f"below the {floor:.0%} floor"
+        if coverage is None or coverage < floor
+        # Only a run made under a stricter floor than today's leaves this.
+        else "yet that run stored no signal for it"
+    )
+    annual = db.query(
+        "SELECT COUNT(*) AS n FROM fundamentals_annual WHERE isin = ? AND filing_date <= ?",
+        [isin, measured_on],
+    ).iloc[0]["n"]
+    if int(annual) == 0:
+        latest_filing = db.query(
+            "SELECT xbrl_url FROM fundamentals_quarterly "
+            "WHERE isin = ? AND xbrl_url IS NOT NULL "
+            "ORDER BY period_end_date DESC LIMIT 1",
+            [isin],
+        )
+        kind = _unsupported(
+            None if latest_filing.empty else latest_filing.iloc[0]["xbrl_url"]
+        )
+        if kind is not None:
+            detail = (
+                f"The model can't read annual statements from {kind}' results "
+                f"filings, so only {weight}{counted} could be measured on "
+                f"{_day(measured_on)}, {shortfall}."
+            )
+            return status(
+                False, SECTOR_NOT_SUPPORTED, detail,
+                coverage=coverage, factors_measured=n_measured,
+            )
+        detail = (
+            f"No annual results had been stored for this company by "
+            f"{_day(measured_on)}, so only {weight}{counted} could be measured, "
+            f"{shortfall}."
+        )
+        return status(
+            False, MISSING_FUNDAMENTALS, detail,
+            coverage=coverage, factors_measured=n_measured,
+        )
+
+    gaps = f"; nothing was measured for {_and(unmeasured)}" if unmeasured else ""
+    detail = (
+        f"Only {weight}{counted} could be measured on {_day(measured_on)}, "
+        f"{shortfall}{gaps}."
+    )
+    return status(
+        False, BELOW_COVERAGE_FLOOR, detail,
+        coverage=coverage, factors_measured=n_measured,
+    )
+
+
+def _never_measured(db: Database, isin: str) -> str:
+    held = db.query(
+        "SELECT (SELECT COUNT(*) FROM prices_daily WHERE isin = ?) AS prices, "
+        "(SELECT COUNT(*) FROM fundamentals_annual WHERE isin = ?) "
+        "+ (SELECT COUNT(*) FROM fundamentals_quarterly WHERE isin = ?) AS results",
+        [isin, isin, isin],
+    ).iloc[0]
+    missing = [name for name in ("prices", "results") if int(held[name]) == 0]
+    if missing:
+        return (
+            f"No scoring run has measured this company; no {' or '.join(missing)} "
+            f"are stored for it."
+        )
+    return "No scoring run has measured this company yet."
