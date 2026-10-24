@@ -8,7 +8,10 @@ import { fixtureModel, fixtureRedFlags } from "../fixtures";
 describe("LearnView", () => {
   it("shows the families, weights and thresholds from the model", () => {
     render(<LearnView model={fixtureModel()} />);
-    expect(screen.getByText("Scores are percentiles within the scored universe on each date, not valuations.")).toBeInTheDocument();
+    expect(screen.getByText("Scores are normal-curve percentiles relative to the companies scored that day, not valuations.")).toBeInTheDocument();
+    const method = screen.getByText(/Each factor becomes a z-score against its sector/);
+    expect(method).toHaveTextContent(/re-standardised/);
+    expect(method).toHaveTextContent(/normal curve/);
     const weights = screen.getByRole("table", { name: "Family weights" });
     expect(within(weights).getByText("Quality")).toBeInTheDocument();
     expect(within(weights).getByText("30%")).toBeInTheDocument();

@@ -16,15 +16,16 @@ export function LearnView({ model }: { model: ModelInfo }) {
       <h1>How scores work</h1>
       <p className={s.lead}>
         Our model ranks {UNIVERSE} companies against each other on each scored date.{" "}
-        <strong>Scores are percentiles within the scored universe on each date, not valuations.</strong>
+        <strong>Scores are normal-curve percentiles relative to the companies scored that day, not valuations.</strong>
       </p>
       <div className={s.stack}>
         <Card>
           <h2 id="model">Model &amp; weights</h2>
           <p>
             Each company is measured on factors grouped into five families. Each factor becomes a z-score against its
-            sector; a family&apos;s z-score is the average of its factors, and the composite is the weighted sum, turned into a
-            0–100 percentile across every company scored that day.
+            sector. A family&apos;s z-score is the weighted mean of its factors&apos; z-scores, re-standardised across every
+            company scored that day. The composite is the weighted sum of the family z-scores (re-weighted over the
+            families measured), standardised again and placed on a normal curve as a 0–100 score.
           </p>
           <table className={s.tbl} aria-label="Family weights">
             <thead>

@@ -38,6 +38,6 @@ describe("HomeView", () => {
     expect(within(screen.getByTestId("flag-list")).getByRole("link", { name: /CHOLAFIN/ })).toHaveAttribute("href", "/stocks/CHOLAFIN");
     expect(screen.getByTestId("flag-list").closest("div")!.parentElement).toHaveTextContent(/Red flags\s*14 Aug 2026/);
     expect(screen.getByText(/Not investment advice\./)).toBeInTheDocument();
-    expect(screen.getByText(/percentiles within the scored universe/i)).toBeInTheDocument();
+    expect(screen.getByText(/normal-curve percentiles relative to the companies scored that day/i)).toBeInTheDocument();
   });
 });

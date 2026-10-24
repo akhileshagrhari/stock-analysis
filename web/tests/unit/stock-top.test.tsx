@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { StockPageView } from "@/components/stock/StockPageView";
 import type { StockPageData } from "@/lib/stock/load";
@@ -25,6 +26,15 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
     expect(within(card).getByText("Model rank on 16 Aug 2026, not investment advice.")).toBeVisible();
     expect(within(card).getByRole("link", { name: "How to read this" })).toHaveAttribute("href", "/learn");
     expect(within(card).getByRole("link", { name: "Disclaimer" })).toHaveAttribute("href", "/disclaimer");
+  });
+
+  it("the ⓘ describes the score as computed: weighted family z-scores on a normal curve", async () => {
+    renderView("RELIANCE");
+    const card = screen.getByTestId("score-card");
+    await userEvent.setup().click(within(card).getByRole("button", { name: "What this means" }));
+    const note = within(card).getByRole("note");
+    expect(note).toHaveTextContent("weighted sum of its family z-scores, placed on a normal curve");
+    expect(note).not.toHaveTextContent(/factor percentiles/);
   });
 
   it("explains why", () => {

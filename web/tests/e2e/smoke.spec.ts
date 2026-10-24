@@ -6,7 +6,7 @@ const PAGES: { path: string; text: string | RegExp; status?: number }[] = [
   { path: "/stocks/HDFCBANK", text: "Not scored" },
   { path: "/stocks/CHOLAFIN", text: /SELL forced by red flag/ },
   { path: "/signals", text: /stocks scored on/ },
-  { path: "/learn", text: "Scores are percentiles within the scored universe on each date, not valuations." },
+  { path: "/learn", text: "Scores are normal-curve percentiles relative to the companies scored that day, not valuations." },
   { path: "/red-flags", text: "The model's six checks" },
   { path: "/disclaimer", text: "Placeholder text, pending legal review. The final wording will replace this page." },
   { path: "/stocks/NOPE", text: "No NIFTY100 company with symbol NOPE", status: 404 },

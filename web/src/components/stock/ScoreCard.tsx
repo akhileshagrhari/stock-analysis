@@ -13,7 +13,7 @@ import { SignalChip } from "@/components/ui/SignalChip";
 import { VerdictNote } from "@/components/ui/VerdictNote";
 import s from "./stock.module.css";
 
-const TIP = `A relative rank of this stock among scored ${UNIVERSE} stocks on one date, built from factor percentiles. Not a valuation or a price target.`;
+const TIP = `Where this stock sits among the ${UNIVERSE} stocks scored on one date: a weighted sum of its family z-scores, placed on a normal curve as 0–100. Not a valuation or a price target.`;
 
 export function overrideText(o: NonNullable<ScoreState["overridden"]>): string {
   return `${SIGNALS.SELL.label} forced by red flag: ${o.description}. Without it, the score would read ${SIGNALS[o.wouldBe].label}.`;

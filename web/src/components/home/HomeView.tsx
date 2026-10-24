@@ -109,7 +109,7 @@ export function HomeView({ data }: { data: HomeData }) {
             ))}
           </div>
           <p className={s.small}>
-            Scores are percentiles within the scored universe on each date, not valuations. {SIGNALS.BUY.label} from{" "}
+            Scores are normal-curve percentiles relative to the companies scored that day, not valuations. {SIGNALS.BUY.label} from{" "}
             {model.buy_threshold}, {SIGNALS.SELL.label} below {model.sell_threshold}; a triggered red flag forces{" "}
             {SIGNALS.SELL.label}.
           </p>
