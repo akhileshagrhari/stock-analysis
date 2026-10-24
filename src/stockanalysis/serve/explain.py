@@ -298,6 +298,40 @@ def _family_rows(
     return rows
 
 
+def family_history(
+    db: Database,
+    isin: str,
+    dates: list[dt.date],
+    config: ScoringConfig | None = None,
+) -> dict[dt.date, list[FamilyContribution]]:
+    """Each date's family breakdown for one company, as `explain` would give it.
+
+    One read for every date: the stored z-scores of the whole universe on those
+    days, since a family percentile is a rank within the day's cross-section.
+    Dates with no stored factors are absent from the result.
+    """
+    if not dates:
+        return {}
+    model = CompositeModel(config=config or ScoringConfig())
+    names = [f.name for f in model.factors]
+    marks = ", ".join("?" for _ in dates)
+    rows = db.query(
+        "SELECT as_of_date, isin, factor_name, sector_zscore FROM factor_scores "
+        f"WHERE as_of_date IN ({marks})",
+        list(dates),
+    )
+    out: dict[dt.date, list[FamilyContribution]] = {}
+    for day, block in rows.groupby("as_of_date"):
+        date = queries._opt_date(day)
+        if date is None:
+            continue
+        panel = block.pivot(
+            index="isin", columns="factor_name", values="sector_zscore"
+        ).reindex(columns=names)
+        out[date] = _family_rows(panel, isin, model)
+    return out
+
+
 def _drivers(
     panel: pd.DataFrame,
     isin: str,

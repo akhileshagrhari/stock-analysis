@@ -514,6 +514,30 @@ class FamilyOut(BaseModel):
         )
 
 
+class FamilyPointOut(BaseModel):
+    family: str
+    percentile: float | None = Field(
+        default=None,
+        description="0-100 within the universe scored that day; null when no "
+        "factor in the family was measured.",
+    )
+    contribution: float | None = Field(
+        default=None,
+        description="Signed share of that day's composite z (negative pulled "
+        "the score down); the families' contributions sum to it.",
+    )
+
+
+class HistoryPointOut(SignalOut):
+    families: list[FamilyPointOut] = Field(
+        default_factory=list,
+        description="The day's family breakdown, replayed from that day's stored "
+        "z-scores with the current model's weights — a row whose model_version "
+        "differs is re-derived, as /explanation's stale flag says. Empty when "
+        "the day stored no factor rows.",
+    )
+
+
 class DriverOut(BaseModel):
     name: str
     label: str
@@ -1006,17 +1030,33 @@ def latest_signal(db: DB, isin: Annotated[str, Path()]) -> SignalDetailOut:
 
 @route(
     "/instruments/{isin}/history",
-    response_model=list[SignalOut],
+    response_model=list[HistoryPointOut],
     tags=["signals"],
 )
 def signal_history(
     db: DB,
     isin: Annotated[str, Path()],
     limit: Annotated[int, Query(ge=1, le=500)] = 60,
-) -> list[SignalOut]:
-    """Signal history, oldest first. Empty list when the instrument has none."""
+) -> list[HistoryPointOut]:
+    """Signal history, oldest first, with each day's family breakdown.
+
+    Empty list when the instrument has none.
+    """
     require_instrument(db, isin)
-    return [SignalOut.of(row) for row in queries.signal_history(db, isin, limit)]
+    rows = queries.signal_history(db, isin, limit)
+    families = explain.family_history(db, isin, [row.as_of for row in rows])
+    return [
+        HistoryPointOut(
+            **SignalOut.of(row).model_dump(),
+            families=[
+                FamilyPointOut(
+                    family=f.family, percentile=f.percentile, contribution=f.contribution
+                )
+                for f in families.get(row.as_of, [])
+            ],
+        )
+        for row in rows
+    ]
 
 
 @route(

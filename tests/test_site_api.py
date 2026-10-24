@@ -881,3 +881,32 @@ class TestR10FilingLinks:
         }]), ["filing_id"])
         assert _filing_url(scored_db, "F1").endswith("AR_1.pdf")
         assert _filing_url(scored_db, "F-missing") is None
+
+
+# ----------------------------------------------------------------------
+# R11 — per-family history
+# ----------------------------------------------------------------------
+
+
+class TestR11FamilyHistory:
+    def test_each_row_carries_the_breakdown_its_explanation_gives(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        history = client.get(f"/v1/instruments/{isin}/history").json()
+        assert [r["as_of"] for r in history] == [EARLIER.isoformat(), AS_OF.isoformat()]
+        for row in history:
+            explained = client.get(
+                f"/v1/instruments/{isin}/explanation?as_of={row['as_of']}"
+            ).json()["families"]
+            assert row["families"] == [
+                {"family": f["family"], "percentile": f["percentile"],
+                 "contribution": f["contribution"]}
+                for f in explained
+            ]
+            assert [f["family"] for f in row["families"]] == explain.FAMILY_ORDER
+
+    def test_a_day_without_stored_factors_has_no_breakdown(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("DELETE FROM factor_scores WHERE as_of_date = ?", [EARLIER])
+        history = client.get(f"/v1/instruments/{isin}/history").json()
+        assert history[0]["families"] == []
+        assert history[1]["families"]
