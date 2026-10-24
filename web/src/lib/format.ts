@@ -103,6 +103,15 @@ export function absFixed(v: number, digits: number): string {
   return Math.abs(roundTo(v, digits)).toFixed(digits);
 }
 
+/**
+ * A 0-100 composite score in whole points, rounded down: the band lines are
+ * whole numbers, so 74.6 reads 74 beside its HOLD, never 75 beside "BUY ≥ 75".
+ */
+export function scoreText(score: number, digits = 0): string {
+  const f = 10 ** digits;
+  return (Math.floor(Number((score * f).toPrecision(12))) / f).toFixed(digits);
+}
+
 export function ordinal(n: number): string {
   const r = Math.round(n);
   const suffix = r % 100 >= 10 && r % 100 <= 20 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[r % 10] ?? "th";

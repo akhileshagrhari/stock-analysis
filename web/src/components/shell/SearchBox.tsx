@@ -64,7 +64,8 @@ export function SearchBox({ autoFocus = false, size = "hero" }: { autoFocus?: bo
       setResults(found ?? []);
       setFailed(false);
     } catch {
-      if (id !== reqId.current) return;
+      // A request this box cancelled (the user kept typing) is not an outage.
+      if (id !== reqId.current || c.signal.aborted) return;
       setResults([]);
       setFailed(true);
     }

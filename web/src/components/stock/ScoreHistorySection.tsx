@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ModelInfo } from "@/lib/api/types";
-import { fmtDate, pct, shortModel, signedFixed } from "@/lib/format";
+import { fmtDate, pct, scoreText, shortModel, signedFixed } from "@/lib/format";
 import { compare, modelChangeIndexes, type Snapshot } from "@/lib/stock/history";
 import { ScoreHistoryChart } from "@/components/charts/ScoreHistoryChart";
 import { Card } from "@/components/ui/Card";
@@ -23,7 +23,7 @@ function Column({ title, p }: { title: string; p: Snapshot }) {
         {title} · {fmtDate(p.date)}
       </h4>
       <div className={s.cmpRow}>
-        Score <b className="tnum">{p.score === null ? "Not scored" : p.score.toFixed(1)}</b>
+        Score <b className="tnum">{p.score === null ? "Not scored" : scoreText(p.score, 1)}</b>
       </div>
       <div className={s.cmpRow}>
         Signal <SignalChip signal={p.signal} />
@@ -116,7 +116,7 @@ export function ScoreHistorySection({ points, model }: { points: Snapshot[]; mod
               {[...points].reverse().map((p) => (
                 <tr key={p.date}>
                   <td>{fmtDate(p.date)}</td>
-                  <td>{p.score === null ? "—" : p.score.toFixed(1)}</td>
+                  <td>{p.score === null ? "—" : scoreText(p.score, 1)}</td>
                   <td className={s.left}>
                     <SignalChip signal={p.signal} />
                   </td>

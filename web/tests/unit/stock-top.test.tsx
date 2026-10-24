@@ -105,6 +105,12 @@ describe("stock page top: other states", () => {
     expect(document.body.innerHTML).not.toMatch(/NaN/);
   });
 
+  it("a HOLD just under the BUY line never reads 75", () => {
+    renderView("RELIANCE", (d) => ({ ...d, explanation: { ...d.explanation!, composite_score: 74.6, signal: "HOLD", red_flags: [] } }));
+    expect(screen.getByTestId("score-value")).toHaveTextContent(/^74 \/ 100$/);
+    expect(document.body.textContent).not.toMatch(/Score\s*75/);
+  });
+
   it("shows the narrative when there is one", () => {
     renderView("RELIANCE", (d) => ({ ...d, explanation: { ...d.explanation!, narrative: "Test narrative." } }));
     expect(within(screen.getByTestId("why-card")).getByText("Test narrative.")).toBeInTheDocument();

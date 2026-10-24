@@ -68,6 +68,19 @@ describe("SearchBox", () => {
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([expect.stringContaining("RELIANCE")]);
   });
 
+  it("does not report an outage for a request it cancelled itself", async () => {
+    // Like fetch: an aborted request rejects with an AbortError.
+    get.mockImplementation((_path: string, signal?: AbortSignal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+    }));
+    render(<SearchBox />);
+    await user.type(input(), "rel");
+    await advance(160);
+    await user.type(input(), "i");
+    await advance(0);
+    expect(screen.queryByText(/unavailable/i)).toBeNull();
+  });
+
   it("ArrowDown + Enter navigates to /stocks/RELIANCE", async () => {
     stubSearch({ reli: [RELIANCE, RELAXO] });
     render(<SearchBox />);

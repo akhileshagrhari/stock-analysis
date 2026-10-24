@@ -30,13 +30,17 @@ async function request<T>(url: string, path: string, init: RequestInit): Promise
   return (await res.json()) as T;
 }
 
-/** Server components: straight to the API. `path` starts after /v1. */
-export function serverGet<T>(path: string): Promise<T | null> {
-  const base = process.env.SA_API_URL ?? "http://localhost:8000";
-  return request<T>(`${base}/v1${path}`, path, { next: { revalidate: REVALIDATE_SECONDS } });
+/** Where the API is, read on every call so a running server follows SA_API_URL. */
+export function apiBase(): string {
+  return process.env.SA_API_URL ?? "http://localhost:8000";
 }
 
-/** Browser: through the /api/v1 rewrite, so the API needs no CORS. */
+/** Server components: straight to the API. `path` starts after /v1. */
+export function serverGet<T>(path: string): Promise<T | null> {
+  return request<T>(`${apiBase()}/v1${path}`, path, { next: { revalidate: REVALIDATE_SECONDS } });
+}
+
+/** Browser: through the /api/v1 proxy route, so the API needs no CORS. */
 export function browserGet<T>(path: string, signal?: AbortSignal): Promise<T | null> {
   return request<T>(`/api/v1${path}`, path, { signal });
 }

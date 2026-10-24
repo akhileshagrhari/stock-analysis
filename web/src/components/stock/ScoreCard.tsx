@@ -1,5 +1,5 @@
 import type { ModelInfo } from "@/lib/api/types";
-import { fmtDate, pct, shortModel } from "@/lib/format";
+import { fmtDate, pct, scoreText, shortModel } from "@/lib/format";
 import type { ScoreState } from "@/lib/stock/state";
 import { unscoredMessage } from "@/lib/stock/state";
 import { SIGNALS } from "@/config/signals";
@@ -32,7 +32,7 @@ export function ScoreCard({ state, model, modelVersion, sector }: { state: Score
       {state.kind === "scored" ? (
         <>
           <div className={`${s.big} tnum`} data-testid="score-value">
-            {Math.round(state.score!)}
+            {scoreText(state.score!)}
             <small> / 100</small>
           </div>
           <SegmentMeter score={state.score} thresholds={thresholds} />

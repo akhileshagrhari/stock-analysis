@@ -10,6 +10,7 @@ import {
   parseDay,
   pct,
   quarterLabel,
+  scoreText,
   shortModel,
   zLabel,
 } from "@/lib/format";
@@ -78,6 +79,17 @@ describe("rounding", () => {
     expect(pct(0.0785)).toBe("7.9%");
     expect(zLabel(-1.25)).toBe("−1.3 SD vs sector");
     expect(num(0.5)).toBe("1");
+  });
+});
+
+describe("scoreText", () => {
+  it("shows whole points that never cross a band line", () => {
+    expect(scoreText(74.6)).toBe("74");
+    expect(scoreText(75)).toBe("75");
+    expect(scoreText(44.99)).toBe("44");
+    expect(scoreText(0)).toBe("0");
+    expect(scoreText(74.96, 1)).toBe("74.9");
+    expect(scoreText(28.04, 1)).toBe("28.0");
   });
 });
 

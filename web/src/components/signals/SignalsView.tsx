@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { fmtDate, pct, signedFixed } from "@/lib/format";
+import { fmtDate, pct, scoreText, signedFixed } from "@/lib/format";
 import type { SignalsData } from "@/lib/signals/load";
 import { sortRows, type Row, type SortKey } from "@/lib/signals/list";
 import { LOW_COVERAGE } from "@/config/site";
@@ -158,7 +158,7 @@ export function SignalsView({ data, focusSector = false }: { data: SignalsData; 
                           <span className={s.nm}>Not scored</span>
                         ) : (
                           <span className={s.scoreCell}>
-                            <b>{Math.round(r.composite_score)}</b>
+                            <b>{scoreText(r.composite_score)}</b>
                             <span className={s.bar} aria-hidden="true">
                               <i style={{ width: `${Math.max(0, Math.min(100, r.composite_score))}%` }} />
                             </span>
@@ -189,7 +189,7 @@ export function SignalsView({ data, focusSector = false }: { data: SignalsData; 
                   </div>
                   <div className={s.cardName}>{r.name}</div>
                   <div className={`${s.cardMeta} tnum`}>
-                    <span>Score {r.composite_score === null ? "n/m" : Math.round(r.composite_score)}</span>
+                    <span>Score {r.composite_score === null ? "n/m" : scoreText(r.composite_score)}</span>
                     <span style={r.coverage !== null && r.coverage < LOW_COVERAGE ? { color: "var(--hold)" } : undefined}>
                       Coverage {r.coverage === null ? "—" : pct(r.coverage, 0)}
                     </span>

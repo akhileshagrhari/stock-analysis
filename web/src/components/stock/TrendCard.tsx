@@ -1,4 +1,4 @@
-import { fmtDate, signedFixed } from "@/lib/format";
+import { fmtDate, scoreText, signedFixed } from "@/lib/format";
 import { changeSinceFirst, type Snapshot } from "@/lib/stock/history";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { Card } from "@/components/ui/Card";
@@ -18,7 +18,7 @@ export function TrendCard({ points }: { points: Snapshot[] }) {
       </div>
       {scored.length === 1 ? (
         <>
-          <div className={`${s.big} tnum`}>{Math.round(scored[0].score!)}</div>
+          <div className={`${s.big} tnum`}>{scoreText(scored[0].score!)}</div>
           <div className="asof">First scored {fmtDate(scored[0].date)}</div>
         </>
       ) : (

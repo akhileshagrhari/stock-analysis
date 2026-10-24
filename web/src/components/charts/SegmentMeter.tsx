@@ -1,4 +1,5 @@
 import { SIGNALS, type SignalKey } from "@/config/signals";
+import { scoreText } from "@/lib/format";
 import s from "./charts.module.css";
 
 export type Thresholds = { sell: number; buy: number };
@@ -11,7 +12,7 @@ function zoneOf(lo: number, t: Thresholds): SignalKey {
 export function SegmentMeter({ score, thresholds }: { score: number | null; thresholds: Thresholds }) {
   const has = score !== null && Number.isFinite(score);
   const label = has
-    ? `Score ${Math.round(score)} out of 100. ${SIGNALS.SELL.label} below ${thresholds.sell}, ${SIGNALS.BUY.label} from ${thresholds.buy}.`
+    ? `Score ${scoreText(score)} out of 100. ${SIGNALS.SELL.label} below ${thresholds.sell}, ${SIGNALS.BUY.label} from ${thresholds.buy}.`
     : "Not scored";
   return (
     <div>

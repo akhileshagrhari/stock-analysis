@@ -16,9 +16,10 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-`SA_API_URL` (default `http://localhost:8000`) is where the API is. Server
-components call it directly; the browser goes through the `/api/v1/*` rewrite in
-`next.config.ts`, so the API needs no CORS settings.
+`SA_API_URL` (default `http://localhost:8000`) is where the API is, read when the
+server starts handling requests (not at build time). Server components call it
+directly; the browser goes through the `/api/v1/*` proxy route
+(`src/app/api/v1/[...path]/route.ts`), so the API needs no CORS settings.
 
 ## Check
 

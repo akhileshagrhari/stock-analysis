@@ -1,4 +1,5 @@
 import { SIGNALS } from "@/config/signals";
+import { scoreText } from "@/lib/format";
 import type { Thresholds } from "./SegmentMeter";
 import s from "./charts.module.css";
 
@@ -12,7 +13,7 @@ export function ScaleBar({ score, thresholds, label }: { score: number | null; t
   const target = has ? (score < sell ? sell : score < buy ? buy : score) : 0;
   return (
     <div>
-      <div className={s.scale} role="img" aria-label={has ? `Score ${Math.round(score)}; ${label}` : "Not scored"}>
+      <div className={s.scale} role="img" aria-label={has ? `Score ${scoreText(score)}; ${label}` : "Not scored"}>
         <div className={s.trk} style={{ background: track }} />
         <span className={s.tick} style={{ left: `${sell}%` }} />
         <span className={s.tick} style={{ left: `${buy}%` }} />
@@ -28,7 +29,7 @@ export function ScaleBar({ score, thresholds, label }: { score: number | null; t
           {SIGNALS.SELL.label} line<b className="tnum">{sell}</b>
         </span>
         <span className={s.mid}>
-          Score<b className="tnum">{has ? Math.round(score) : "n/m"}</b>
+          Score<b className="tnum">{has ? scoreText(score) : "n/m"}</b>
         </span>
         <span className={s.end}>
           {SIGNALS.BUY.label} line<b className="tnum">{buy}</b>

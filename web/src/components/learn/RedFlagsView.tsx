@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Signal } from "@/lib/api/types";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, scoreText } from "@/lib/format";
 import { RED_FLAGS } from "@/config/redflags";
 import { SIGNALS } from "@/config/signals";
 import { Card } from "@/components/ui/Card";
@@ -41,7 +41,7 @@ export function RedFlagsView({ flagged, asOf }: { flagged: Signal[]; asOf: strin
                       <span className={s.sub}>{r.name}</span>
                     </td>
                     <td>{r.red_flags.map(describe).join("; ")}</td>
-                    <td className={`${s.num} tnum`}>{r.composite_score === null ? "n/m" : Math.round(r.composite_score)}</td>
+                    <td className={`${s.num} tnum`}>{r.composite_score === null ? "n/m" : scoreText(r.composite_score)}</td>
                   </tr>
                 ))}
               </tbody>

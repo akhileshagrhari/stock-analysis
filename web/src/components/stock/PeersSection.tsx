@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Instrument, Signal } from "@/lib/api/types";
 import { LOW_COVERAGE } from "@/config/site";
 import { isSignalKey } from "@/config/signals";
-import { fmtDate, pct } from "@/lib/format";
+import { fmtDate, pct, scoreText } from "@/lib/format";
 import { Card } from "@/components/ui/Card";
 import { SignalChip } from "@/components/ui/SignalChip";
 import s from "./lower.module.css";
@@ -48,7 +48,7 @@ export function PeersSection({ instrument, peers, asOf }: { instrument: Instrume
                         <span>{p.name}</span>
                       </div>
                     </td>
-                    <td>{p.composite_score === null ? "Not scored" : Math.round(p.composite_score)}</td>
+                    <td>{p.composite_score === null ? "Not scored" : scoreText(p.composite_score)}</td>
                     <td className={s.left}>
                       <SignalChip signal={isSignalKey(p.signal) ? p.signal : null} />
                     </td>

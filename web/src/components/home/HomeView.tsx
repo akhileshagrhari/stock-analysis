@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Signal } from "@/lib/api/types";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, scoreText } from "@/lib/format";
 import type { HomeData } from "@/lib/signals/load";
 import { UNIVERSE } from "@/config/site";
 import { isSignalKey, SIGNALS } from "@/config/signals";
@@ -19,7 +19,7 @@ function StockList({ rows, testId, empty }: { rows: Signal[]; testId: string; em
           <Link href={`/stocks/${encodeURIComponent(r.nse_symbol)}`}>
             <b>{r.nse_symbol}</b>
             <span className={s.name}>{r.name}</span>
-            <span className={`${s.score} tnum`}>{r.composite_score === null ? "n/m" : Math.round(r.composite_score)}</span>
+            <span className={`${s.score} tnum`}>{r.composite_score === null ? "n/m" : scoreText(r.composite_score)}</span>
             <SignalChip signal={isSignalKey(r.signal) ? r.signal : null} />
           </Link>
         </li>
