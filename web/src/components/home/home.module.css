@@ -9,7 +9,7 @@
 .counts .pos { color: var(--pos); }
 .counts .hold { color: var(--hold); }
 .counts .neg { color: var(--neg); }
-.counts .sep { color: var(--line2); font-weight: 400; }
+.counts .sep { color: var(--ink3); font-weight: 400; }
 .sub { color: var(--ink2); font-size: 14px; margin: 6px 0 0; }
 .notice { margin-top: 12px; }
 .notice a { font-weight: 600; margin-left: 4px; }

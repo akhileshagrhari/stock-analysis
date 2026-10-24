@@ -23,7 +23,8 @@ function contrast(a: string, b: string): number {
 }
 
 const PAIRS: [text: string, background: string][] = [
-  ...["ink", "ink2", "ink3", "accent-ink"].flatMap((t) => ["card", "bg", "muted", "muted2"].map((b) => [t, b] as [string, string])),
+  // accent-soft is the highlighted row (the company itself in its peers table).
+  ...["ink", "ink2", "ink3", "accent-ink"].flatMap((t) => ["card", "bg", "muted", "muted2", "accent-soft"].map((b) => [t, b] as [string, string])),
   ["pos", "pos-soft"],
   ["neg", "neg-soft"],
   ["hold-ink", "hold-soft"],
