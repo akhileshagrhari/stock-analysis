@@ -28,6 +28,7 @@ from typing import Any
 
 import pandas as pd
 
+from stockanalysis.config import settings
 from stockanalysis.db.database import Database
 from stockanalysis.factors.panel import SHARES_STATED, share_count
 from stockanalysis.factors.share_basis import ShareBasis, restate
@@ -167,6 +168,28 @@ class NewsItem:
     score: float | None
     source: str | None = None
     url: str | None = None
+    relevance: str | None = None            # primary | mention | None
+    sentiment_status: str = "not_scored"    # scored | pending | not_scored
+    counts_toward_sentiment: bool = False
+
+
+PRIMARY = "primary"
+MENTION = "mention"
+SCORED = "scored"
+PENDING = "pending"
+NOT_SCORED = "not_scored"
+# Kept in step with news.store.ROUNDUP, which demotes an article naming more
+# than three companies; not imported, so serving does not load the resolver.
+_ROUNDUP = "ROUNDUP"
+
+
+def _relevance(matched_in: str | None, method: str | None) -> str | None:
+    """Primary when the company is in the headline of an article about it."""
+    if matched_in is None:
+        return None
+    if matched_in == "HEADLINE" and method != _ROUNDUP:
+        return PRIMARY
+    return MENTION
 
 
 @dataclass(frozen=True)
@@ -673,30 +696,58 @@ def factor_breakdown(db: Database, isin: str, as_of: dt.date) -> list[FactorScor
     ]
 
 
-def recent_news(db: Database, isin: str, limit: int = 10) -> list[NewsItem]:
-    """Latest scored news for one instrument. Unscored articles still appear."""
+def recent_news(
+    db: Database, isin: str, limit: int = 10, relevant_only: bool = False
+) -> list[NewsItem]:
+    """Latest news for one instrument, scored or not, newest first.
+
+    Each item says how the company was found in it and whether the sentiment
+    factor reads it. The factor reads an article only when it is scored and
+    its company match clears `news_min_resolution_confidence` — the same
+    threshold `Database.as_of_sentiment` applies — so a roundup scored before
+    it was demoted keeps its label here but no longer counts.
+    """
+    threshold = settings.news_min_resolution_confidence
+    relevant = (
+        " AND n.matched_in = 'HEADLINE' AND COALESCE(n.resolution_method, '') <> ?"
+        if relevant_only else ""
+    )
     df = db.query(
-        """
-        SELECT n.published_at, n.headline, n.source, n.url, ns.label, ns.score
+        f"""
+        SELECT n.published_at, n.headline, n.source, n.url, ns.label, ns.score,
+               n.matched_in, n.resolution_method, n.resolution_confidence,
+               ns.news_id AS scored_id
         FROM news n
         LEFT JOIN news_sentiment ns ON ns.news_id = n.news_id
-        WHERE n.isin = ?
+        WHERE n.isin = ?{relevant}
         ORDER BY n.published_at DESC
         LIMIT ?
         """,
-        [isin, int(limit)],
+        [isin, *([_ROUNDUP] if relevant_only else []), int(limit)],
     )
-    return [
-        NewsItem(
-            published_at=_opt_date(row["published_at"]),
-            headline=_opt_str(row["headline"]),
-            label=_opt_str(row["label"]),
-            score=_opt_float(row["score"]),
-            source=_opt_str(row["source"]),
-            url=_opt_str(row["url"]),
+    out: list[NewsItem] = []
+    for _, row in df.iterrows():
+        confidence = _opt_float(row["resolution_confidence"])
+        attributed = confidence is not None and confidence >= threshold
+        scored = _opt_str(row["scored_id"]) is not None
+        out.append(
+            NewsItem(
+                published_at=_opt_date(row["published_at"]),
+                headline=_opt_str(row["headline"]),
+                label=_opt_str(row["label"]),
+                score=_opt_float(row["score"]),
+                source=_opt_str(row["source"]),
+                url=_opt_str(row["url"]),
+                relevance=_relevance(
+                    _opt_str(row["matched_in"]), _opt_str(row["resolution_method"])
+                ),
+                sentiment_status=(
+                    SCORED if scored else PENDING if attributed else NOT_SCORED
+                ),
+                counts_toward_sentiment=scored and attributed,
+            )
         )
-        for _, row in df.iterrows()
-    ]
+    return out
 
 
 def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
@@ -1152,6 +1203,8 @@ def sentiment_counts(
 
     start = as_of - dt.timedelta(days=int(window_days))
     placeholders = ", ".join("?" for _ in isins)
+    # The attribution threshold the factor reads through: without it, the mix
+    # beside a score counted roundups the score itself ignores.
     df = db.query(
         f"""
         SELECT n.isin, ns.label, COUNT(*) AS n
@@ -1160,9 +1213,13 @@ def sentiment_counts(
         WHERE n.isin IN ({placeholders})
           AND n.published_at <= ?
           AND n.published_at >= ?
+          AND n.resolution_confidence >= ?
         GROUP BY n.isin, ns.label
         """,
-        [*isins, dt.datetime.combine(as_of, dt.time.max), start],
+        [
+            *isins, dt.datetime.combine(as_of, dt.time.max), start,
+            settings.news_min_resolution_confidence,
+        ],
     )
 
     tally: dict[str, dict[str, int]] = {}

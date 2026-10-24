@@ -750,6 +750,7 @@ PARITY_URLS = [
     f"/instruments/{FIRST}/news",
     f"/instruments/{MM}/news?limit=100",
     f"/instruments/{NOSIGNAL}/news",
+    f"/v1/instruments/{MM}/news?relevant_only=true",
     "/signals",
     "/signals?limit=1000",
     "/signals?signal=buy",

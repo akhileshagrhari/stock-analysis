@@ -60,10 +60,11 @@ def client(two_dates_db: Database):
         app.dependency_overrides.clear()
 
 
-def _isin_scored_on_both(db: Database) -> str:
+def _isin_scored_on_both(db: Database, without_news: bool = False) -> str:
+    news = "AND isin NOT IN (SELECT isin FROM news WHERE isin IS NOT NULL) " if without_news else ""
     df = db.query(
         "SELECT isin FROM signals WHERE as_of_date IN (?, ?) "
-        "GROUP BY isin HAVING COUNT(*) = 2 ORDER BY isin LIMIT 1",
+        f"{news}GROUP BY isin HAVING COUNT(*) = 2 ORDER BY isin LIMIT 1",
         [EARLIER, AS_OF],
     )
     return df["isin"].iloc[0]
@@ -193,7 +194,8 @@ class TestR2WhyACompanyIsntScored:
     def test_too_little_data_is_below_the_floor_and_names_what_was_missing(
         self, client, two_dates_db, monkeypatch
     ):
-        isin = _isin_scored_on_both(two_dates_db)
+        # Without news: its sentiment would otherwise lift it over the floor.
+        isin = _isin_scored_on_both(two_dates_db, without_news=True)
         two_dates_db.conn.execute("DELETE FROM prices_daily WHERE isin = ?", [isin])
         _rescore(two_dates_db, monkeypatch)
 
@@ -910,3 +912,68 @@ class TestR11FamilyHistory:
         history = client.get(f"/v1/instruments/{isin}/history").json()
         assert history[0]["families"] == []
         assert history[1]["families"]
+
+
+# ----------------------------------------------------------------------
+# R12 — news relevance and sentiment status
+# ----------------------------------------------------------------------
+
+
+class TestR12NewsRelevanceAndStatus:
+    # (news_id, matched_in, method, confidence, label) — one of each case.
+    CASES = [
+        ("own", "HEADLINE", "NAME", 0.95, "positive"),
+        ("body", "BODY", "NAME", 0.665, "negative"),          # scored before demotion
+        ("roundup", "HEADLINE", "ROUNDUP", 0.5, None),
+        ("waiting", "HEADLINE", "SYMBOL", 0.9, None),
+        ("legacy", None, None, None, None),
+    ]
+
+    @pytest.fixture
+    def news_db(self, two_dates_db: Database) -> tuple[Database, str]:
+        isin = _isin_scored_on_both(two_dates_db, without_news=True)
+        news, sentiment = [], []
+        for i, (news_id, matched_in, method, confidence, label) in enumerate(self.CASES):
+            news.append({
+                "news_id": news_id, "isin": isin,
+                "published_at": dt.datetime.combine(AS_OF - dt.timedelta(days=i + 1),
+                                                    dt.time(9, 0)),
+                "headline": f"{news_id} headline", "source": "RSS",
+                "matched_in": matched_in, "resolution_method": method,
+                "resolution_confidence": confidence,
+            })
+            if label is not None:
+                sentiment.append({"news_id": news_id, "model": "test-model",
+                                  "label": label, "score": 0.9 if label == "positive" else -0.96})
+        two_dates_db.upsert_df("news", pd.DataFrame(news), ["news_id"])
+        two_dates_db.upsert_df("news_sentiment", pd.DataFrame(sentiment), ["news_id", "model"])
+        return two_dates_db, isin
+
+    def test_each_article_says_how_it_was_found_and_whether_it_counts(self, client, news_db):
+        _db, isin = news_db
+        rows = client.get(f"/v1/instruments/{isin}/news?limit=100").json()
+        got = {
+            r["headline"].split()[0]: (
+                r["relevance"], r["sentiment_status"], r["counts_toward_sentiment"]
+            )
+            for r in rows
+        }
+        assert got == {
+            "own": ("primary", "scored", True),
+            "body": ("mention", "scored", False),
+            "roundup": ("mention", "not_scored", False),
+            "waiting": ("primary", "pending", False),
+            "legacy": (None, "not_scored", False),
+        }
+
+    def test_relevant_only_keeps_the_articles_about_the_company(self, client, news_db):
+        _db, isin = news_db
+        rows = client.get(f"/v1/instruments/{isin}/news?relevant_only=true").json()
+        assert [r["headline"] for r in rows] == ["own headline", "waiting headline"]
+
+    def test_the_explanation_counts_only_what_the_factor_reads(self, client, news_db):
+        """The −0.96 'stocks to buy' roundup kept its label after demotion, and
+        the news mix beside RELIANCE's score still counted it."""
+        _db, isin = news_db
+        news = client.get(f"/v1/instruments/{isin}/explanation").json()["news"]
+        assert news == {"positive": 1, "negative": 0, "neutral": 0, "total": 1}

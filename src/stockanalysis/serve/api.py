@@ -310,6 +310,26 @@ class NewsOut(BaseModel):
     score: float | None = None
     source: str | None = None
     url: str | None = None
+    relevance: Literal["primary", "mention"] | None = Field(
+        default=None,
+        description="primary: the company is named in the headline of an article "
+        "about it. mention: named only in the body, or one of more than three "
+        "companies a roundup lists. Null when the match was not recorded.",
+    )
+    sentiment_status: Literal["scored", "pending", "not_scored"] = Field(
+        default="not_scored",
+        description="scored: label and score are set. pending: the company match "
+        "clears the attribution threshold and the next scoring run will score "
+        "it. not_scored: the match is below the threshold (an uncertain match or "
+        "a roundup), so it is never scored. A failed scoring run leaves its "
+        "articles pending; the pipeline records no per-article failure.",
+    )
+    counts_toward_sentiment: bool = Field(
+        default=False,
+        description="Whether the 30-day news factor reads this article: scored, "
+        "and its company match clears the attribution threshold. False for a "
+        "roundup scored before it was demoted, though its label is shown.",
+    )
 
 
 class HealthOut(BaseModel):
@@ -1236,9 +1256,15 @@ def instrument_news(
     db: DB,
     isin: Annotated[str, Path()],
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    relevant_only: Annotated[
+        bool, Query(description="Only articles whose relevance is primary.")
+    ] = False,
 ) -> list[NewsOut]:
     require_instrument(db, isin)
-    return [NewsOut(**vars(item)) for item in queries.recent_news(db, isin, limit)]
+    return [
+        NewsOut(**vars(item))
+        for item in queries.recent_news(db, isin, limit, relevant_only=relevant_only)
+    ]
 
 
 # Kept above any future /signals/{...} route: a two-segment dynamic sibling
