@@ -1149,3 +1149,28 @@ class TestR16SectorContext:
             (f["zscore_basis"], f["sector_n"], f["sector_median"]) == ("universe", None, None)
             for f in factors
         )
+
+
+# ----------------------------------------------------------------------
+# The two numbers the site's review found misread (B1, B2)
+# ----------------------------------------------------------------------
+
+
+class TestCoverageAndContributionAreDescribed:
+    def test_the_schema_says_what_coverage_and_contribution_are(self):
+        from stockanalysis.serve.api import app
+
+        schemas = app.openapi()["components"]["schemas"]
+        for model in ("SignalOut", "ExplanationOut"):
+            description = schemas[model]["properties"]["coverage"]["description"]
+            assert "weight" in description and "not a share of factors" in description
+        contribution = schemas["FamilyOut"]["properties"]["contribution"]["description"]
+        assert "sum of the weights of the families measured" in contribution
+
+    def test_the_contributions_do_sum_to_the_composite_z(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        families = client.get(f"/v1/instruments/{isin}/explanation").json()["families"]
+        measured = [f for f in families if f["z"] is not None]
+        total = sum(f["weight"] for f in measured)
+        for f in measured:
+            assert f["contribution"] == pytest.approx(f["z"] * f["weight"] / total)

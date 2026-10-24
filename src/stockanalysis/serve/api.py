@@ -297,6 +297,14 @@ class FactorOut(SectorContextFields):
         )
 
 
+_COVERAGE = (
+    "Fraction (0-1) of the model's weight backed by data — weighted by family "
+    "and by each factor's weight within its family, so not a share of factors "
+    "(score-status gives the factor counts). Below /model.coverage_floor no "
+    "score is published."
+)
+
+
 class PreviousSignalOut(BaseModel):
     as_of: dt.date
     composite_score: float | None = None
@@ -314,7 +322,10 @@ class SignalOut(BaseModel):
     # not a HOLD, and the API says so rather than inventing a number.
     composite_score: float | None = None
     signal: str | None = None
-    coverage: float | None = Field(default=None, ge=0, le=1)
+    coverage: float | None = Field(
+        default=None, ge=0, le=1,
+        description=_COVERAGE,
+    )
     red_flags: list[str] = Field(default_factory=list)
     unknown_flags: list[str] = Field(default_factory=list)
     narrative: str | None = None
@@ -606,10 +617,23 @@ class FinancialsOut(BaseModel):
 class FamilyOut(BaseModel):
     family: str
     meaning: str | None = None
-    weight: float
-    percentile: float | None = None
-    z: float | None = None
-    contribution: float | None = None
+    weight: float = Field(description="Declared family weight, a fraction (0-1).")
+    percentile: float | None = Field(
+        default=None,
+        description="0-100 within the universe scored that day; null when the "
+        "family was not measured.",
+    )
+    z: float | None = Field(
+        default=None,
+        description="Family z, standardised across the universe so the declared "
+        "weights bind.",
+    )
+    contribution: float | None = Field(
+        default=None,
+        description="z × weight ÷ (sum of the weights of the families measured "
+        "for this company). Renormalised over the measured families, as the "
+        "composite is, so the contributions sum to the composite z.",
+    )
     factors_measured: int
     factors_total: int
     verdict: str
@@ -702,7 +726,7 @@ class ExplanationOut(BaseModel):
     as_of: dt.date
     signal: str | None = None
     composite_score: float | None = None
-    coverage: float | None = None
+    coverage: float | None = Field(default=None, description=_COVERAGE)
     headline: str
     reasons: list[str] = Field(default_factory=list)
     families: list[FamilyOut] = Field(default_factory=list)
