@@ -49,6 +49,8 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
     renderView("RELIANCE");
     expect(screen.getByText("₹1,310.00")).toBeInTheDocument();
     expect(screen.getByTestId("price-change")).toHaveTextContent("4.64%");
+    expect(screen.getByText("52-wk high").parentElement).toHaveTextContent("₹1,611.80");
+    expect(screen.getByText("52-wk low").parentElement).toHaveTextContent("₹1,249.80");
   });
 
   it("shows the score trend since first scored", () => {

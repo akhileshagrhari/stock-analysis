@@ -1,5 +1,5 @@
 import type { StockPageData } from "@/lib/stock/load";
-import { toCloses } from "@/lib/prices";
+import { toCloses, yearRange } from "@/lib/prices";
 import { isPartialRun } from "@/lib/runs";
 import { snapshots } from "@/lib/stock/history";
 import { scoreState } from "@/lib/stock/state";
@@ -45,7 +45,7 @@ export function StockPageView({ data }: { data: StockPageData }) {
           partialRun={current?.partial ? current.runSize : null}
         />
         {scored && <TrendCard points={points} />}
-        <PriceCard closes={closes} lastVolume={lastVolume} />
+        <PriceCard closes={closes} lastVolume={lastVolume} range={yearRange(data.prices)} />
         {scored && (
           <div className={s.aSide}>
             <div className={s.sideH}>Checks</div>

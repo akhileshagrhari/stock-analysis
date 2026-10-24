@@ -33,23 +33,38 @@ export function slicePeriod(c: Close[], p: Period): Close[] {
   return i < 0 ? [] : c.slice(i);
 }
 
-export type PriceStats = { last: Close; change: number; changePct: number; high52: number; low52: number; offHighPct: number };
+export type PriceStats = { last: Close; change: number; changePct: number };
 
+/** Last close and the change over the chosen period. */
 export function priceStats(c: Close[], p: Period): PriceStats | null {
   if (c.length === 0) return null;
   const period = slicePeriod(c, p);
-  const year = slicePeriod(c, "1Y");
   const last = c[c.length - 1];
   const first = period[0] ?? last;
-  const closes = year.map(([, v]) => v);
-  const high52 = Math.max(...closes);
-  const low52 = Math.min(...closes);
   return {
     last,
     change: last[1] - first[1],
     changePct: first[1] > 0 ? last[1] / first[1] - 1 : 0,
-    high52,
-    low52,
-    offHighPct: high52 > 0 ? last[1] / high52 - 1 : 0,
   };
+}
+
+export type Range = { high: number; low: number };
+
+/**
+ * The 52-week high and low as exchanges print them: the highest intraday
+ * high and lowest intraday low over the last year (the close stands in for a
+ * bar without them). Same window as the 1Y period.
+ */
+export function yearRange(bars: PriceBar[]): Range | null {
+  const usable = bars.filter((b) => b.close !== null && Number.isFinite(b.close));
+  if (usable.length === 0) return null;
+  const from = monthsBefore(usable[usable.length - 1].date, MONTHS_BACK["1Y"]);
+  let high = -Infinity;
+  let low = Infinity;
+  for (const b of usable) {
+    if (b.date < from) continue;
+    high = Math.max(high, b.high ?? b.close!);
+    low = Math.min(low, b.low ?? b.close!);
+  }
+  return { high: Math.round(high * 100) / 100, low: Math.round(low * 100) / 100 };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { priceStats, slicePeriod, toCloses } from "@/lib/prices";
+import { priceStats, slicePeriod, toCloses, yearRange } from "@/lib/prices";
 import { fixtureStock } from "../fixtures";
 
 describe("prices", () => {
@@ -26,14 +26,22 @@ describe("prices", () => {
     expect(slicePeriod(pts, "1M")[0][0]).toBe("2026-03-02");
   });
 
-  it("computes change and 52-week range", () => {
+  it("computes the change over a period", () => {
     const st = priceStats(c, "1Y")!;
     expect(st.change.toFixed(2)).toBe("-63.80");
     expect((st.changePct * 100).toFixed(2)).toBe("-4.64");
-    expect(st.high52).toBe(1592.3);
-    expect(st.low52).toBe(1258.8);
     expect(st.last).toEqual(["2026-08-14", 1310]);
-    expect(st.offHighPct).toBeCloseTo(1310 / 1592.3 - 1, 6);
+  });
+
+  it("takes the 52-week high and low from intraday highs and lows, as NSE prints them", () => {
+    // The closing range is 1,258.80-1,592.30; intraday it is 1,249.80-1,611.80.
+    expect(yearRange(fixtureStock("RELIANCE").prices)).toEqual({ high: 1611.8, low: 1249.8 });
+  });
+
+  it("falls back to the close for a bar without a high or low", () => {
+    const bar = { ...fixtureStock("RELIANCE").prices.at(-1)!, high: null, low: null, close: 2000 };
+    expect(yearRange([bar])).toEqual({ high: 2000, low: 2000 });
+    expect(yearRange([])).toBeNull();
   });
 
   it("is null for an empty history (Review Focus 3)", () => {
