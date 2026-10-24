@@ -739,3 +739,34 @@ def test_a_zero_owners_share_stands_when_minorities_take_the_profit():
     values = {"profit_for_period": 100.0, "pat": 0.0, "non_controlling_interest": 100.0}
     _fill_pat(values)
     assert values["pat"] == 0.0
+
+
+NTPC_FY2025 = FIXTURES / "ntpc_fy2025_integrated.xml"
+TATAPOWER_FY2023 = FIXTURES / "tatapower_fy2023_annual.xml"
+
+
+@pytest.mark.parametrize(
+    ("fixture", "period_end", "regulatory", "pat"),
+    [
+        # PBT 26,282.70 - tax 8,245.18 + 3,701.92 = 21,739.44 from continuing
+        # operations; + associates 2,213.71 = 23,953.15 for the group, which is
+        # owners' 23,422.46 + minorities' 530.69.
+        (NTPC_FY2025, dt.date(2025, 3, 31), 3_701.92, 23_422.46),
+        # The legacy format names the line the same way. 1,333.49 - 1,647.33
+        # + 924.05 = 610.21; + associates 3,199.46 = 3,809.67 for the group.
+        (TATAPOWER_FY2023, dt.date(2023, 3, 31), 924.05, 3_336.44),
+    ],
+)
+def test_a_utility_reconciles_through_its_regulatory_deferral_movement(
+    fixture, period_end, regulatory, pat
+):
+    """Power utilities book the movement in their regulatory deferral account
+    balances (Ind AS 114) between tax and the profit for the period. It is not
+    PBT, tax or a share of associates, and without it NTPC and TATAPOWER failed
+    pbt_tax_pat by 2-24% in every year from FY2023. Their share of associates
+    was never the problem: it is counted once, with the sign it is tagged with."""
+    row, report = _validated(fixture, period_end)
+
+    assert row["regulatory_deferral"] == pytest.approx(regulatory)
+    assert row["pat"] == pytest.approx(pat)
+    assert not report.hard_failures, report.reasons

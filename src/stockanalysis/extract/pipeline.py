@@ -231,6 +231,7 @@ def _write_fundamentals(
         "depreciation": v.get("depreciation"),
         "profit_before_tax": v.get("profit_before_tax"),
         "share_of_associates": v.get("share_of_associates"),
+        "regulatory_deferral": v.get("regulatory_deferral"),
         "non_controlling_interest": v.get("non_controlling_interest"),
         "pat": v.get("pat"),
         "eps": v.get("eps_basic"),

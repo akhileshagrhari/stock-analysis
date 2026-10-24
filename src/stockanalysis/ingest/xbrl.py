@@ -128,6 +128,13 @@ ELEMENT_MAP: dict[str, str] = {
     "shareofprofitlossofassociatesandjointventuresaccountedforusingequitymethod": (
         "share_of_associates"
     ),
+    # Ind AS 114, which power utilities book between tax and the profit for the
+    # period. NTPC FY2025: PBT 26,283 - tax 8,245 + 3,702 == 21,739 from
+    # continuing operations, before 2,214 of associates.
+    (
+        "netmovementinregulatorydeferralaccountbalances"
+        "relatedtoprofitorlossandtherelateddeferredtaxmovement"
+    ): "regulatory_deferral",
     # The share count, as the filing states it: paid-up equity capital over
     # face value. Tagged on the duration contexts (`OneD`, `FourD`) in every
     # format on file — legacy, integrated, banking and NBFC alike. RELIANCE
