@@ -6,7 +6,7 @@
 
 /* Breakdown */
 .kv { display: grid; grid-template-columns: auto 1fr auto auto; gap: 0 12px; align-items: center; font-size: 14px; }
-.kv > * { padding: 11px 0; border-bottom: 1px solid var(--line); }
+.kv > *, .kv > div > * { padding: 11px 0; border-bottom: 1px solid var(--line); }
 .kv .h { font-size: 12px; color: var(--ink3); padding-top: 0; }
 .kv .right { text-align: right; }
 .fam { color: var(--ink); font-weight: 500; }

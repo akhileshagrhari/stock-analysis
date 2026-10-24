@@ -53,7 +53,14 @@ describe("Sparkline", () => {
     expect(container.querySelectorAll("circle")).toHaveLength(3);
   });
 
-  it("draws a single snapshot as one dot without NaN", () => {
+  it("labels only as many points as fit without overlapping", () => {
+    // ABB has four snapshots; four "14 Aug · 85.8" labels overlap in the card.
+    const { container } = render(<Sparkline points={snapshots(fixtureStock("ABB").history)} />);
+    const labels = [...container.querySelectorAll("text")].map((t) => t.textContent).filter((t) => t?.includes("·"));
+    expect(labels).toEqual(["31 Jul · 76.2", "16 Aug · 93.3"]);
+  });
+
+    it("draws a single snapshot as one dot without NaN", () => {
     const { container } = render(<Sparkline points={snapshots(fixtureStock("ADANIENSOL").history)} />);
     expect(container.querySelectorAll("circle")).toHaveLength(1);
     expect(container.innerHTML).not.toMatch(/NaN|Infinity/);
@@ -134,7 +141,7 @@ describe("PriceChart", () => {
 
 describe("date labels", () => {
   it("drops a middle label that would collide with its neighbour", async () => {
-    const { labelIndexes } = await import("@/components/charts/ScoreHistoryChart");
+    const { labelIndexes } = await import("@/components/charts/labels");
     // x positions as on a 390px phone: 31 Jul, 14 Aug, 16 Aug
     expect(labelIndexes([30, 300, 330], 48)).toEqual([0, 2]);
     expect(labelIndexes([30, 200, 330], 48)).toEqual([0, 1, 2]);

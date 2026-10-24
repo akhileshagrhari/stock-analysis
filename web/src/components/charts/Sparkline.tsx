@@ -1,6 +1,7 @@
 import { fmtDate, fmtDay, scoreText } from "@/lib/format";
 import { modelChangeIndexes, type Snapshot } from "@/lib/stock/history";
 import { signalLabel } from "@/config/signals";
+import { labelIndexes } from "./labels";
 import s from "./charts.module.css";
 
 const W = 240;
@@ -18,7 +19,8 @@ export function Sparkline({ points }: { points: Snapshot[] }) {
   const idx = points.map((p, i) => (p.score === null ? -1 : i)).filter((i) => i >= 0);
   const line = idx.map((i, k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(points[i].score!).toFixed(1)}`).join(" ");
   const changes = modelChangeIndexes(points);
-  const labelAll = points.length <= 4;
+  // "16 Aug · 28.4" is about 72 units wide; label only points that far apart.
+  const labelled = new Set(labelIndexes(idx.map(x), 80).map((k) => idx[k]));
   const first = scored[0];
   const last = scored[scored.length - 1];
   const summary =
@@ -48,7 +50,7 @@ export function Sparkline({ points }: { points: Snapshot[] }) {
           <path d={line} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" />
         </>
       )}
-      {idx.map((i, k) => {
+      {idx.map((i) => {
         const p = points[i];
         const anchor = points.length === 1 ? "middle" : i === 0 ? "start" : i === points.length - 1 ? "end" : "middle";
         return (
@@ -56,7 +58,7 @@ export function Sparkline({ points }: { points: Snapshot[] }) {
             <circle cx={x(i)} cy={y(p.score!)} r={4} fill="#fff" stroke="var(--accent)" strokeWidth={2}>
               <title>{`${fmtDate(p.date)} · ${scoreText(p.score!)} · ${signalLabel(p.signal)}`}</title>
             </circle>
-            {(labelAll || k === 0 || k === idx.length - 1) && (
+            {labelled.has(i) && (
               <text x={x(i)} y={H + 12} textAnchor={anchor} className={s.svgSmall}>
                 {fmtDay(p.date)} · {scoreText(p.score!)}
               </text>
