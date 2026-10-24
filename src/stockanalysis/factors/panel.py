@@ -9,39 +9,57 @@ connection.
 
 DERIVED QUANTITIES
 ------------------
-Two things every valuation factor needs are not in any table, and the way they
-are obtained is the most important decision in this file.
+Two things every valuation factor needs are not in any table as such, and the
+way they are obtained is the most important decision in this file.
 
-**Share count.** No source in the system reports shares outstanding. yfinance
-exposes a *current* figure, which is exactly the wrong thing: applying today's
-share count to a 2021 balance sheet is both anachronistic and wrong on the
-arithmetic, because buybacks and issuance moved it. Instead the count is implied
-from the filing itself — `shares = PAT / EPS` — so both halves come from the same
-document and carry the same knowledge date. It costs nothing in point-in-time
-correctness.
+**Share count.** yfinance exposes a *current* figure, which is exactly the
+wrong thing: applying today's share count to a 2021 balance sheet is both
+anachronistic and wrong on the arithmetic, because buybacks and issuance moved
+it. The count comes from the filings instead, so it carries a filing's
+knowledge date:
 
-**Market capitalisation** then falls out as `price x PAT / EPS`, in crore.
+1. as the latest results filing states it — paid-up equity capital over face
+   value, tagged in every quarterly XBRL instance — or else
+2. implied from the latest annual filing as `PAT / EPS`.
 
-The cost of that route is that it is undefined when EPS or PAT is non-positive,
-so **loss-making companies drop out of the value factors entirely** rather than
-receiving a meaningless negative multiple. That is the honest treatment — a P/E
-of -8 is not "cheap" — but it is a real coverage hole that shows up as missing
-value-family weight, not as a neutral score.
+The stated count is preferred because it is the period-end count rather than a
+weighted average, it is a quarter fresher, and it exists for a loss-maker. The
+implied one is undefined when EPS or PAT is non-positive, which used to drop
+every loss-making company out of book-to-price and the other market-cap
+ratios; it remains the fallback for filings that do not state the count.
+
+**Both are restated onto the price series' share basis**, as is EPS, by
+`factors.share_basis` — a filing from before a split or bonus is otherwise
+divided by a price from after it. That is data issue D1: RELIANCE's FY2024 EPS
+of 102.90 against a bonus-adjusted ₹1,310.
+
+**Market capitalisation** then falls out as `price x shares`, in crore, where
+the price is the last `close` — split- and bonus-adjusted like the shares, but
+not dividend-adjusted. `adj_close` is for returns; valuing a balance sheet
+against a price shrunk by every dividend paid since overstates how cheap it was.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 
 from stockanalysis.db.database import Database
+from stockanalysis.factors.share_basis import ShareBasis, restate
+
+# Where `Panel.shares` came from, per ISIN.
+SHARES_STATED = "stated"     # paid-up capital / face value, from a filing
+SHARES_IMPLIED = "implied"   # PAT / EPS, from the latest annual filing
 
 # Below this the implied share count is unstable: a near-zero EPS divides into a
 # share count of billions and a market cap to match. Reported in rupees/share.
 MIN_ABS_EPS = 0.01
+
+# How old the last close may be and still value a company on `as_of`.
+PRICE_TOLERANCE_DAYS = 45
 
 
 @dataclass(frozen=True)
@@ -51,16 +69,21 @@ class Panel:
     as_of: dt.date
     isins: list[str]
 
+    # Per-share columns of the next three are restated onto the price series'
+    # share basis (`eps`; the filing's own figure is `eps_reported`).
     annual: pd.DataFrame      # up to 5 years per isin, newest first
     latest: pd.DataFrame      # most recent annual row per isin, indexed by isin
     quarterly: pd.DataFrame   # up to 8 quarters per isin, newest first
     shareholding: pd.DataFrame
     sentiment: pd.DataFrame
 
-    price: pd.Series          # last adjusted close at or before as_of
-    shares: pd.Series         # implied, in absolute units
+    price: pd.Series          # last close at or before as_of — see the docstring
+    shares: pd.Series         # absolute units, on the price series' basis
     market_cap: pd.Series     # rupees crore
     enterprise_value: pd.Series
+    share_source: pd.Series = field(
+        default_factory=lambda: pd.Series(dtype=object)
+    )                         # SHARES_STATED | SHARES_IMPLIED | NaN
 
     def col(self, name: str) -> pd.Series:
         """A column of `latest`, reindexed to the full universe as float.
@@ -80,7 +103,8 @@ def load_panel(db: Database, isins: list[str], as_of: dt.date) -> Panel:
     """Assemble the panel for `as_of`, reading only through the as_of_* path."""
     isins = list(isins)
 
-    annual = db.as_of_fundamentals_history(isins, as_of, years=5)
+    basis = ShareBasis.load(db, isins)
+    annual = restate(db.as_of_fundamentals_history(isins, as_of, years=5), basis)
     latest = (
         annual.groupby("isin", as_index=False).head(1).set_index("isin")
         if not annual.empty
@@ -94,7 +118,7 @@ def load_panel(db: Database, isins: list[str], as_of: dt.date) -> Panel:
         isins=isins,
         annual=annual,
         latest=latest,
-        quarterly=db.as_of_quarterly(isins, as_of, quarters=8),
+        quarterly=restate(db.as_of_quarterly(isins, as_of, quarters=8), basis),
         shareholding=db.as_of_shareholding_history(isins, as_of, quarters=6),
         sentiment=db.as_of_sentiment(isins, as_of, window_days=30),
         price=price,
@@ -103,7 +127,7 @@ def load_panel(db: Database, isins: list[str], as_of: dt.date) -> Panel:
         enterprise_value=pd.Series(dtype=float),
     )
 
-    shares = _implied_shares(panel)
+    shares, source = _shares(panel)
     market_cap = (price * shares / 1e7).reindex(isins)   # rupees -> crore
     ev = market_cap + panel.col("total_debt").fillna(0.0) - panel.col("cash").fillna(0.0)
 
@@ -114,30 +138,78 @@ def load_panel(db: Database, isins: list[str], as_of: dt.date) -> Panel:
             "shares": shares,
             "market_cap": market_cap.where(market_cap > 0),
             "enterprise_value": ev.where(ev > 0),
+            "share_source": source,
         }
     )
 
 
 def _latest_price(db: Database, isins: list[str], as_of: dt.date) -> pd.Series:
-    """Last adjusted close at or before `as_of`, within a short tolerance.
+    """Last close at or before `as_of`, within a short tolerance.
 
-    The tolerance matters: a stock suspended eight months ago should not be
-    valued off its last traded print as though nothing had happened.
+    `close`, not `adj_close`: see the module docstring. The tolerance matters:
+    a stock suspended eight months ago should not be valued off its last traded
+    print as though nothing had happened.
     """
-    px = db.as_of_prices(isins, as_of, lookback_days=45)
+    px = db.as_of_prices(isins, as_of, lookback_days=PRICE_TOLERANCE_DAYS)
     if px.empty:
         return pd.Series(np.nan, index=isins, dtype=float)
     px = px.sort_values("date").groupby("isin").tail(1).set_index("isin")
-    out = pd.to_numeric(px["adj_close"], errors="coerce").reindex(isins).astype(float)
+    out = pd.to_numeric(px["close"], errors="coerce").reindex(isins).astype(float)
     return out.where(out > 0)
 
 
-def _implied_shares(panel: Panel) -> pd.Series:
-    """PAT / EPS, in absolute share count. NaN where the ratio is meaningless.
+def _shares(panel: Panel) -> tuple[pd.Series, pd.Series]:
+    return share_count(
+        panel.quarterly, panel.annual, panel.col("pat"), panel.col("eps"), panel.isins
+    )
 
-    Both inputs come from one filing, so the result inherits that filing's
-    knowledge date exactly — the property that rules out every external share
-    count.
+
+def share_count(
+    quarterly: pd.DataFrame,
+    annual: pd.DataFrame,
+    pat: pd.Series,
+    eps: pd.Series,
+    isins: list[str],
+) -> tuple[pd.Series, pd.Series]:
+    """Absolute share count per ISIN, and which route produced it.
+
+    The newest filing that states the count wins — quarterly before annual,
+    since the quarterly table holds the more recent filing — and PAT / EPS of
+    the latest annual row fills in only where no filing states it. Both arrive
+    restated onto the price series' basis: the frames have been through
+    `share_basis.restate`, and `eps` is the restated figure.
+
+    Takes frames rather than a `Panel` so the API's key metrics apply the very
+    same rule; a market cap on the site that used another count would contradict
+    the book-to-price behind the score.
+    """
+    stated = pd.Series(np.nan, index=isins, dtype=float)
+    for frame in (quarterly, annual):
+        if frame.empty or "shares_crore" not in frame.columns:
+            continue
+        # Newest first per ISIN in both frames, so the first stated count is
+        # the latest one.
+        newest = (
+            frame.dropna(subset=["shares_crore"])
+            .groupby("isin", sort=False)["shares_crore"].first()
+        )
+        stated = stated.fillna(newest.reindex(isins) * 1e7)
+
+    implied = implied_shares(pat.reindex(isins), eps.reindex(isins))
+    shares = stated.fillna(implied)
+    source = pd.Series(np.nan, index=isins, dtype=object)
+    source[implied.notna()] = SHARES_IMPLIED
+    source[stated.notna()] = SHARES_STATED
+    return shares.where(shares > 0), source
+
+
+def implied_shares(pat: pd.Series, eps: pd.Series) -> pd.Series:
+    """PAT (₹ crore) / EPS, in absolute share count. NaN where the ratio is meaningless.
+
+    The fallback for a filing that does not state its share count. Both inputs
+    come from one filing, so the result inherits that filing's knowledge date
+    exactly — the property that rules out every external share count — and EPS
+    is already restated onto the price basis, so the count is too.
 
     Two caveats worth stating rather than burying. EPS is attributable to the
     parent's owners while PAT, per the extraction schema, is also attributable
@@ -146,8 +218,8 @@ def _implied_shares(panel: Panel) -> pd.Series:
     And a company that issued stock mid-year has a weighted-average EPS
     denominator that no longer matches its closing share count.
     """
-    pat = panel.col("pat") * 1e7        # crore -> rupees
-    eps = panel.col("eps")
+    pat = pat.astype(float) * 1e7        # crore -> rupees
+    eps = eps.astype(float)
     ok = (eps.abs() >= MIN_ABS_EPS) & (eps > 0) & (pat > 0)
     return (pat / eps).where(ok)
 

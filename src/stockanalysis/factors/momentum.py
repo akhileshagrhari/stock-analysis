@@ -19,8 +19,21 @@ import pandas as pd
 
 from stockanalysis.db.database import Database
 from stockanalysis.factors.base import Factor
+from stockanalysis.factors.panel import PRICE_TOLERANCE_DAYS
 
 FAMILY = "momentum"
+
+
+def _is_current(last_date: pd.Timestamp, as_of: dt.date) -> bool:
+    """Whether a series' last bar can stand for the price on `as_of`.
+
+    The same rule the value factors apply to the price they divide by
+    (`factors.panel`). Without it these factors read the last stored close as
+    "now" however old it is: the 24 Oct 2026 run scored 77 companies' trend
+    and relative strength off prices that stopped on 11 Aug, while their value
+    factors — correctly — refused the same prices as stale.
+    """
+    return (pd.Timestamp(as_of) - pd.Timestamp(last_date)).days <= PRICE_TOLERANCE_DAYS
 
 
 class Momentum12_1(Factor):
@@ -103,7 +116,10 @@ class PriceTo200DMA(Factor):
 
         out: dict[str, float] = {}
         for isin, grp in prices.groupby("isin"):
-            px = grp.sort_values("date")["adj_close"].dropna()
+            grp = grp.sort_values("date")
+            if not _is_current(grp["date"].iloc[-1], as_of):
+                continue
+            px = grp["adj_close"].dropna()
             px = px[px > 0]
             if len(px) < self.min_observations:
                 continue
@@ -156,7 +172,7 @@ class RelativeStrength(Factor):
         out: dict[str, float] = {}
         for isin, grp in prices.groupby("isin"):
             grp = grp.sort_values("date")
-            if len(grp) < self.min_observations:
+            if len(grp) < self.min_observations or not _is_current(grp["date"].iloc[-1], as_of):
                 continue
             start_px = _price_asof(grp, start_target)
             end_px = float(grp["adj_close"].iloc[-1])

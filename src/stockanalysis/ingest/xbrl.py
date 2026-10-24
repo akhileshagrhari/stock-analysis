@@ -128,6 +128,12 @@ ELEMENT_MAP: dict[str, str] = {
     "shareofprofitlossofassociatesandjointventuresaccountedforusingequitymethod": (
         "share_of_associates"
     ),
+    # The share count, as the filing states it: paid-up equity capital over
+    # face value. Tagged on the duration contexts (`OneD`, `FourD`) in every
+    # format on file — legacy, integrated, banking and NBFC alike. RELIANCE
+    # FY2026: 13,532 crore at ₹10 a share is 1,353.2 crore shares.
+    "paidupvalueofequitysharecapital": "paid_up_capital",
+    "facevalueofequitysharecapital": "face_value",
     # ---- balance sheet (instant context) ----
     "assets": "total_assets",
     "equity": "total_equity",
@@ -154,7 +160,7 @@ _PERIOD_END_ELEMENT = "dateofendofreportingperiod"
 ANNUAL_MIN_DAYS = 300
 
 # Figures reported per share are never scaled by the instance's unit.
-_PER_SHARE = frozenset({"eps_basic", "eps_diluted"})
+_PER_SHARE = frozenset({"eps_basic", "eps_diluted", "face_value"})
 
 _NS = re.compile(r"^\{[^}]*\}")
 
@@ -166,6 +172,7 @@ class XbrlFacts:
     values: dict[str, float] = field(default_factory=dict)
     unmapped: dict[str, str] = field(default_factory=dict)
     scale_to_crore: float = 1e-7  # XBRL reports absolute rupees
+    scrip_code: str | None = None  # the filer's BSE code; see `scrip_code`
 
     def to_crore(self) -> dict[str, float]:
         return {
@@ -223,7 +230,9 @@ def parse_xbrl(source: str | bytes) -> XbrlFacts:
         key=lambda c: c.span_days,
     )
 
-    facts = XbrlFacts(period_start=chosen.start, period_end=chosen.end)
+    facts = XbrlFacts(
+        period_start=chosen.start, period_end=chosen.end, scrip_code=scrip_code(root)
+    )
     for node in root.iter():
         ctx_ref = node.get("contextRef")
         if ctx_ref != chosen.cid or node.text is None:
@@ -248,6 +257,31 @@ def parse_xbrl(source: str | bytes) -> XbrlFacts:
 
     _fill_pat(facts.values)
     return facts
+
+
+_BSE_CODE = re.compile(r"\d{6}")
+
+
+def scrip_code(root) -> str | None:
+    """The filer's BSE scrip code, six digits, or None.
+
+    The two formats put it in different places. An integrated filing names the
+    company by it in every context's entity identifier
+    (`<xbrli:identifier scheme="…/in-capmkt/ScripCode">500325`) and carries no
+    `ScripCode` fact; a legacy filing identifies the company by NSE symbol and
+    states the code as a `ScripCode` fact. The identifier is read first.
+    """
+    fact = None
+    for node in root.iter():
+        name = _local(node.tag)
+        text = (node.text or "").strip()
+        if not _BSE_CODE.fullmatch(text):
+            continue
+        if name == "identifier" and (node.get("scheme") or "").lower().endswith("scripcode"):
+            return text
+        if name == "scripcode" and fact is None:
+            fact = text
+    return fact
 
 
 def _fill_pat(values: dict[str, float]) -> None:

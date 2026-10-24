@@ -22,12 +22,16 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import pandas as pd
 
+from stockanalysis.config import settings
 from stockanalysis.db.database import Database
+from stockanalysis.factors.panel import SHARES_STATED, share_count
+from stockanalysis.factors.share_basis import ShareBasis, restate
 
 # ----------------------------------------------------------------------
 # Coercion
@@ -113,6 +117,7 @@ class Instrument:
     sector: str | None = None
     bse_code: str | None = None
     listing_date: dt.date | None = None
+    industry: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,6 +128,16 @@ class FactorScore:
     factor_name: str
     raw_value: float | None
     sector_zscore: float | None
+
+
+@dataclass(frozen=True)
+class PreviousSignal:
+    """The same instrument's most recent signal strictly before a row's date."""
+
+    as_of: dt.date
+    composite_score: float | None
+    signal: str | None
+    model_version: str | None
 
 
 @dataclass(frozen=True)
@@ -139,6 +154,7 @@ class Signal:
     narrative: str | None = None
     model_version: str | None = None
     sector: str | None = None
+    previous: PreviousSignal | None = None
 
     @property
     def has_red_flag(self) -> bool:
@@ -153,6 +169,28 @@ class NewsItem:
     score: float | None
     source: str | None = None
     url: str | None = None
+    relevance: str | None = None            # primary | mention | None
+    sentiment_status: str = "not_scored"    # scored | pending | not_scored
+    counts_toward_sentiment: bool = False
+
+
+PRIMARY = "primary"
+MENTION = "mention"
+SCORED = "scored"
+PENDING = "pending"
+NOT_SCORED = "not_scored"
+# Kept in step with news.store.ROUNDUP, which demotes an article naming more
+# than three companies; not imported, so serving does not load the resolver.
+_ROUNDUP = "ROUNDUP"
+
+
+def _relevance(matched_in: str | None, method: str | None) -> str | None:
+    """Primary when the company is in the headline of an article about it."""
+    if matched_in is None:
+        return None
+    if matched_in == "HEADLINE" and method != _ROUNDUP:
+        return PRIMARY
+    return MENTION
 
 
 @dataclass(frozen=True)
@@ -218,15 +256,39 @@ class AnnualFinancials:
     auditor_opinion: str | None
     confidence: float | None
     values: dict[str, float | None] = field(default_factory=dict)
+    eps_adjusted: float | None = None   # values["eps"] on today's share basis
+    source_url: str | None = None       # the XBRL instance or report PDF read
+
+
+# Results formats the annual reader cannot build statements from, by a word in
+# the exchange's own file name (…/xbrl/INTEGRATED_FILING_BANKING_1740913_….xml).
+# Every annual filing in these formats has been read and refused: banks tag no
+# revenue line or total equity, life insurers no revenue, profit or equity.
+_UNSUPPORTED_FORMATS = {"BANKING": "banks", "LI": "insurers", "GI": "insurers"}
+_FORMAT = re.compile(r"/([A-Z_]+?)_\d")
+
+
+def results_format(xbrl_url: str | None) -> str | None:
+    """The exchange's name for a filing's results format, from its file name."""
+    match = _FORMAT.search(xbrl_url or "")
+    return match.group(1) if match else None
+
+
+def unsupported_kind(xbrl_url: str | None) -> str | None:
+    """'banks' or 'insurers' when the filing is in a format the model can't read."""
+    words = (results_format(xbrl_url) or "").split("_")
+    for word, kind in _UNSUPPORTED_FORMATS.items():
+        if word in words:
+            return kind
+    return None
 
 
 @dataclass(frozen=True)
 class QuarterlyFinancials:
     """One quarter of `fundamentals_quarterly`, in crore except EPS.
 
-    Thin by comparison with the annual row because the free NSE source carries
-    only these three figures — `results_comparison` returns revenue, net profit
-    and EPS and nothing else.
+    Rows read from the quarter's XBRL carry the P&L down to tax; the few NSE's
+    `results_comparison` supplied carry only revenue, net profit and EPS.
     """
 
     period_end: dt.date
@@ -236,15 +298,28 @@ class QuarterlyFinancials:
     revenue: float | None
     pat: float | None
     eps: float | None
+    eps_adjusted: float | None = None   # eps on today's share basis
+    basis: str | None = None            # CONSOLIDATED | STANDALONE
+    total_income: float | None = None
+    other_income: float | None = None
+    total_expenses: float | None = None
+    depreciation: float | None = None
+    interest_expense: float | None = None
+    profit_before_tax: float | None = None
+    tax_expense: float | None = None
+    ebitda: float | None = None         # derived; see quarterly_financials
+    source_url: str | None = None       # the XBRL instance read
 
 
 @dataclass(frozen=True)
 class PriceBar:
     """One trading day from `prices_daily`, in rupees.
 
-    Both closes, because they answer different questions: `close` is the
-    price that traded that day, `adj_close` the one a return across a split
-    or bonus can be computed from.
+    Both closes, because they answer different questions. `close` is the day's
+    close restated to today's share basis — split- and bonus-adjusted, not
+    dividend-adjusted — so before a bonus it is not the price that traded
+    (RELIANCE's 2024 closes are half what it traded at). `adj_close` is also
+    dividend-adjusted, the one a total return is computed from.
     """
 
     date: dt.date
@@ -269,10 +344,18 @@ def _instrument(row: pd.Series) -> Instrument:
         sector=_opt_str(row.get("sector")),
         bse_code=_opt_str(row.get("bse_code")),
         listing_date=_opt_date(row.get("listing_date")),
+        industry=_opt_str(row.get("industry")),
     )
 
 
 def _signal(row: pd.Series) -> Signal:
+    previous_date = _opt_date(row.get("prev_as_of_date"))
+    previous = None if previous_date is None else PreviousSignal(
+        as_of=previous_date,
+        composite_score=_opt_float(row.get("prev_composite_score")),
+        signal=_opt_str(row.get("prev_signal")),
+        model_version=_opt_str(row.get("prev_model_version")),
+    )
     return Signal(
         isin=_req_str(row.get("isin")),
         nse_symbol=_req_str(row.get("nse_symbol")),
@@ -286,19 +369,116 @@ def _signal(row: pd.Series) -> Signal:
         unknown_flags=_flag_list(row.get("unknown_flags")),
         narrative=_opt_str(row.get("narrative")),
         model_version=_opt_str(row.get("model_version")),
+        previous=previous,
     )
 
+
+# Every signal row beside the same instrument's row just before it. A window
+# over the whole table, not over whatever a query then filters to: the previous
+# row of a 16 Aug signal is its 14 Aug one even when the query asks only for
+# 16 Aug, or for one row of history. Aliased because Postgres before 16 rejects
+# an unaliased subquery in FROM.
+_SIGNALS = """(
+    SELECT sig.*,
+        LAG(sig.as_of_date) OVER prior AS prev_as_of_date,
+        LAG(sig.composite_score) OVER prior AS prev_composite_score,
+        LAG(sig.signal) OVER prior AS prev_signal,
+        LAG(sig.model_version) OVER prior AS prev_model_version
+    FROM signals sig
+    WINDOW prior AS (PARTITION BY sig.isin ORDER BY sig.as_of_date)
+)"""
 
 _SIGNAL_COLUMNS = """
     s.isin, i.nse_symbol, i.name, i.sector, s.as_of_date, s.composite_score,
     s.signal, s.coverage, s.red_flags, s.unknown_flags, s.narrative,
-    s.model_version
+    s.model_version, s.prev_as_of_date, s.prev_composite_score, s.prev_signal,
+    s.prev_model_version
 """
 
 
 # ----------------------------------------------------------------------
 # Reads
 # ----------------------------------------------------------------------
+
+
+#: A scoring date counts as a complete run when at least this share of the
+#: instruments active that day got a signal. The 16 Aug 2026 run scored 4 of
+#: 100 and the 15 Aug one 1; both sit in `signals` like any other date and
+#: became "latest", so the newest *complete* date is reported beside it.
+COMPLETE_RUN_SHARE = 0.5
+
+
+@dataclass(frozen=True)
+class ScoredDateCount:
+    as_of: dt.date
+    scored: int        # instruments with a signal that day
+    instruments: int   # instruments listed and not delisted that day
+
+
+def scored_date_counts(db: Database, limit: int | None = 90) -> list[ScoredDateCount]:
+    """How many companies each scoring date covered, newest first.
+
+    An instrument with no listing date counts as listed: the exchange's master
+    list leaves it blank for most of the universe.
+    """
+    sql = """
+        SELECT d.as_of_date, d.scored,
+            (SELECT COUNT(*) FROM instruments i
+             WHERE (i.listing_date IS NULL OR i.listing_date <= d.as_of_date)
+               AND (i.delisting_date IS NULL OR i.delisting_date > d.as_of_date)
+            ) AS instruments
+        FROM (
+            SELECT as_of_date, COUNT(signal) AS scored
+            FROM signals GROUP BY as_of_date
+        ) AS d
+        ORDER BY d.as_of_date DESC
+    """
+    params: list[Any] = []
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+    df = db.query(sql, params)
+    return [
+        ScoredDateCount(
+            as_of=_opt_date(row["as_of_date"]) or dt.date.min,
+            scored=int(row["scored"]),
+            instruments=int(row["instruments"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+
+def latest_complete_as_of(
+    db: Database, share: float = COMPLETE_RUN_SHARE
+) -> dt.date | None:
+    """Newest date on which at least `share` of active instruments were scored."""
+    for count in scored_date_counts(db, limit=None):
+        if count.instruments and count.scored >= share * count.instruments:
+            return count.as_of
+    return None
+
+
+@dataclass(frozen=True)
+class Freshness:
+    latest_price_date: dt.date | None
+    latest_filing_date: dt.date | None
+    latest_news_date: dt.date | None
+
+
+def freshness(db: Database) -> Freshness:
+    """The newest date each kind of input reaches, across every company."""
+    row = db.query(
+        "SELECT (SELECT MAX(date) FROM prices_daily) AS prices, "
+        "(SELECT MAX(filing_date) FROM fundamentals_quarterly) AS quarterly, "
+        "(SELECT MAX(filing_date) FROM fundamentals_annual) AS annual, "
+        "(SELECT MAX(published_at) FROM news WHERE isin IS NOT NULL) AS news"
+    ).iloc[0]
+    filings = [d for d in (_opt_date(row["quarterly"]), _opt_date(row["annual"])) if d]
+    return Freshness(
+        latest_price_date=_opt_date(row["prices"]),
+        latest_filing_date=max(filings, default=None),
+        latest_news_date=_opt_date(row["news"]),
+    )
 
 
 def latest_as_of(db: Database) -> dt.date | None:
@@ -328,7 +508,7 @@ def sectors(db: Database) -> list[str]:
 
 def list_instruments(db: Database, sector: str | None = None) -> list[Instrument]:
     sql = (
-        "SELECT isin, nse_symbol, bse_code, name, sector, listing_date "
+        "SELECT isin, nse_symbol, bse_code, name, sector, industry, listing_date "
         "FROM instruments"
     )
     params: list[Any] = []
@@ -342,7 +522,7 @@ def list_instruments(db: Database, sector: str | None = None) -> list[Instrument
 
 def get_instrument(db: Database, isin: str) -> Instrument | None:
     df = db.query(
-        "SELECT isin, nse_symbol, bse_code, name, sector, listing_date "
+        "SELECT isin, nse_symbol, bse_code, name, sector, industry, listing_date "
         "FROM instruments WHERE isin = ?",
         [isin],
     )
@@ -354,7 +534,7 @@ def get_instrument(db: Database, isin: str) -> Instrument | None:
 def resolve_symbol(db: Database, symbol: str) -> Instrument | None:
     """Look an instrument up by NSE symbol — what a human types, not an ISIN."""
     df = db.query(
-        "SELECT isin, nse_symbol, bse_code, name, sector, listing_date "
+        "SELECT isin, nse_symbol, bse_code, name, sector, industry, listing_date "
         "FROM instruments WHERE upper(nse_symbol) = upper(?)",
         [symbol],
     )
@@ -408,15 +588,31 @@ def signals_on(
     sector: str | None = None,
     flagged_only: bool = False,
     limit: int | None = None,
+    per_instrument: bool = False,
 ) -> list[Signal]:
     """Signals for one date, newest scored date when `as_of` is omitted.
+
+    With `per_instrument`, each instrument's newest signal instead, whatever its
+    date — one ranking across dates, each row carrying its own `as_of`. A
+    partial run then cannot hide everyone it left out; `as_of` makes no sense
+    with it and is refused.
 
     Ordering is score-descending with NULLs last: an unscored company (coverage
     below the floor) sorts to the bottom rather than to the top, which is where
     DuckDB's default NULL ordering would put it on a DESC sort.
     """
     params: list[Any] = []
-    if as_of is None:
+    newest = ""
+    if per_instrument:
+        if as_of is not None:
+            raise ValueError("per_instrument takes each instrument's own date, not as_of")
+        newest = """
+        JOIN (
+            SELECT isin, MAX(as_of_date) AS newest FROM signals GROUP BY isin
+        ) AS latest ON latest.isin = s.isin AND latest.newest = s.as_of_date
+        """
+        date_filter = "1 = 1"
+    elif as_of is None:
         date_filter = "s.as_of_date = (SELECT MAX(as_of_date) FROM signals)"
     else:
         date_filter = "s.as_of_date = ?"
@@ -424,7 +620,8 @@ def signals_on(
 
     sql = f"""
         SELECT {_SIGNAL_COLUMNS}
-        FROM signals s
+        FROM {_SIGNALS} AS s
+        {newest}
         JOIN instruments i ON i.isin = s.isin
         WHERE {date_filter}
     """
@@ -446,11 +643,65 @@ def signals_on(
     return [_signal(row) for _, row in df.iterrows()]
 
 
+@dataclass(frozen=True)
+class LatestScore:
+    as_of: dt.date
+    composite_score: float | None
+    signal: str | None
+
+
+def latest_scores(db: Database, isins: list[str]) -> dict[str, LatestScore]:
+    """Each instrument's newest signal row, for many at once. Absent: none stored."""
+    if not isins:
+        return {}
+    marks = ", ".join("?" for _ in isins)
+    df = db.query(
+        f"""
+        SELECT s.isin, s.as_of_date, s.composite_score, s.signal
+        FROM signals s
+        JOIN (
+            SELECT isin, MAX(as_of_date) AS newest FROM signals
+            WHERE isin IN ({marks}) GROUP BY isin
+        ) AS latest ON latest.isin = s.isin AND latest.newest = s.as_of_date
+        """,
+        list(isins),
+    )
+    return {
+        _req_str(row["isin"]): LatestScore(
+            as_of=_opt_date(row["as_of_date"]) or dt.date.min,
+            composite_score=_opt_float(row["composite_score"]),
+            signal=_opt_str(row["signal"]),
+        )
+        for _, row in df.iterrows()
+    }
+
+
+def signal_on(db: Database, isin: str, as_of: dt.date) -> Signal | None:
+    """The instrument's signal stored for exactly `as_of`, or None.
+
+    No fall-back to the nearest date: a holder comparing today with the day
+    they bought must be told there is no score for that day, not shown the
+    week after's as though it were.
+    """
+    df = db.query(
+        f"""
+        SELECT {_SIGNAL_COLUMNS}
+        FROM {_SIGNALS} AS s
+        JOIN instruments i ON i.isin = s.isin
+        WHERE s.isin = ? AND s.as_of_date = ?
+        """,
+        [isin, as_of],
+    )
+    if df.empty:
+        return None
+    return _signal(df.iloc[0])
+
+
 def latest_signal(db: Database, isin: str) -> Signal | None:
     df = db.query(
         f"""
         SELECT {_SIGNAL_COLUMNS}
-        FROM signals s
+        FROM {_SIGNALS} AS s
         JOIN instruments i ON i.isin = s.isin
         WHERE s.isin = ?
         ORDER BY s.as_of_date DESC
@@ -471,7 +722,7 @@ def signal_history(db: Database, isin: str, limit: int = 60) -> list[Signal]:
         f"""
         SELECT * FROM (
             SELECT {_SIGNAL_COLUMNS}
-            FROM signals s
+            FROM {_SIGNALS} AS s
             JOIN instruments i ON i.isin = s.isin
             WHERE s.isin = ?
             ORDER BY s.as_of_date DESC
@@ -503,30 +754,58 @@ def factor_breakdown(db: Database, isin: str, as_of: dt.date) -> list[FactorScor
     ]
 
 
-def recent_news(db: Database, isin: str, limit: int = 10) -> list[NewsItem]:
-    """Latest scored news for one instrument. Unscored articles still appear."""
+def recent_news(
+    db: Database, isin: str, limit: int = 10, relevant_only: bool = False
+) -> list[NewsItem]:
+    """Latest news for one instrument, scored or not, newest first.
+
+    Each item says how the company was found in it and whether the sentiment
+    factor reads it. The factor reads an article only when it is scored and
+    its company match clears `news_min_resolution_confidence` — the same
+    threshold `Database.as_of_sentiment` applies — so a roundup scored before
+    it was demoted keeps its label here but no longer counts.
+    """
+    threshold = settings.news_min_resolution_confidence
+    relevant = (
+        " AND n.matched_in = 'HEADLINE' AND COALESCE(n.resolution_method, '') <> ?"
+        if relevant_only else ""
+    )
     df = db.query(
-        """
-        SELECT n.published_at, n.headline, n.source, n.url, ns.label, ns.score
+        f"""
+        SELECT n.published_at, n.headline, n.source, n.url, ns.label, ns.score,
+               n.matched_in, n.resolution_method, n.resolution_confidence,
+               ns.news_id AS scored_id
         FROM news n
         LEFT JOIN news_sentiment ns ON ns.news_id = n.news_id
-        WHERE n.isin = ?
+        WHERE n.isin = ?{relevant}
         ORDER BY n.published_at DESC
         LIMIT ?
         """,
-        [isin, int(limit)],
+        [isin, *([_ROUNDUP] if relevant_only else []), int(limit)],
     )
-    return [
-        NewsItem(
-            published_at=_opt_date(row["published_at"]),
-            headline=_opt_str(row["headline"]),
-            label=_opt_str(row["label"]),
-            score=_opt_float(row["score"]),
-            source=_opt_str(row["source"]),
-            url=_opt_str(row["url"]),
+    out: list[NewsItem] = []
+    for _, row in df.iterrows():
+        confidence = _opt_float(row["resolution_confidence"])
+        attributed = confidence is not None and confidence >= threshold
+        scored = _opt_str(row["scored_id"]) is not None
+        out.append(
+            NewsItem(
+                published_at=_opt_date(row["published_at"]),
+                headline=_opt_str(row["headline"]),
+                label=_opt_str(row["label"]),
+                score=_opt_float(row["score"]),
+                source=_opt_str(row["source"]),
+                url=_opt_str(row["url"]),
+                relevance=_relevance(
+                    _opt_str(row["matched_in"]), _opt_str(row["resolution_method"])
+                ),
+                sentiment_status=(
+                    SCORED if scored else PENDING if attributed else NOT_SCORED
+                ),
+                counts_toward_sentiment=scored and attributed,
+            )
         )
-        for _, row in df.iterrows()
-    ]
+    return out
 
 
 def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
@@ -546,8 +825,11 @@ def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
         """,
         [isin],
     )
+    basis = ShareBasis.load(db, [isin])
     out: list[AnnualFinancials] = []
     for _, row in df.iterrows():
+        filed = _opt_date(row.get("filing_date"))
+        eps = _opt_float(row.get("eps"))
         out.append(
             AnnualFinancials(
                 fiscal_year=int(row["fiscal_year"]),
@@ -560,9 +842,18 @@ def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
                 values={
                     key: _opt_float(row.get(key)) for key, _label in ANNUAL_LINE_ITEMS
                 },
+                eps_adjusted=_adjusted(eps, basis, isin, filed),
+                source_url=_opt_str(row.get("source_url")),
             )
         )
     return out
+
+
+def _adjusted(
+    eps: float | None, basis: ShareBasis, isin: str, filed: dt.date | None
+) -> float | None:
+    """`eps` restated across every split and bonus since it was filed."""
+    return None if eps is None else eps / basis.factor(isin, filed)
 
 
 def quarterly_financials(
@@ -574,22 +865,25 @@ def quarterly_financials(
     default limit is generous rather than restrictive — it is there to bound the
     page, not to hide history.
     """
+    # `SELECT *` so a database not yet migrated to the P&L columns reads them
+    # as missing rather than failing: a read-only connection cannot migrate.
     df = db.query(
         """
-        SELECT period_end_date, filing_date, relating_to, is_consolidated,
-               revenue, pat, eps
-        FROM fundamentals_quarterly
+        SELECT * FROM fundamentals_quarterly
         WHERE isin = ?
         ORDER BY period_end_date DESC
         LIMIT ?
         """,
         [isin, int(limit)],
     )
+    basis = ShareBasis.load(db, [isin])
     out: list[QuarterlyFinancials] = []
     for _, row in df.iterrows():
         period_end = _opt_date(row["period_end_date"])
         if period_end is None:
             continue
+        filed = _opt_date(row.get("filing_date"))
+        eps = _opt_float(row.get("eps"))
         consolidated = row.get("is_consolidated")
         out.append(
             QuarterlyFinancials(
@@ -602,10 +896,308 @@ def quarterly_financials(
                 ),
                 revenue=_opt_float(row.get("revenue")),
                 pat=_opt_float(row.get("pat")),
-                eps=_opt_float(row.get("eps")),
+                eps=eps,
+                eps_adjusted=_adjusted(eps, basis, isin, filed),
+                basis=(
+                    None if consolidated is None or pd.isna(consolidated)
+                    else "CONSOLIDATED" if consolidated else "STANDALONE"
+                ),
+                **{name: _opt_float(row.get(name)) for name in _QUARTERLY_PNL},
+                ebitda=_quarterly_ebitda(row),
+                source_url=_opt_str(row.get("xbrl_url")),
             )
         )
     return out
+
+
+_QUARTERLY_PNL = (
+    "total_income", "other_income", "total_expenses", "depreciation",
+    "interest_expense", "profit_before_tax", "tax_expense",
+)
+
+
+def _quarterly_ebitda(row: pd.Series) -> float | None:
+    """PBT + finance costs + depreciation — the value factor's own fallback.
+
+    None for banks and insurers: a bank's finance cost is the interest it pays
+    depositors, its main operating cost, so adding it back describes nothing.
+    """
+    if unsupported_kind(_opt_str(row.get("xbrl_url"))) is not None:
+        return None
+    pbt = _opt_float(row.get("profit_before_tax"))
+    depreciation = _opt_float(row.get("depreciation"))
+    if pbt is None or depreciation is None:
+        return None
+    return pbt + (_opt_float(row.get("interest_expense")) or 0.0) + depreciation
+
+
+@dataclass(frozen=True)
+class CorporateAction:
+    ex_date: dt.date
+    action_type: str
+    ratio: float | None
+    amount: float | None
+    record_date: dt.date | None
+    details: str | None
+    source: str | None
+
+
+def corporate_actions(db: Database, isin: str) -> list[CorporateAction]:
+    """Every stored action for one company, newest first."""
+    df = db.query(
+        """
+        SELECT ex_date, action_type, ratio, amount, record_date, details, source
+        FROM corporate_actions
+        WHERE isin = ?
+        ORDER BY ex_date DESC, action_type
+        """,
+        [isin],
+    )
+    return [
+        CorporateAction(
+            ex_date=_opt_date(row["ex_date"]) or dt.date.min,
+            action_type=_req_str(row["action_type"]),
+            ratio=_opt_float(row["ratio"]),
+            amount=_opt_float(row["amount"]),
+            record_date=_opt_date(row["record_date"]),
+            details=_opt_str(row["details"]),
+            source=_opt_str(row["source"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+
+@dataclass(frozen=True)
+class ShareholdingQuarter:
+    """One quarter's shareholding pattern, as percentages of total shares."""
+
+    quarter_end: dt.date
+    disclosed_date: dt.date | None
+    disclosed_date_source: str | None
+    promoter_pct: float | None
+    promoter_pledged_pct: float | None
+    fii_pct: float | None
+    dii_pct: float | None
+    public_pct: float | None
+    employee_trust_pct: float | None
+
+
+def shareholding(db: Database, isin: str, quarters: int = 12) -> list[ShareholdingQuarter]:
+    """The newest `quarters` patterns, newest first."""
+    df = db.query(
+        """
+        SELECT quarter_end, disclosed_date, disclosed_date_source, promoter_pct,
+               promoter_pledged_pct, fii_pct, dii_pct, public_pct, employee_trust_pct
+        FROM shareholding
+        WHERE isin = ?
+        ORDER BY quarter_end DESC
+        LIMIT ?
+        """,
+        [isin, int(quarters)],
+    )
+    return [
+        ShareholdingQuarter(
+            quarter_end=_opt_date(row["quarter_end"]) or dt.date.min,
+            disclosed_date=_opt_date(row["disclosed_date"]),
+            disclosed_date_source=_opt_str(row["disclosed_date_source"]),
+            promoter_pct=_opt_float(row["promoter_pct"]),
+            promoter_pledged_pct=_opt_float(row["promoter_pledged_pct"]),
+            fii_pct=_opt_float(row["fii_pct"]),
+            dii_pct=_opt_float(row["dii_pct"]),
+            public_pct=_opt_float(row["public_pct"]),
+            employee_trust_pct=_opt_float(row["employee_trust_pct"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+
+@dataclass(frozen=True)
+class KeyMetrics:
+    """Valuation figures on the value factors' own share count and price basis."""
+
+    as_of: dt.date | None              # the close everything is taken at
+    price: float | None
+    shares_outstanding_cr: float | None
+    share_source: str | None           # panel.SHARES_STATED | SHARES_IMPLIED
+    shares_filing_date: dt.date | None
+    market_cap_cr: float | None
+    eps_ttm: float | None
+    pe_ttm: float | None
+    ttm_through: dt.date | None
+    ttm_filing_date: dt.date | None
+    eps_annual: float | None
+    pe_annual: float | None
+    annual_fiscal_year: int | None
+    annual_basis: str | None
+    annual_filing_date: dt.date | None
+    book_value_per_share: float | None
+    pb: float | None
+    dividends_ttm: float | None
+    dividend_yield: float | None
+    high_52w: float | None
+    low_52w: float | None
+
+
+TTM_QUARTERS = 4
+_YEAR = dt.timedelta(days=365)
+_NO_CUTOFF = dt.date(9999, 12, 31)
+
+# Consolidated where the company files it, else its one basis — the rule
+# `Database.as_of_fundamentals_history` applies for scoring, in SQL the
+# Postgres copy can run.
+_ANNUAL_ON_ONE_BASIS = """
+    SELECT a.* FROM fundamentals_annual a
+    WHERE a.isin = ? AND a.filing_date <= ?
+      AND a.basis = (
+          SELECT CASE
+              WHEN SUM(CASE WHEN b.basis = 'CONSOLIDATED' THEN 1 ELSE 0 END) > 0
+              THEN 'CONSOLIDATED' ELSE MIN(b.basis) END
+          FROM fundamentals_annual b
+          WHERE b.isin = ? AND b.filing_date <= ?
+      )
+    ORDER BY a.period_end_date DESC
+    LIMIT 5
+"""
+
+
+def _first_with(frame: pd.DataFrame, column: str) -> pd.Series | None:
+    """The first (newest) row of `frame` with a value in `column`."""
+    if frame.empty or column not in frame.columns:
+        return None
+    rows = frame[pd.to_numeric(frame[column], errors="coerce").notna()]
+    return None if rows.empty else rows.iloc[0]
+
+
+def _consecutive_quarters(ends: list[dt.date]) -> bool:
+    """Newest first, each about a quarter before the last."""
+    return all(80 <= (a - b).days <= 100 for a, b in zip(ends, ends[1:], strict=False))
+
+
+def key_metrics(db: Database, isin: str) -> KeyMetrics:
+    """Market cap, P/E, P/B and the rest, as the value factors would compute them.
+
+    Taken at the company's newest stored close and read only from what was
+    filed by that day. The share count is the one `factors.panel` scores with —
+    the newest stated count, quarterly first, else PAT / EPS — and every
+    per-share figure is restated onto the price series' share basis by the
+    same `share_basis` rule, so `pe_annual` is exactly 1 / earnings_yield and
+    `pb` exactly 1 / book_to_price on a scoring date.
+    """
+    newest = db.query("SELECT MAX(date) AS d FROM prices_daily WHERE isin = ?", [isin])
+    last = _opt_date(newest.iloc[0]["d"]) if not newest.empty else None
+    bars = pd.DataFrame(columns=["date", "high", "low", "close"])
+    if last is not None:
+        bars = db.query(
+            "SELECT date, high, low, close FROM prices_daily "
+            "WHERE isin = ? AND date > ? ORDER BY date",
+            [isin, last - _YEAR - dt.timedelta(days=45)],
+        )
+        for column in ("high", "low", "close"):
+            bars[column] = pd.to_numeric(bars[column], errors="coerce")
+        bars = bars[bars["close"] > 0]
+    as_of = _opt_date(bars["date"].iloc[-1]) if not bars.empty else None
+    price = _opt_float(bars["close"].iloc[-1]) if not bars.empty else None
+
+    high_52w = low_52w = None
+    if as_of is not None:
+        year = bars[pd.to_datetime(bars["date"]).dt.date > as_of - _YEAR]
+        high_52w = _opt_float(year["high"].fillna(year["close"]).max())
+        low_52w = _opt_float(year["low"].fillna(year["close"]).min())
+
+    cutoff = as_of or _NO_CUTOFF
+    basis = ShareBasis.load(db, [isin])
+    annual = restate(db.query(_ANNUAL_ON_ONE_BASIS, [isin, cutoff, isin, cutoff]), basis)
+    quarterly = restate(
+        db.query(
+            "SELECT * FROM fundamentals_quarterly WHERE isin = ? AND filing_date <= ? "
+            "ORDER BY period_end_date DESC LIMIT 8",
+            [isin, cutoff],
+        ),
+        basis,
+    )
+    latest = annual.iloc[0] if not annual.empty else None
+
+    def latest_value(column: str) -> float | None:
+        return None if latest is None else _opt_float(latest.get(column))
+
+    eps_annual = latest_value("eps")
+    shares, source = share_count(
+        quarterly,
+        annual,
+        pd.Series([latest_value("pat")], index=[isin], dtype=float),
+        pd.Series([eps_annual], index=[isin], dtype=float),
+        [isin],
+    )
+    n_shares = _opt_float(shares.iloc[0])
+    share_source = _opt_str(source.iloc[0])
+    stated_from = _first_with(quarterly, "shares_crore")
+    if stated_from is None:
+        stated_from = _first_with(annual, "shares_crore")
+    shares_row = stated_from if share_source == SHARES_STATED else latest
+
+    ttm_rows = quarterly.head(TTM_QUARTERS)
+    eps_ttm = ttm_through = ttm_filing = None
+    if (
+        len(ttm_rows) == TTM_QUARTERS
+        and pd.to_numeric(ttm_rows["eps"], errors="coerce").notna().all()
+        and _consecutive_quarters([_opt_date(d) for d in ttm_rows["period_end_date"]])
+    ):
+        eps_ttm = _opt_float(pd.to_numeric(ttm_rows["eps"]).sum())
+        ttm_through = _opt_date(ttm_rows["period_end_date"].iloc[0])
+        ttm_filing = _opt_date(ttm_rows["filing_date"].iloc[0])
+
+    equity = latest_value("total_equity")
+    bvps = equity * 1e7 / n_shares if equity is not None and n_shares else None
+
+    dividends = None
+    if as_of is not None:
+        actions = db.query(
+            "SELECT ex_date, action_type, amount FROM corporate_actions WHERE isin = ?",
+            [isin],
+        )
+        if not actions.empty:      # never fetched is unknown, not zero
+            paid = 0.0
+            for row in actions.itertuples(index=False):
+                ex = _opt_date(row.ex_date)
+                amount = _opt_float(row.amount)
+                if (
+                    row.action_type == "DIVIDEND" and amount is not None
+                    and ex is not None and as_of - _YEAR < ex <= as_of
+                ):
+                    paid += amount / basis.factor(isin, ex)
+            dividends = paid
+
+    def over(numerator: float | None, denominator: float | None) -> float | None:
+        if numerator is None or denominator is None or denominator <= 0:
+            return None
+        return numerator / denominator
+
+    market_cap = price * n_shares / 1e7 if price is not None and n_shares else None
+    return KeyMetrics(
+        as_of=as_of,
+        price=price,
+        shares_outstanding_cr=n_shares / 1e7 if n_shares else None,
+        share_source=share_source,
+        shares_filing_date=(
+            None if shares_row is None else _opt_date(shares_row.get("filing_date"))
+        ),
+        market_cap_cr=market_cap,
+        eps_ttm=eps_ttm,
+        pe_ttm=over(price, eps_ttm),
+        ttm_through=ttm_through,
+        ttm_filing_date=ttm_filing,
+        eps_annual=eps_annual,
+        pe_annual=over(price, eps_annual),
+        annual_fiscal_year=None if latest is None else _opt_int(latest.get("fiscal_year")),
+        annual_basis=None if latest is None else _opt_str(latest.get("basis")),
+        annual_filing_date=None if latest is None else _opt_date(latest.get("filing_date")),
+        book_value_per_share=bvps,
+        pb=over(price, bvps),
+        dividends_ttm=dividends,
+        dividend_yield=over(dividends, price),
+        high_52w=high_52w,
+        low_52w=low_52w,
+    )
 
 
 def latest_price_date(db: Database, isin: str) -> dt.date | None:
@@ -669,6 +1261,8 @@ def sentiment_counts(
 
     start = as_of - dt.timedelta(days=int(window_days))
     placeholders = ", ".join("?" for _ in isins)
+    # The attribution threshold the factor reads through: without it, the mix
+    # beside a score counted roundups the score itself ignores.
     df = db.query(
         f"""
         SELECT n.isin, ns.label, COUNT(*) AS n
@@ -677,9 +1271,13 @@ def sentiment_counts(
         WHERE n.isin IN ({placeholders})
           AND n.published_at <= ?
           AND n.published_at >= ?
+          AND n.resolution_confidence >= ?
         GROUP BY n.isin, ns.label
         """,
-        [*isins, dt.datetime.combine(as_of, dt.time.max), start],
+        [
+            *isins, dt.datetime.combine(as_of, dt.time.max), start,
+            settings.news_min_resolution_confidence,
+        ],
     )
 
     tally: dict[str, dict[str, int]] = {}

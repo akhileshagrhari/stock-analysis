@@ -6,8 +6,33 @@ interface when EOD data stops being enough, without touching anything downstream
 
 CORPORATE ACTIONS ARE NOT OPTIONAL. Splits and bonuses are frequent in Indian
 markets. An unadjusted series shows a 1:2 split as a 50% single-day crash, which
-a momentum factor happily reads as a real signal. We store raw `close` for
-reference and `adj_close` for every return calculation.
+a momentum factor happily reads as a real signal.
+
+WHAT THE TWO CLOSES ARE
+-----------------------
+Neither is the price that traded on a day before a split or bonus. This file
+used to call `close` the raw traded price, and the schema still said so until
+RELIANCE's 2020 closes turned out to be half what the stock traded at:
+
+    close       Yahoo's Close. Split- and bonus-adjusted to the share basis
+                as of the fetch, NOT adjusted for dividends. RELIANCE on
+                2024-10-24, four days before its 1:1 bonus, is ~1,340 here; it
+                traded at ~2,680.
+    adj_close   Additionally adjusted for dividends. What every *return* is
+                computed from, because a dividend is not a loss.
+
+So `close` is the price to put next to per-share fundamentals — but only once
+they are on the same share basis, which a filing from before the bonus is not.
+`factors.share_basis` restates them with `corporate_actions`, and the value
+factors read `close`, not `adj_close`: valuing a 2021 balance sheet against a
+price shrunk by every dividend paid since overstates how cheap it was.
+
+ONE FETCH, ONE BASIS
+--------------------
+Yahoo re-bases the whole series when a split happens, so rows fetched before
+and after one are on different bases. Each company's fetch therefore reaches
+back to its earliest stored day: the stored series is always the product of a
+single request, never a seam between two.
 """
 
 from __future__ import annotations
@@ -144,28 +169,34 @@ def ingest_prices(
     company is fetched, so a caller can name the request in flight rather than
     the one that just finished. `index` is 1-based. A rate-limited crawl spends
     almost all its time inside the call, which is the part worth showing.
+
+    A company's window starts at `start` or at its earliest stored day,
+    whichever is earlier — see "One fetch, one basis" above.
     """
     provider = provider or YFinanceProvider()
     end = end or dt.date.today()
     start = start or (end - dt.timedelta(days=365 * 6))
 
+    where, params = "", []
     if isins:
-        placeholders = ", ".join("?" for _ in isins)
-        sym_df = db.query(
-            f"SELECT isin, nse_symbol FROM instruments "
-            f"WHERE isin IN ({placeholders}) AND nse_symbol IS NOT NULL",
-            list(isins),
-        )
-    else:
-        sym_df = db.query(
-            "SELECT isin, nse_symbol FROM instruments WHERE nse_symbol IS NOT NULL"
-        )
+        where = f"AND i.isin IN ({', '.join('?' for _ in isins)})"
+        params = list(isins)
+    sym_df = db.query(
+        f"""
+        SELECT i.isin, i.nse_symbol,
+               (SELECT MIN(p.date) FROM prices_daily p WHERE p.isin = i.isin) AS first_stored
+        FROM instruments i
+        WHERE i.nse_symbol IS NOT NULL {where}
+        """,
+        params,
+    )
 
     total = 0
     for i, row in enumerate(sym_df.itertuples(index=False), start=1):
         if progress:
             progress(i, len(sym_df), row.nse_symbol)
-        df = provider.fetch_daily(row.nse_symbol, start, end)
+        first = None if pd.isna(row.first_stored) else pd.Timestamp(row.first_stored).date()
+        df = provider.fetch_daily(row.nse_symbol, min(start, first or start), end)
         if df.empty:
             log.warning("no price data for %s (%s)", row.nse_symbol, row.isin)
             continue

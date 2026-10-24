@@ -87,6 +87,11 @@ def _seed_scored(db: Database) -> Database:
                     "body": "body",
                     "source": "TEST",
                     "url": f"https://example.test/{news_id}",
+                    # Attributed the way the resolver attributes a headline
+                    # name match: above the threshold the factor reads through.
+                    "resolution_method": "NAME",
+                    "resolution_confidence": 0.95,
+                    "matched_in": "HEADLINE",
                 }
             )
             sentiment.append(

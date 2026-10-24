@@ -27,7 +27,7 @@ from stockanalysis.factors.composite import (
     persist,
 )
 from stockanalysis.factors.growth import QuarterlyRevenueYoY, RevenueCagr
-from stockanalysis.factors.panel import PanelCache, load_panel
+from stockanalysis.factors.panel import PANEL_CACHE, PanelCache, load_panel
 from stockanalysis.factors.quality import (
     Accruals,
     CfoToPat,
@@ -756,6 +756,36 @@ def test_unscored_companies_are_not_persisted_as_holds(
     _, n_signals = persist(db, result)
 
     assert n_signals == 0, "companies below the coverage threshold were given signals"
+
+
+def test_rescoring_a_date_replaces_what_an_earlier_run_stored_for_it(
+    db: Database, universe: list[str], monkeypatch
+):
+    """A company the re-run cannot score keeps nothing from the first run.
+
+    An upsert alone leaves the earlier signal standing beside the new answer,
+    and a factor that is now unmeasurable at its old value. A company the run
+    did not score at all is left alone: the run has no answer for it.
+    """
+    load_fundamentals(db, universe)
+    persist(db, CompositeModel(cache=PanelCache()).score(db, universe, AS_OF))
+    assert not db.query("SELECT 1 FROM signals").empty
+    db.conn.execute(
+        "INSERT INTO signals (isin, as_of_date, composite_score, signal, coverage) "
+        "VALUES ('INE_OUTSIDE', ?, 61.0, 'BUY', 0.9)",
+        [AS_OF],
+    )
+
+    db.conn.execute("DELETE FROM fundamentals_annual")
+    # The factors read the module-level cache, not the one passed in here.
+    monkeypatch.setattr(PANEL_CACHE, "_panel", None)
+    again = CompositeModel(cache=PanelCache()).score(db, universe, AS_OF)
+    _, n_signals = persist(db, again)
+
+    assert n_signals == 0
+    assert list(db.query("SELECT isin FROM signals")["isin"]) == ["INE_OUTSIDE"]
+    stored = set(db.query("SELECT DISTINCT factor_name FROM factor_scores")["factor_name"])
+    assert stored == {c for c in again.raw.columns if again.raw[c].notna().any()}
 
 
 # ======================================================================

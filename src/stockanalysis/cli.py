@@ -357,6 +357,40 @@ def ingest_shareholding_cmd(
         console.print(f"[green]Stored[/green] {n} shareholding rows")
 
 
+@app.command("ingest-corporate-actions")
+def ingest_corporate_actions_cmd(
+    limit: int = typer.Option(None, "--limit"),
+    years: int = typer.Option(10, "--years"),
+) -> None:
+    """Splits, bonuses, dividends and rights from NSE. Free, no LLM.
+
+    What puts a pre-split filing's EPS and share count on the same share basis
+    as the yfinance prices. Each split and bonus is then checked against the
+    stored closes, and a series Yahoo did not adjust is named.
+    """
+    from stockanalysis.ingest.corporate_actions import (
+        ingest_corporate_actions,
+        unadjusted_in_prices,
+    )
+
+    settings.ensure_dirs()
+    until = dt.date.today()
+    with open_db() as db:
+        isins = db.query("SELECT isin FROM instruments ORDER BY isin")["isin"].tolist()
+        if limit:
+            isins = isins[:limit]
+        n = ingest_corporate_actions(
+            db, isins=isins, since=until - dt.timedelta(days=365 * years), until=until
+        )
+        seams = unadjusted_in_prices(db, isins)
+    console.print(f"[green]Stored[/green] {n} corporate actions")
+    for check in seams:
+        console.print(
+            f"  [yellow]{check.symbol} {check.ex_date}[/yellow] prices not adjusted "
+            f"for the {check.ratio:g}x action (moved {check.observed:.2f}x)"
+        )
+
+
 @app.command("ingest-results-index")
 def ingest_results_index_cmd(
     years: int = typer.Option(3, "--years"),
@@ -1378,6 +1412,13 @@ def update_cmd(
     index_name: str = typer.Option(settings.default_index, "--index"),
     as_of: str = typer.Option(None, "--as-of", help="Decision date for scoring"),
     min_coverage: float = typer.Option(0.5, "--min-coverage"),
+    reread_filings: bool = typer.Option(
+        False,
+        "--reread-filings",
+        help="Re-read every XBRL filing on file, not only new ones — what a "
+             "parser change needs to reach rows already stored. Instances are "
+             "cached, so this costs parsing, not requests.",
+    ),
 ) -> None:
     """Run the ingest → extract → score pipeline as one job.
 
@@ -1418,6 +1459,7 @@ def update_cmd(
         index_name=index_name,
         min_coverage=min_coverage,
         as_of=dt.date.fromisoformat(as_of) if as_of else None,
+        redo_extraction=reread_filings,
     )
 
     try:

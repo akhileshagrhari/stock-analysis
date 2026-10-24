@@ -58,17 +58,23 @@ CREATE TABLE IF NOT EXISTS prices_daily (
     open          DOUBLE,
     high          DOUBLE,
     low           DOUBLE,
-    close         DOUBLE,          -- raw traded price
+    -- NOT the traded price: Yahoo's Close, split- and bonus-adjusted to the
+    -- share basis at fetch time (not for dividends). See ingest/prices.py.
+    close         DOUBLE,
     adj_close     DOUBLE,          -- adjusted for splits/bonuses/dividends
     volume        BIGINT,
     traded_value  DOUBLE,          -- for liquidity / slippage modelling
     PRIMARY KEY (isin, date)
 );
 
+-- Populated from NSE's corporate-actions feed (ingest/corporate_actions.py,
+-- which says why NSE rather than Yahoo). `ratio` is read per type: shares
+-- after / shares before for SPLIT and BONUS, new shares offered per share held
+-- for RIGHTS, NULL for DIVIDEND (see `amount`). `details` is NSE's subject.
 CREATE TABLE IF NOT EXISTS corporate_actions (
     isin        VARCHAR NOT NULL,
     ex_date     DATE NOT NULL,
-    action_type VARCHAR NOT NULL,  -- SPLIT | BONUS | DIVIDEND | RIGHTS
+    action_type VARCHAR NOT NULL,  -- SPLIT | BONUS | DIVIDEND | RIGHTS | DEMERGER | BUYBACK
     ratio       DOUBLE,
     details     VARCHAR,
     PRIMARY KEY (isin, ex_date, action_type)
@@ -345,8 +351,40 @@ CREATE TABLE IF NOT EXISTS results_filings (
     PRIMARY KEY (isin, period_end_date, basis)
 );
 
+-- The share count as each results filing states it: paid-up equity capital
+-- (crore) and face value (rupees). Their ratio is shares outstanding in crore,
+-- on the share basis of that filing's date — see factors/share_basis.py for
+-- how it is restated across a later split or bonus. Stored as the two tagged
+-- figures rather than their ratio, so a reader can check the arithmetic.
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS paid_up_capital DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS face_value DOUBLE;
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS paid_up_capital DOUBLE;
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS face_value DOUBLE;
+
+-- Dividend per share (₹, on the share basis of the ex-date), the record date,
+-- and where the row came from.
+ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS amount DOUBLE;
+ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS record_date DATE;
+ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS source VARCHAR;
+
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS disclosed_date_source VARCHAR;
 ALTER TABLE shareholding ADD COLUMN IF NOT EXISTS employee_trust_pct DOUBLE;
+
+-- The rest of the quarter's P&L, ₹ crore, read from the same XBRL instance as
+-- revenue, PAT and EPS. NULL for the rows NSE's results_comparison supplied,
+-- which carries only those three, and for a line a filing does not tag.
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS total_income DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS other_income DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS total_expenses DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS depreciation DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS interest_expense DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS profit_before_tax DOUBLE;
+ALTER TABLE fundamentals_quarterly ADD COLUMN IF NOT EXISTS tax_expense DOUBLE;
+
+-- The document an annual row's figures were read from: the results filing's
+-- XBRL instance, or the annual report PDF the model read. Quarterly rows have
+-- carried theirs as xbrl_url from the start.
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS source_url VARCHAR;
 
 -- ====================================================================
 -- PHASE 2 — factor model

@@ -99,6 +99,40 @@ def test_quarterly_parser_reads_the_quarter_not_the_balance_sheet_instant():
     assert v["eps_basic"] == pytest.approx(15.48)
 
 
+def test_the_share_count_is_read_and_face_value_is_not_scaled():
+    """Paid-up capital is an amount, so it is scaled to crore like any other;
+    face value is rupees per share, like EPS, and must not be — scaled, it
+    would put RELIANCE's share count at ten million times what it is."""
+    v = parse_xbrl(RELIANCE_Q1_FY2027.read_bytes()).to_crore()
+    assert v["paid_up_capital"] == pytest.approx(13_533)
+    assert v["face_value"] == pytest.approx(10)
+    assert v["paid_up_capital"] / v["face_value"] == pytest.approx(1_353.3)  # crore shares
+
+
+def test_an_annual_row_links_the_instance_it_was_read_from():
+    from stockanalysis.ingest.xbrl_annual import AnnualFilingRef, to_row
+
+    url = (
+        "https://nsearchives.nseindia.com/corporate/xbrl/"
+        "INTEGRATED_FILING_INDAS_1658776_24042026105712_WEB.xml"
+    )
+    ref = AnnualFilingRef(
+        isin=RELIANCE, symbol="RELIANCE", period_end=dt.date(2026, 3, 31),
+        broadcast_date=dt.date(2026, 4, 24), is_consolidated=True, xbrl_url=url,
+    )
+    row = to_row(ref, parse_annual_xbrl(RELIANCE_FY2026.read_bytes()))
+    assert row["source_url"] == url
+
+
+def test_the_annual_parser_reads_the_share_count_from_the_year():
+    """Legacy format too. Infosys FY2024: 2,075 crore at ₹5 is 415 crore
+    shares, which PAT over EPS (27,234 / 65.62) agrees with."""
+    v = parse_annual_xbrl(INFOSYS_FY2024.read_bytes()).to_crore()
+    shares = v["paid_up_capital"] / v["face_value"]
+    assert shares == pytest.approx(415.0)
+    assert shares == pytest.approx(v["pat"] / v["eps_basic"], rel=1e-3)
+
+
 def test_quarterly_parser_takes_the_quarter_from_a_year_end_filing():
     """The Q4 instance carries the quarter (`OneD`) and the year (`FourD`).
     The quarterly table wants the quarter — the year belongs to the annual
@@ -498,6 +532,17 @@ def test_an_xbrl_quarter_replaces_the_frozen_results_comparison_row(db_with_univ
     assert pd.Timestamp(row["filing_date"]).date() == dt.date(2026, 7, 17)
     assert row["filing_date_source"] == FILING_DATE_FROM_NSE
     assert bool(row["is_consolidated"]) is True
+    assert row["paid_up_capital"] == pytest.approx(13_533)
+    assert row["face_value"] == pytest.approx(10)
+    # The rest of the quarter's P&L, as RELIANCE's Q1 FY2027 filing tags it.
+    assert row["total_income"] == pytest.approx(318_400)
+    assert row["other_income"] == pytest.approx(6_550)
+    assert row["total_expenses"] == pytest.approx(287_770)
+    assert row["depreciation"] == pytest.approx(15_100)
+    assert row["interest_expense"] == pytest.approx(8_337)
+    assert row["profit_before_tax"] == pytest.approx(30_630)
+    assert row["tax_expense"] == pytest.approx(7_629)
+    assert row["revenue"] + row["other_income"] == pytest.approx(row["total_income"])
 
     # Read once; a second run has nothing left to do.
     assert pending_quarterly_filings(db) == []
@@ -524,6 +569,57 @@ def test_a_quarter_with_no_broadcast_date_is_dated_by_its_deadline(db_with_unive
     assert pd.Timestamp(row["filing_date"]).date() == dt.date(2026, 5, 30)
     assert row["filing_date_source"] == FILING_DATE_ASSUMED
     assert row["revenue"] == pytest.approx(298_621)  # the quarter, not the year
+    assert row["depreciation"] == pytest.approx(14_808)
+    assert row["profit_before_tax"] == pytest.approx(27_195)
+    assert row["revenue"] + row["other_income"] == pytest.approx(row["total_income"])
+
+
+@pytest.mark.parametrize(
+    ("fixture", "code"),
+    [
+        ("reliance_q1_fy2027_integrated.xml", "500325"),   # entity identifier
+        ("hdfcbank_q1_fy2027_integrated.xml", "500180"),
+        ("infosys_fy2024_annual.xml", "500209"),           # legacy: the fact
+        ("lt_fy2024_consolidated.xml", "500510"),
+        ("zydus_h1_fy2025.xml", "532321"),
+    ],
+)
+def test_the_bse_code_is_read_from_either_format(fixture, code):
+    from xml.etree import ElementTree
+
+    from stockanalysis.ingest.xbrl import parse_xbrl, scrip_code
+
+    raw = (FIXTURES / fixture).read_bytes()
+    assert scrip_code(ElementTree.fromstring(raw)) == code
+    if "annual" not in fixture and "consolidated" not in fixture:
+        assert parse_xbrl(raw).scrip_code == code
+
+
+def test_reading_a_quarter_fills_the_bse_code_and_never_overwrites(db_with_universe):
+    from stockanalysis.ingest.xbrl_quarterly import (
+        ingest_quarterly_xbrl,
+        pending_quarterly_filings,
+    )
+
+    db = db_with_universe
+    db.conn.execute("UPDATE instruments SET bse_code = '999999' WHERE isin = ?", [HDFCBANK])
+    db.upsert_df("results_filings", pd.DataFrame([
+        _filing(RELIANCE, dt.date(2026, 6, 30), "First Quarter", seq="1695741",
+                broadcast=dt.date(2026, 7, 17)),
+        _filing(HDFCBANK, dt.date(2026, 6, 30), "First Quarter", seq="1696123",
+                broadcast=dt.date(2026, 7, 18)),
+    ]), ["isin", "period_end_date", "basis"])
+    session = _FakeSession({
+        "1695741": RELIANCE_Q1_FY2027.read_bytes(),
+        "1696123": HDFCBANK_Q1_FY2027.read_bytes(),
+    })
+    results = ingest_quarterly_xbrl(db, pending_quarterly_filings(db), session=session)
+    assert all(r.ok for r in results)
+
+    codes = dict(db.query("SELECT isin, bse_code FROM instruments").itertuples(index=False))
+    assert codes[RELIANCE] == "500325"
+    assert codes[HDFCBANK] == "999999"
+    assert pd.isna(codes[ABB])
 
 
 def test_a_bank_quarter_uses_total_income_as_its_top_line(db_with_universe):
@@ -547,6 +643,11 @@ def test_a_bank_quarter_uses_total_income_as_its_top_line(db_with_universe):
     row = db.query("SELECT * FROM fundamentals_quarterly").iloc[0]
     assert row["revenue"] == pytest.approx(133_110.36)
     assert row["pat"] == pytest.approx(19_244.71)
+    assert row["total_income"] == pytest.approx(133_110.36)
+    assert row["other_income"] == pytest.approx(42_535.03)
+    assert row["tax_expense"] == pytest.approx(6_810.47)
+    # Not tagged on the bank's quarter context: unknown, not zero.
+    assert pd.isna(row["profit_before_tax"]) and pd.isna(row["depreciation"])
 
 
 def test_an_instance_for_another_period_is_not_written(db_with_universe):

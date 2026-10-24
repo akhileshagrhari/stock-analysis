@@ -27,12 +27,17 @@ import pandas as pd
 
 from stockanalysis.config import settings
 from stockanalysis.db.database import Database
+from stockanalysis.factors.panel import PRICE_TOLERANCE_DAYS
 from stockanalysis.run.events import Reporter
 
 # What a step costs to run. The UI turns this into a badge and a default.
 FREE = "free"          # local only
 NETWORK = "network"    # unofficial NSE/Yahoo endpoints — rate-limited, slow
 PAID = "paid"          # spends money per call
+
+# A last close older than this, relative to the scoring date, is reported as
+# stale — the same week the prices step already warns at.
+STALE_PRICE_DAYS = 7
 
 
 class StepSkipped(Exception):
@@ -184,6 +189,47 @@ def _prices(ctx: StepContext) -> None:
         raise StepSkipped(
             "yfinance returned nothing. The symbol may be wrong, or the "
             "unofficial endpoint may be rate-limiting."
+        )
+
+
+def _corporate_actions(ctx: StepContext) -> None:
+    """Splits, bonuses, dividends and rights from NSE — the share-basis record.
+
+    After prices on purpose: the step checks each split and bonus against the
+    stored closes, and a series fetched in this same run is the one to check.
+    """
+    from stockanalysis.ingest.corporate_actions import (
+        ingest_corporate_actions,
+        unadjusted_in_prices,
+    )
+
+    n = ingest_corporate_actions(
+        ctx.db, isins=ctx.isins, progress=_company_progress(ctx, "corporate actions for")
+    )
+    ctx.report.summary(**{"actions stored": n})
+
+    where, params = ("WHERE isin = ?", [ctx.isins[0]]) if ctx.isins else ("", [])
+    counts = ctx.db.query(
+        f"SELECT action_type, COUNT(*) AS n FROM corporate_actions {where} "
+        f"GROUP BY action_type ORDER BY action_type",
+        params,
+    )
+    for r in counts.itertuples(index=False):
+        ctx.report.summary(**{r.action_type.lower(): int(r.n)})
+
+    for check in unadjusted_in_prices(ctx.db, ctx.isins):
+        ctx.report.warn(
+            f"{check.symbol or check.isin}: the price series is not adjusted for "
+            f"the {check.ratio:g}x split/bonus on {check.ex_date} — the close moved "
+            f"{check.observed:.2f}x across it. Per-share figures restated by it "
+            f"will be wrong on one side; refetch the prices.",
+            ex_date=str(check.ex_date),
+        )
+    if n == 0:
+        raise StepSkipped(
+            "NSE returned no corporate actions. That is normal for a company "
+            "that has paid no dividend in the window; for the universe it "
+            "usually means the endpoint refused the session."
         )
 
 
@@ -591,6 +637,27 @@ def _score(ctx: StepContext) -> None:
         "signals written": n_signals,
     })
 
+    # Data issues D1-D3: the 24 Oct 2026 run was a one-company job. It fetched
+    # ADANIENSOL's prices and then — scoring being universe-wide — wrote a new
+    # date for 78 companies whose prices stopped ten weeks earlier, with their
+    # value factors uncomputable. Nothing said so. Now the run does.
+    stale = _stale_price_isins(ctx.db, list(table.index), as_of)
+    if stale:
+        ctx.report.summary(**{"stale prices": f"{len(stale)}/{len(table)}"})
+        scope = (
+            f" This job refreshed {ctx.scope_label}'s inputs only, but scoring "
+            f"covers the whole universe, so the others' rows for {as_of} rest "
+            f"on whatever was last fetched for them."
+            if ctx.isins else ""
+        )
+        ctx.report.warn(
+            f"{len(stale)} of {len(table)} companies' latest price is more than "
+            f"{STALE_PRICE_DAYS} days before {as_of}. Past "
+            f"{PRICE_TOLERANCE_DAYS} days their value and momentum factors are "
+            f"not computed at all, and coverage falls accordingly.{scope}",
+            stale=len(stale),
+        )
+
     if ctx.isins and ctx.isins[0] in table.index:
         row = table.loc[ctx.isins[0]]
         signal = row["signal"]
@@ -763,6 +830,21 @@ def _price_stats(db: Database, isins: list[str] | None) -> dict | None:
     }
 
 
+def _stale_price_isins(db: Database, isins: list[str], as_of: dt.date) -> list[str]:
+    """Companies whose last close on or before `as_of` is over a week old, or absent."""
+    if not isins:
+        return []
+    placeholders = ", ".join("?" for _ in isins)
+    df = db.query(
+        f"SELECT isin, MAX(date) AS last FROM prices_daily "
+        f"WHERE isin IN ({placeholders}) AND date <= ? GROUP BY isin",
+        [*isins, as_of],
+    )
+    last = {r.isin: pd.Timestamp(r.last).date() for r in df.itertuples(index=False)}
+    cutoff = as_of - dt.timedelta(days=STALE_PRICE_DAYS)
+    return [i for i in isins if last.get(i) is None or last[i] < cutoff]
+
+
 def _xbrl_link_count(db: Database, isins: list[str] | None) -> int:
     """Company-years with a tagged annual instance — what `xbrl` can read.
 
@@ -876,6 +958,16 @@ STEPS: tuple[StepSpec, ...] = (
         label="Ingest prices",
         description="Daily OHLCV from yfinance, split/bonus adjusted.",
         run=_prices,
+        cost=NETWORK,
+    ),
+    StepSpec(
+        key="corporate-actions",
+        label="Ingest corporate actions",
+        description=(
+            "Splits, bonuses, dividends and rights from NSE. What restates a "
+            "filing's EPS and share count onto the price series' share basis."
+        ),
+        run=_corporate_actions,
         cost=NETWORK,
     ),
     StepSpec(

@@ -253,6 +253,7 @@ def _write_fundamentals(
         "source": "LLM",
         "extraction_confidence": report.confidence,
         "source_filing_id": filing.filing_id,
+        "source_url": _filing_url(db, filing.filing_id),
         "extraction_model": result.model,
         "extraction_attempt_id": attempt_id,
         "extracted_at": dt.datetime.now(),
@@ -260,6 +261,14 @@ def _write_fundamentals(
     db.upsert_df(
         "fundamentals_annual", pd.DataFrame([row]), ["isin", "fiscal_year", "basis"]
     )
+
+
+def _filing_url(db: Database, filing_id: str) -> str | None:
+    """Where the annual report was downloaded from, for the row's source link."""
+    found = db.query("SELECT source_url FROM filings WHERE filing_id = ?", [filing_id])
+    if found.empty or pd.isna(found.iloc[0]["source_url"]):
+        return None
+    return str(found.iloc[0]["source_url"])
 
 
 def _queue_review(

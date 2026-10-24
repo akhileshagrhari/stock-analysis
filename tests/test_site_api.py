@@ -1,0 +1,1176 @@
+"""What the public site asked of the API.
+
+The requirements are docs/superpowers/specs/2026-10-24-site-api-requirements.md
+(on the UI branch); their status is in ...-requirements-status.md beside it.
+
+One class per requirement (R1-R17), against the same scored fixture the phase-4
+serving tests use. Parity with Postgres is checked separately, for every route,
+by `test_postgres_serving.PARITY_URLS`; these tests are about what the answers
+mean.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+
+import pandas as pd
+import pytest
+from test_phase4_serving import AS_OF, INDEX, _seed_scored
+
+from stockanalysis.db.database import Database
+from stockanalysis.factors.composite import CompositeModel, ScoringConfig, persist
+from stockanalysis.factors.panel import PANEL_CACHE
+from stockanalysis.serve import explain
+
+EARLIER = dt.date(2022, 12, 30)
+
+
+@pytest.fixture
+def scored_db(seeded_db: Database) -> Database:
+    return _seed_scored(seeded_db)
+
+
+@pytest.fixture
+def two_dates_db(scored_db: Database) -> Database:
+    """The fixture scored a second time, a month earlier, so there is a past."""
+    isins = scored_db.as_of_universe(INDEX, EARLIER)
+    result = CompositeModel(config=ScoringConfig(min_coverage=0.0)).score(
+        scored_db, isins, EARLIER
+    )
+    persist(scored_db, result)
+    return scored_db
+
+
+def _client(db: Database):
+    from fastapi.testclient import TestClient
+
+    from stockanalysis.serve.api import app, get_db
+
+    app.dependency_overrides[get_db] = lambda: db
+    return TestClient(app)
+
+
+@pytest.fixture
+def client(two_dates_db: Database):
+    try:
+        yield _client(two_dates_db)
+    finally:
+        from stockanalysis.serve.api import app
+
+        app.dependency_overrides.clear()
+
+
+def _isin_scored_on_both(db: Database, without_news: bool = False) -> str:
+    news = "AND isin NOT IN (SELECT isin FROM news WHERE isin IS NOT NULL) " if without_news else ""
+    df = db.query(
+        "SELECT isin FROM signals WHERE as_of_date IN (?, ?) "
+        f"{news}GROUP BY isin HAVING COUNT(*) = 2 ORDER BY isin LIMIT 1",
+        [EARLIER, AS_OF],
+    )
+    return df["isin"].iloc[0]
+
+
+# ----------------------------------------------------------------------
+# R1 — explanation for a past date
+# ----------------------------------------------------------------------
+
+
+class TestR1ExplanationForAPastDate:
+    def test_a_past_date_is_explained_from_that_dates_rows(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/explanation?as_of={EARLIER}").json()
+
+        stored = two_dates_db.query(
+            "SELECT composite_score FROM signals WHERE isin = ? AND as_of_date = ?",
+            [isin, EARLIER],
+        )["composite_score"].iloc[0]
+        expected = explain.explain(two_dates_db, isin, EARLIER)
+        assert body["as_of"] == EARLIER.isoformat()
+        assert body["composite_score"] == pytest.approx(stored)
+        assert [f["percentile"] for f in body["families"]] == [
+            f.percentile for f in expected.families
+        ]
+        assert [d["name"] for d in body["strengths"]] == [d.name for d in expected.strengths]
+
+    def test_the_past_and_the_latest_differ_where_the_data_did(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        then = client.get(f"/v1/instruments/{isin}/explanation?as_of={EARLIER}").json()
+        now = client.get(f"/v1/instruments/{isin}/explanation").json()
+        assert now["as_of"] == AS_OF.isoformat()
+        assert then["composite_score"] != now["composite_score"]
+        # Not the latest signal's headline pasted onto another day's factors.
+        assert f"{then['composite_score']:.0f}/100" in then["headline"]
+
+    def test_a_date_with_no_row_is_404_not_the_nearest(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        response = client.get(f"/v1/instruments/{isin}/explanation?as_of=2023-01-02")
+        assert response.status_code == 404
+        assert "2023-01-02" in response.json()["detail"]
+
+    def test_stale_semantics_hold_for_a_past_date(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute(
+            "UPDATE signals SET model_version = 'phase2-composite-oldmodel' "
+            "WHERE isin = ? AND as_of_date = ?",
+            [isin, EARLIER],
+        )
+        body = client.get(f"/v1/instruments/{isin}/explanation?as_of={EARLIER}").json()
+        assert body["stale"] is True
+        assert body["stored_version"] == "phase2-composite-oldmodel"
+        assert body["current_version"] == ScoringConfig().version()
+
+    def test_a_malformed_date_is_422(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        response = client.get(f"/v1/instruments/{isin}/explanation?as_of=31-07-2026")
+        assert response.status_code == 422
+
+
+# ----------------------------------------------------------------------
+# R2 — why a company isn't scored
+# ----------------------------------------------------------------------
+
+BANK_FILING = (
+    "https://nsearchives.nseindia.com/corporate/xbrl/"
+    "INTEGRATED_FILING_BANKING_1740913_17102026054812_WEB.xml"
+)
+
+
+def _rescore(db: Database, monkeypatch) -> None:
+    """Score AS_OF again, as a pipeline run would, over whatever the data now is."""
+    monkeypatch.setattr(PANEL_CACHE, "_panel", None)
+    isins = db.as_of_universe(INDEX, AS_OF)
+    persist(db, CompositeModel().score(db, isins, AS_OF))
+
+
+def _status(client, isin: str) -> dict:
+    response = client.get(f"/v1/instruments/{isin}/score-status")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+class TestR2WhyACompanyIsntScored:
+    def test_a_scored_company_says_so_with_the_coverage_it_was_scored_on(
+        self, client, two_dates_db
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        body = _status(client, isin)
+        stored = two_dates_db.query(
+            "SELECT coverage FROM signals WHERE isin = ? AND as_of_date = ?",
+            [isin, AS_OF],
+        )["coverage"].iloc[0]
+        assert body["scored"] is True
+        assert body["reason"] == "scored"
+        assert body["latest_as_of"] == body["measured_as_of"] == AS_OF.isoformat()
+        assert body["coverage"] == pytest.approx(stored)
+        assert body["coverage_floor"] == ScoringConfig().min_coverage
+        assert body["factors_total"] == len(CompositeModel().factors)
+        assert "31 Jan 2023" in body["detail"]
+
+    def test_the_replayed_coverage_is_the_one_the_run_stored(self, two_dates_db):
+        """The unscored path reports a replayed coverage; it must be the model's."""
+        stored = two_dates_db.query(
+            "SELECT isin, coverage FROM signals WHERE as_of_date = ?", [AS_OF]
+        )
+        two_dates_db.conn.execute("DELETE FROM signals WHERE as_of_date = ?", [AS_OF])
+        for row in stored.itertuples():
+            status = explain.score_status(two_dates_db, row.isin)
+            assert status.measured_as_of == AS_OF
+            assert status.coverage == pytest.approx(row.coverage)
+
+    def test_a_company_the_latest_run_did_not_measure_keeps_its_older_score(
+        self, client, two_dates_db
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        for table in ("signals", "factor_scores"):
+            two_dates_db.conn.execute(
+                f"DELETE FROM {table} WHERE isin = ? AND as_of_date = ?", [isin, AS_OF]
+            )
+        body = _status(client, isin)
+        assert body["scored"] is True
+        assert body["reason"] == "not_in_latest_run"
+        assert body["latest_as_of"] == body["measured_as_of"] == EARLIER.isoformat()
+        assert "30 Dec 2022" in body["detail"] and "31 Jan 2023" in body["detail"]
+
+    def test_too_little_data_is_below_the_floor_and_names_what_was_missing(
+        self, client, two_dates_db, monkeypatch
+    ):
+        # Without news: its sentiment would otherwise lift it over the floor.
+        isin = _isin_scored_on_both(two_dates_db, without_news=True)
+        two_dates_db.conn.execute("DELETE FROM prices_daily WHERE isin = ?", [isin])
+        _rescore(two_dates_db, monkeypatch)
+
+        body = _status(client, isin)
+        assert body["scored"] is False
+        assert body["reason"] == "below_coverage_floor"
+        assert body["coverage"] < body["coverage_floor"]
+        # Its last score stands in `signals`; the newest run is what failed it.
+        assert body["latest_as_of"] == EARLIER.isoformat()
+        assert body["measured_as_of"] == AS_OF.isoformat()
+        assert "value" in body["detail"] and "momentum" in body["detail"]
+        assert f"{body['coverage']:.0%}" in body["detail"]
+        assert client.get(f"/v1/instruments/{isin}/latest").json()["as_of"] == (
+            EARLIER.isoformat()
+        )
+
+    def test_no_annual_results_is_missing_fundamentals(
+        self, client, two_dates_db, monkeypatch
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("DELETE FROM fundamentals_annual WHERE isin = ?", [isin])
+        _rescore(two_dates_db, monkeypatch)
+
+        body = _status(client, isin)
+        assert body["scored"] is False
+        assert body["reason"] == "missing_fundamentals"
+        assert "No annual results" in body["detail"]
+        assert body["factors_measured"] < body["factors_total"]
+
+    def test_a_bank_is_a_sector_the_model_cannot_read(
+        self, client, two_dates_db, monkeypatch
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("DELETE FROM fundamentals_annual WHERE isin = ?", [isin])
+        two_dates_db.upsert_df(
+            "fundamentals_quarterly",
+            pd.DataFrame([{
+                "isin": isin,
+                "period_end_date": dt.date(2022, 9, 30),
+                "filing_date": dt.date(2022, 10, 20),
+                "revenue": None,
+                "pat": 120.0,
+                "eps": 3.1,
+                "xbrl_url": BANK_FILING,
+            }]),
+            ["isin", "period_end_date"],
+        )
+        _rescore(two_dates_db, monkeypatch)
+
+        body = _status(client, isin)
+        assert body["reason"] == "sector_not_supported"
+        assert "banks'" in body["detail"]
+
+    def test_the_results_format_is_read_from_the_exchanges_file_name(self):
+        from stockanalysis.serve import queries
+
+        assert queries.results_format(BANK_FILING) == "INTEGRATED_FILING_BANKING"
+        assert queries.unsupported_kind(BANK_FILING) == "banks"
+        assert queries.unsupported_kind(
+            "https://nsearchives.nseindia.com/corporate/xbrl/"
+            "INTEGRATED_FILING_LI_1739360_15102026072721_WEB.xml"
+        ) == "insurers"
+        # An NBFC's format reads fine, and so does the legacy Ind AS one.
+        for url in (
+            "https://nsearchives.nseindia.com/corporate/xbrl/NBFC_INDAS_1_2.xml",
+            "https://nsearchives.nseindia.com/corporate/xbrl/"
+            "INTEGRATED_FILING_INDAS_1701291_24072026084853_WEB.xml",
+            None,
+        ):
+            assert queries.unsupported_kind(url) is None
+
+    def test_a_company_no_run_has_measured_says_what_it_lacks(self, client, two_dates_db):
+        two_dates_db.conn.execute(
+            "INSERT INTO instruments (isin, nse_symbol, name) "
+            "VALUES ('INE00NEW0001', 'NEWCO', 'New Listing Ltd')"
+        )
+        body = _status(client, "INE00NEW0001")
+        assert body == {
+            "isin": "INE00NEW0001",
+            "scored": False,
+            "reason": "never_scored",
+            "latest_as_of": None,
+            "measured_as_of": None,
+            "coverage": None,
+            "coverage_floor": ScoringConfig().min_coverage,
+            "factors_measured": None,
+            "factors_total": len(CompositeModel().factors),
+            "detail": "No scoring run has measured this company; no prices or "
+            "results are stored for it.",
+        }
+
+    def test_an_unknown_isin_is_404(self, client):
+        assert client.get("/v1/instruments/INE_MISSING/score-status").status_code == 404
+
+    def test_the_api_enum_is_the_reasons_the_reader_can_give(self):
+        from typing import get_args
+
+        from stockanalysis.serve.api import ScoreReason, app
+
+        assert set(get_args(ScoreReason)) == set(explain.SCORE_REASONS)
+        schema = app.openapi()["components"]["schemas"]["ScoreStatusOut"]
+        assert set(schema["properties"]["reason"]["enum"]) == set(explain.SCORE_REASONS)
+
+
+# ----------------------------------------------------------------------
+# R3 — the model catalogue
+# ----------------------------------------------------------------------
+
+
+class TestR3ModelCatalogue:
+    def test_the_lists_are_the_python_definitions_exactly(self, client):
+        from stockanalysis.factors import redflags
+        from stockanalysis.factors.composite import default_factors
+
+        body = client.get("/v1/model").json()
+        config = ScoringConfig()
+        assert body["version"] == config.version()
+        assert body["coverage_floor"] == config.min_coverage
+
+        assert [f["family"] for f in body["families"]] == explain.FAMILY_ORDER
+        assert {f["family"]: f["weight"] for f in body["families"]} == body["family_weights"]
+        assert all(f["meaning"] == explain.FAMILY_MEANING[f["family"]] for f in body["families"])
+
+        assert body["factors"] == [
+            {
+                "name": f.name,
+                "label": explain.FACTOR_LABELS[f.name][0],
+                "meaning": explain.FACTOR_LABELS[f.name][1],
+                "family": f.family,
+                "unit": explain.FACTOR_UNITS[f.name],
+                "higher_is_better": f.higher_is_better,
+            }
+            for f in default_factors()
+        ]
+        assert body["red_flags"] == [
+            {"name": d.name, "description": d.description, "reachable": d.reachable}
+            for d in redflags.DEFINITIONS
+        ]
+
+    def test_a_factor_added_in_python_must_be_labelled_and_given_a_unit(self):
+        """Otherwise the catalogue would show it under a made-up label."""
+        from stockanalysis.factors.composite import default_factors
+
+        names = [f.name for f in default_factors()]
+        assert set(explain.FACTOR_LABELS) == set(names)
+        assert set(explain.FACTOR_UNITS) == set(names)
+        assert set(explain.FACTOR_UNITS.values()) <= set(explain.UNITS)
+
+    def test_the_api_unit_enum_is_the_units_the_reader_assigns(self):
+        from typing import get_args
+
+        from stockanalysis.serve.api import FactorUnit
+
+        assert set(get_args(FactorUnit)) == set(explain.UNITS)
+
+    def test_units_follow_the_definitions_not_the_names(self, client):
+        units = {f["name"]: f["unit"] for f in client.get("/v1/model").json()["factors"]}
+        assert units["earnings_yield"] == "percent"
+        assert units["book_to_price"] == "multiple"
+        assert units["margin_trend"] == "pp"
+        # A return minus the universe's median return: percentage points.
+        assert units["relative_strength_6m"] == "pp"
+        # E/P × growth: a product of two fractions, not a multiple.
+        assert units["peg_inverse"] == "ratio"
+        assert units["price_to_200dma"] == "ratio_vs_trend"
+        assert units["news_sentiment_30d"] == "score"
+
+    def test_the_lower_is_better_metrics_say_so(self, client):
+        lower = {
+            f["name"] for f in client.get("/v1/model").json()["factors"]
+            if not f["higher_is_better"]
+        }
+        assert lower == {"debt_to_equity", "accruals"}
+
+    def test_unreachable_flags_are_marked(self, client):
+        flags = {f["name"]: f["reachable"] for f in client.get("/v1/model").json()["red_flags"]}
+        assert len(flags) == 6
+        assert {name for name, ok in flags.items() if not ok} == {
+            "promoter_pledge", "rating_downgrade"
+        }
+
+    def test_drivers_and_stored_factors_carry_their_unit(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        explanation = client.get(f"/v1/instruments/{isin}/explanation").json()
+        drivers = explanation["strengths"] + explanation["weaknesses"]
+        assert drivers
+        assert all(d["unit"] == explain.FACTOR_UNITS[d["name"]] for d in drivers)
+
+        latest = client.get(f"/v1/instruments/{isin}/latest").json()
+        assert latest["factors"]
+        assert all(
+            f["unit"] == explain.FACTOR_UNITS[f["factor_name"]] for f in latest["factors"]
+        )
+
+    def test_a_stored_factor_the_model_no_longer_defines_has_no_unit(self):
+        from stockanalysis.serve import queries
+        from stockanalysis.serve.api import FactorOut
+
+        row = queries.FactorScore(factor_name="retired_factor", raw_value=1.0, sector_zscore=0.1)
+        assert FactorOut.of(row).unit is None
+
+
+# ----------------------------------------------------------------------
+# R4 — a signals list that isn't hostage to a partial run
+# ----------------------------------------------------------------------
+
+LATER = dt.date(2023, 2, 15)
+
+
+@pytest.fixture
+def partial_run_db(two_dates_db: Database) -> Database:
+    """A later run that scored three companies, the shape of 16 Aug 2026."""
+    two_dates_db.conn.execute(
+        """
+        INSERT INTO signals (isin, as_of_date, composite_score, signal, red_flags,
+                             unknown_flags, coverage, narrative, model_version)
+        SELECT isin, ? AS as_of_date, composite_score + 1 AS composite_score,
+               signal, red_flags, unknown_flags, coverage, narrative, model_version
+        FROM (
+            SELECT * FROM signals WHERE as_of_date = ? ORDER BY isin LIMIT 3
+        ) AS three
+        """,
+        [LATER, AS_OF],
+    )
+    return two_dates_db
+
+
+class TestR4SignalsPerInstrument:
+    def test_each_instrument_appears_once_at_its_newest_date(self, client, partial_run_db):
+        rows = client.get("/v1/signals?latest=per_instrument").json()
+        newest = partial_run_db.query(
+            "SELECT isin, MAX(as_of_date) AS d FROM signals GROUP BY isin"
+        )
+        assert len(rows) == len(newest) == 30
+        assert {r["isin"]: r["as_of"] for r in rows} == {
+            row.isin: row.d.date().isoformat() for row in newest.itertuples()
+        }
+        assert sum(r["as_of"] == LATER.isoformat() for r in rows) == 3
+
+    def test_it_is_one_ranking_across_dates(self, client, partial_run_db):
+        scores = [
+            r["composite_score"] for r in client.get("/v1/signals?latest=per_instrument").json()
+        ]
+        present = [s for s in scores if s is not None]
+        assert present == sorted(present, reverse=True)
+        assert scores[: len(present)] == present, "an unscored row sorted above a scored one"
+
+    def test_the_default_list_is_unchanged(self, client, partial_run_db):
+        rows = client.get("/v1/signals").json()
+        assert {r["as_of"] for r in rows} == {LATER.isoformat()}
+        assert len(rows) == 3
+
+    def test_it_combines_with_signal_and_sector(self, client, partial_run_db):
+        everyone = client.get("/v1/signals?latest=per_instrument").json()
+        sector = everyone[0]["sector"]
+        rows = client.get(
+            f"/v1/signals?latest=per_instrument&sector={sector}&signal=hold"
+        ).json()
+        assert rows == [r for r in everyone if r["sector"] == sector and r["signal"] == "HOLD"]
+
+    def test_it_refuses_a_date_and_an_unknown_mode(self, client, partial_run_db):
+        both = client.get(f"/v1/signals?latest=per_instrument&as_of={AS_OF}")
+        assert both.status_code == 422 and "as_of" in both.json()["detail"]
+        assert client.get("/v1/signals?latest=everything").status_code == 422
+
+    def test_health_names_the_newest_complete_run(self, client, partial_run_db):
+        body = client.get("/v1/health").json()
+        assert body["latest_as_of"] == LATER.isoformat()
+        assert body["latest_complete_as_of"] == AS_OF.isoformat()
+
+    def test_the_model_counts_each_dates_coverage(self, client, partial_run_db):
+        # Listed after AS_OF: active on the later date only.
+        partial_run_db.conn.execute(
+            "INSERT INTO instruments (isin, nse_symbol, name, listing_date) "
+            "VALUES ('INE00NEW0001', 'NEWCO', 'New Listing Ltd', DATE '2023-02-01')"
+        )
+        counts = client.get("/v1/model").json()["scored_date_counts"]
+        assert counts == [
+            {"as_of": LATER.isoformat(), "scored": 3, "instruments": 31},
+            {"as_of": AS_OF.isoformat(), "scored": 30, "instruments": 30},
+            {"as_of": EARLIER.isoformat(), "scored": 30, "instruments": 30},
+        ]
+        assert [c["as_of"] for c in counts] == client.get("/v1/model").json()["scored_dates"]
+
+    def test_a_delisted_instrument_is_not_counted_after_it_left(self, partial_run_db):
+        from stockanalysis.serve import queries
+
+        partial_run_db.conn.execute(
+            "UPDATE instruments SET delisting_date = DATE '2023-02-01' "
+            "WHERE isin = (SELECT MIN(isin) FROM instruments)"
+        )
+        counts = {c.as_of: c.instruments for c in queries.scored_date_counts(partial_run_db)}
+        assert counts[LATER] == 29 and counts[AS_OF] == 30
+
+
+# ----------------------------------------------------------------------
+# R5 — the previous score on every signal row
+# ----------------------------------------------------------------------
+
+
+def _stored(db: Database, isin: str, as_of: dt.date) -> dict:
+    row = db.query(
+        "SELECT as_of_date, composite_score, signal, model_version FROM signals "
+        "WHERE isin = ? AND as_of_date = ?",
+        [isin, as_of],
+    ).iloc[0]
+    return {
+        "as_of": as_of.isoformat(),
+        "composite_score": float(row["composite_score"]),
+        "signal": row["signal"],
+        "model_version": row["model_version"],
+    }
+
+
+class TestR5PreviousScore:
+    def test_a_row_carries_the_one_before_it(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        latest = client.get(f"/v1/instruments/{isin}/latest").json()
+        assert latest["as_of"] == AS_OF.isoformat()
+        assert latest["previous"] == _stored(two_dates_db, isin, EARLIER)
+
+    def test_a_first_row_has_none(self, client, two_dates_db):
+        rows = client.get(f"/v1/signals?as_of={EARLIER}").json()
+        assert rows and all(r["previous"] is None for r in rows)
+
+    def test_the_previous_row_of_a_partial_run_is_the_full_one_before_it(
+        self, client, partial_run_db
+    ):
+        """16 Aug's previous is 14 Aug — not a date the list itself returns."""
+        rows = client.get("/v1/signals").json()
+        assert {r["as_of"] for r in rows} == {LATER.isoformat()}
+        for row in rows:
+            assert row["previous"] == _stored(partial_run_db, row["isin"], AS_OF)
+
+    def test_every_list_carries_it(self, client, partial_run_db):
+        per_instrument = client.get("/v1/signals?latest=per_instrument").json()
+        assert all(r["previous"] is not None for r in per_instrument)
+        later = {r["isin"] for r in per_instrument if r["as_of"] == LATER.isoformat()}
+        for row in per_instrument:
+            expected = AS_OF if row["isin"] in later else EARLIER
+            assert row["previous"]["as_of"] == expected.isoformat()
+
+        flagged = client.get(f"/v1/signals/red-flags?as_of={AS_OF}").json()
+        assert flagged and all(r["previous"]["as_of"] == EARLIER.isoformat() for r in flagged)
+
+    def test_history_reads_previous_from_the_table_not_the_page(self, client, partial_run_db):
+        isin = client.get("/v1/signals").json()[0]["isin"]
+        full = client.get(f"/v1/instruments/{isin}/history").json()
+        assert [r["as_of"] for r in full] == [d.isoformat() for d in (EARLIER, AS_OF, LATER)]
+        assert full[0]["previous"] is None
+        for before, row in zip(full, full[1:], strict=False):
+            assert row["previous"]["as_of"] == before["as_of"]
+            assert row["previous"]["composite_score"] == before["composite_score"]
+
+        one = client.get(f"/v1/instruments/{isin}/history?limit=1").json()
+        assert [r["as_of"] for r in one] == [LATER.isoformat()]
+        assert one[0]["previous"]["as_of"] == AS_OF.isoformat()
+
+    def test_a_model_change_is_visible_on_the_pair(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute(
+            "UPDATE signals SET model_version = 'phase2-composite-oldmodel' "
+            "WHERE isin = ? AND as_of_date = ?",
+            [isin, EARLIER],
+        )
+        latest = client.get(f"/v1/instruments/{isin}/latest").json()
+        assert latest["previous"]["model_version"] == "phase2-composite-oldmodel"
+        assert latest["model_version"] != "phase2-composite-oldmodel"
+
+
+# ----------------------------------------------------------------------
+# R6 — shareholding pattern
+# ----------------------------------------------------------------------
+
+
+class TestR6Shareholding:
+    QUARTERS = [dt.date(2022, 3, 31), dt.date(2022, 6, 30), dt.date(2022, 9, 30),
+                dt.date(2022, 12, 31)]
+
+    @pytest.fixture
+    def held_db(self, two_dates_db: Database) -> tuple[Database, str]:
+        from conftest import make_shareholding
+
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.upsert_df(
+            "shareholding",
+            make_shareholding(isin, self.QUARTERS, [51.0, 50.6, 50.2, 49.9]),
+            ["isin", "quarter_end"],
+        )
+        return two_dates_db, isin
+
+    def test_newest_first_with_the_falling_quarters_on_top(self, client, held_db):
+        _db, isin = held_db
+        rows = client.get(f"/v1/instruments/{isin}/shareholding").json()
+        assert [r["quarter_end"] for r in rows] == [
+            q.isoformat() for q in reversed(self.QUARTERS)
+        ]
+        assert [r["promoter_pct"] for r in rows[:3]] == [49.9, 50.2, 50.6]
+        newest = rows[0]
+        assert newest["public_pct"] == pytest.approx(50.1)
+        assert newest["disclosed_date"] == "2023-01-21"
+        assert newest["disclosed_date_source"] == "ASSUMED_LODR_DEADLINE"
+
+    def test_an_unknown_pledge_is_null_not_zero(self, client, held_db):
+        _db, isin = held_db
+        rows = client.get(f"/v1/instruments/{isin}/shareholding").json()
+        assert all(r["promoter_pledged_pct"] is None for r in rows)
+
+    def test_quarters_limits_the_list(self, client, held_db):
+        _db, isin = held_db
+        rows = client.get(f"/v1/instruments/{isin}/shareholding?quarters=2").json()
+        assert [r["quarter_end"] for r in rows] == ["2022-12-31", "2022-09-30"]
+        assert client.get(f"/v1/instruments/{isin}/shareholding?quarters=0").status_code == 422
+
+    def test_a_company_with_none_is_an_empty_list_and_an_unknown_one_404(self, client):
+        assert client.get("/v1/instruments/INE000000029/shareholding").json() == []
+        assert client.get("/v1/instruments/INE_MISSING/shareholding").status_code == 404
+
+
+# ----------------------------------------------------------------------
+# R7 — key metrics consistent with the value factors
+# ----------------------------------------------------------------------
+
+
+def _quarter(isin: str, end: dt.date, eps: float, **extra) -> dict:
+    return {
+        "isin": isin,
+        "period_end_date": end,
+        "filing_date": end + dt.timedelta(days=40),
+        "revenue": 250.0,
+        "pat": 40.0,
+        "eps": eps,
+        "is_consolidated": True,
+        **extra,
+    }
+
+
+def _upsert_quarters(db: Database, rows: list[dict]) -> None:
+    db.upsert_df("fundamentals_quarterly", pd.DataFrame(rows), ["isin", "period_end_date"])
+
+
+def _action(db: Database, isin: str, ex: dt.date, kind: str, ratio=None, amount=None):
+    db.upsert_df(
+        "corporate_actions",
+        pd.DataFrame([{
+            "isin": isin, "ex_date": ex, "action_type": kind, "ratio": ratio,
+            "amount": amount, "details": kind, "source": "NSE",
+        }]),
+        ["isin", "ex_date", "action_type"],
+    )
+
+
+class TestR7KeyMetrics:
+    def test_pe_and_pb_are_the_inverse_of_the_factors_on_the_same_close(
+        self, client, two_dates_db
+    ):
+        from stockanalysis.factors.panel import PanelCache
+        from stockanalysis.factors.value import BookToPrice, EarningsYield
+
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        as_of = dt.date.fromisoformat(body["as_of"])
+
+        cache = PanelCache()
+        ey = EarningsYield(cache=cache).compute(two_dates_db, [isin], as_of)[isin]
+        bp = BookToPrice(cache=cache).compute(two_dates_db, [isin], as_of)[isin]
+        panel = cache.get(two_dates_db, [isin], as_of)
+        assert body["pe_annual"] == pytest.approx(1 / ey)
+        assert body["pb"] == pytest.approx(1 / bp)
+        assert body["price"] == pytest.approx(panel.price[isin])
+        assert body["market_cap_cr"] == pytest.approx(panel.market_cap[isin])
+        assert body["share_source"] == panel.share_source[isin]
+
+    def test_the_newest_stated_count_wins_and_names_its_filing(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _upsert_quarters(two_dates_db, [
+            _quarter(isin, dt.date(2023, 6, 30), 4.0, paid_up_capital=120.0, face_value=10.0)
+        ])
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["share_source"] == "stated"
+        assert body["shares_outstanding_cr"] == pytest.approx(12.0)
+        assert body["shares_filing_date"] == "2023-08-09"
+        assert body["market_cap_cr"] == pytest.approx(body["price"] * 12.0)
+
+    def test_a_split_after_the_filing_restates_eps_and_shares(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _upsert_quarters(two_dates_db, [
+            _quarter(isin, dt.date(2023, 6, 30), 4.0, paid_up_capital=120.0, face_value=10.0)
+        ])
+        before = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        _action(two_dates_db, isin, dt.date(2023, 10, 2), "SPLIT", ratio=2.0)
+        after = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+
+        assert after["eps_annual"] == pytest.approx(before["eps_annual"] / 2)
+        assert after["shares_outstanding_cr"] == pytest.approx(24.0)
+        assert after["book_value_per_share"] == pytest.approx(before["book_value_per_share"] / 2)
+
+    def test_ttm_needs_four_consecutive_quarters(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        ends = [dt.date(2022, 12, 31), dt.date(2023, 3, 31), dt.date(2023, 6, 30),
+                dt.date(2023, 9, 30)]
+        _upsert_quarters(two_dates_db, [_quarter(isin, e, 2.5 + i) for i, e in enumerate(ends)])
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["eps_ttm"] == pytest.approx(2.5 + 3.5 + 4.5 + 5.5)
+        assert body["ttm_through"] == "2023-09-30"
+        assert body["pe_ttm"] == pytest.approx(body["price"] / body["eps_ttm"])
+
+        two_dates_db.conn.execute(
+            "DELETE FROM fundamentals_quarterly WHERE isin = ? AND period_end_date = ?",
+            [isin, dt.date(2023, 3, 31)],
+        )
+        gapped = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert gapped["eps_ttm"] is None and gapped["pe_ttm"] is None
+
+    def test_dividends_are_unknown_until_fetched_then_summed_over_the_year(
+        self, client, two_dates_db
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        assert client.get(f"/v1/instruments/{isin}/key-metrics").json()["dividends_ttm"] is None
+
+        _action(two_dates_db, isin, dt.date(2022, 6, 1), "DIVIDEND", amount=9.0)  # too old
+        _action(two_dates_db, isin, dt.date(2023, 3, 1), "DIVIDEND", amount=4.0)
+        _action(two_dates_db, isin, dt.date(2023, 8, 1), "DIVIDEND", amount=2.0)
+        # A 1:1 bonus after the March dividend halves it on today's basis.
+        _action(two_dates_db, isin, dt.date(2023, 5, 1), "BONUS", ratio=2.0)
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["dividends_ttm"] == pytest.approx(4.0 / 2 + 2.0)
+        assert body["dividend_yield"] == pytest.approx(body["dividends_ttm"] / body["price"])
+
+    def test_the_52_week_range_is_the_year_to_the_close(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        year = two_dates_db.query(
+            "SELECT MAX(high) AS hi, MIN(low) AS lo FROM prices_daily "
+            "WHERE isin = ? AND date > ? AND date <= ?",
+            [isin, dt.date.fromisoformat(body["as_of"]) - dt.timedelta(days=365), body["as_of"]],
+        ).iloc[0]
+        assert body["high_52w"] == pytest.approx(year["hi"])
+        assert body["low_52w"] == pytest.approx(year["lo"])
+
+    def test_a_company_without_prices_has_no_valuation(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("DELETE FROM prices_daily WHERE isin = ?", [isin])
+        body = client.get(f"/v1/instruments/{isin}/key-metrics").json()
+        assert body["as_of"] is None and body["price"] is None
+        assert body["market_cap_cr"] is None and body["pe_annual"] is None
+        assert body["eps_annual"] is not None, "the filings are still there"
+
+    def test_an_unknown_isin_is_404(self, client):
+        assert client.get("/v1/instruments/INE_MISSING/key-metrics").status_code == 404
+
+
+# ----------------------------------------------------------------------
+# R8 — corporate actions and adjusted EPS
+# ----------------------------------------------------------------------
+
+
+class TestR8CorporateActionsAndAdjustedEps:
+    def test_the_actions_are_listed_newest_first(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _action(two_dates_db, isin, dt.date(2023, 5, 1), "BONUS", ratio=2.0)
+        _action(two_dates_db, isin, dt.date(2023, 8, 1), "DIVIDEND", amount=2.5)
+        rows = client.get(f"/v1/instruments/{isin}/corporate-actions").json()
+        assert [(r["ex_date"], r["action_type"], r["ratio"], r["amount"]) for r in rows] == [
+            ("2023-08-01", "DIVIDEND", None, 2.5),
+            ("2023-05-01", "BONUS", 2.0, None),
+        ]
+        assert rows[0]["source"] == "NSE"
+
+    def test_none_stored_is_an_empty_list_and_an_unknown_isin_404(self, client):
+        assert client.get("/v1/instruments/INE000000029/corporate-actions").json() == []
+        assert client.get("/v1/instruments/INE_MISSING/corporate-actions").status_code == 404
+
+    def test_eps_across_a_bonus_is_made_comparable(self, client, two_dates_db):
+        """RELIANCE's quarterly EPS halves at Dec 2024 because of the 1:1 bonus:
+        Sep '24 24.48 was filed before the 28 Oct ex-date, Dec '24 13.70 after."""
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.upsert_df(
+            "fundamentals_quarterly",
+            pd.DataFrame([
+                {"isin": isin, "period_end_date": dt.date(2022, 9, 30),
+                 "filing_date": dt.date(2022, 10, 14), "eps": 24.48},
+                {"isin": isin, "period_end_date": dt.date(2022, 12, 31),
+                 "filing_date": dt.date(2023, 1, 16), "eps": 13.70},
+            ]),
+            ["isin", "period_end_date"],
+        )
+        _action(two_dates_db, isin, dt.date(2022, 10, 28), "BONUS", ratio=2.0)
+
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        by_end = {q["period_end"]: q for q in body["quarterly"]}
+        assert by_end["2022-09-30"]["eps"] == 24.48
+        assert by_end["2022-09-30"]["eps_adjusted"] == pytest.approx(12.24)
+        assert by_end["2022-12-31"]["eps_adjusted"] == pytest.approx(13.70)
+
+        # Every annual row in the fixture was filed before the bonus.
+        for year in body["annual"]:
+            assert year["eps_adjusted"] == pytest.approx(year["values"]["eps"] / 2)
+
+    def test_without_actions_adjusted_is_reported(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        assert body["annual"]
+        assert all(y["eps_adjusted"] == y["values"]["eps"] for y in body["annual"])
+
+
+# ----------------------------------------------------------------------
+# R9 — richer quarterly results
+# ----------------------------------------------------------------------
+
+
+class TestR9RicherQuarters:
+    RELIANCE_Q1 = {
+        "revenue": 311_850.0, "pat": 20_946.0, "eps": 15.48, "total_income": 318_400.0,
+        "other_income": 6_550.0, "total_expenses": 287_770.0, "depreciation": 15_100.0,
+        "interest_expense": 8_337.0, "profit_before_tax": 30_630.0, "tax_expense": 7_629.0,
+    }
+
+    def _store(self, db: Database, isin: str, url: str, **values) -> None:
+        db.upsert_df("fundamentals_quarterly", pd.DataFrame([{
+            "isin": isin, "period_end_date": dt.date(2022, 12, 31),
+            "filing_date": dt.date(2023, 1, 20), "is_consolidated": True,
+            "source": "XBRL", "xbrl_url": url, **values,
+        }]), ["isin", "period_end_date"])
+
+    def test_the_quarter_carries_its_pnl_and_a_derived_ebitda(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        self._store(
+            two_dates_db, isin,
+            "https://nsearchives.nseindia.com/corporate/xbrl/"
+            "INTEGRATED_FILING_INDAS_1695741_17072026_WEB.xml",
+            **self.RELIANCE_Q1,
+        )
+        (quarter,) = client.get(f"/v1/instruments/{isin}/financials").json()["quarterly"]
+        for key, value in self.RELIANCE_Q1.items():
+            assert quarter[key] == pytest.approx(value), key
+        assert quarter["basis"] == "CONSOLIDATED"
+        assert quarter["ebitda"] == pytest.approx(30_630 + 8_337 + 15_100)
+
+    def test_a_bank_has_no_ebitda(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        self._store(two_dates_db, isin, BANK_FILING, **self.RELIANCE_Q1)
+        (quarter,) = client.get(f"/v1/instruments/{isin}/financials").json()["quarterly"]
+        assert quarter["interest_expense"] == pytest.approx(8_337)
+        assert quarter["ebitda"] is None
+
+    def test_an_untagged_line_is_null_and_so_is_what_needs_it(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        self._store(two_dates_db, isin, None, revenue=250.0, pat=40.0, eps=4.0)
+        (quarter,) = client.get(f"/v1/instruments/{isin}/financials").json()["quarterly"]
+        assert quarter["total_income"] is None and quarter["profit_before_tax"] is None
+        assert quarter["ebitda"] is None
+
+
+# ----------------------------------------------------------------------
+# R10 — filing links
+# ----------------------------------------------------------------------
+
+
+class TestR10FilingLinks:
+    def test_each_row_links_the_document_it_was_read_from(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        annual_url = "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_1_2.xml"
+        two_dates_db.conn.execute(
+            "UPDATE fundamentals_annual SET source_url = ? WHERE isin = ? AND fiscal_year = 2022",
+            [annual_url, isin],
+        )
+        _upsert_quarters(two_dates_db, [
+            _quarter(isin, dt.date(2022, 12, 31), 4.0, xbrl_url=BANK_FILING),
+            _quarter(isin, dt.date(2022, 9, 30), 4.0, source="NSE_RESULTS_COMPARISON"),
+        ])
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        links = {y["fiscal_year"]: y["source_url"] for y in body["annual"]}
+        assert links[2022] == annual_url
+        assert links[2021] is None, "a row stored before links were recorded"
+        assert [q["source_url"] for q in body["quarterly"]] == [BANK_FILING, None]
+
+    def test_the_pdf_path_links_the_report_it_read(self, scored_db):
+        from stockanalysis.extract.pipeline import _filing_url
+
+        scored_db.upsert_df("filings", pd.DataFrame([{
+            "filing_id": "F1", "isin": "INE000000000", "doc_type": "ANNUAL_REPORT",
+            "broadcast_date": dt.date(2022, 8, 1),
+            "source_url": "https://nsearchives.nseindia.com/annual_reports/AR_1.pdf",
+        }]), ["filing_id"])
+        assert _filing_url(scored_db, "F1").endswith("AR_1.pdf")
+        assert _filing_url(scored_db, "F-missing") is None
+
+
+# ----------------------------------------------------------------------
+# R11 — per-family history
+# ----------------------------------------------------------------------
+
+
+class TestR11FamilyHistory:
+    def test_each_row_carries_the_breakdown_its_explanation_gives(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        history = client.get(f"/v1/instruments/{isin}/history").json()
+        assert [r["as_of"] for r in history] == [EARLIER.isoformat(), AS_OF.isoformat()]
+        for row in history:
+            explained = client.get(
+                f"/v1/instruments/{isin}/explanation?as_of={row['as_of']}"
+            ).json()["families"]
+            assert row["families"] == [
+                {"family": f["family"], "percentile": f["percentile"],
+                 "contribution": f["contribution"]}
+                for f in explained
+            ]
+            assert [f["family"] for f in row["families"]] == explain.FAMILY_ORDER
+
+    def test_a_day_without_stored_factors_has_no_breakdown(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("DELETE FROM factor_scores WHERE as_of_date = ?", [EARLIER])
+        history = client.get(f"/v1/instruments/{isin}/history").json()
+        assert history[0]["families"] == []
+        assert history[1]["families"]
+
+
+# ----------------------------------------------------------------------
+# R12 — news relevance and sentiment status
+# ----------------------------------------------------------------------
+
+
+class TestR12NewsRelevanceAndStatus:
+    # (news_id, matched_in, method, confidence, label) — one of each case.
+    CASES = [
+        ("own", "HEADLINE", "NAME", 0.95, "positive"),
+        ("body", "BODY", "NAME", 0.665, "negative"),          # scored before demotion
+        ("roundup", "HEADLINE", "ROUNDUP", 0.5, None),
+        ("waiting", "HEADLINE", "SYMBOL", 0.9, None),
+        ("legacy", None, None, None, None),
+    ]
+
+    @pytest.fixture
+    def news_db(self, two_dates_db: Database) -> tuple[Database, str]:
+        isin = _isin_scored_on_both(two_dates_db, without_news=True)
+        news, sentiment = [], []
+        for i, (news_id, matched_in, method, confidence, label) in enumerate(self.CASES):
+            news.append({
+                "news_id": news_id, "isin": isin,
+                "published_at": dt.datetime.combine(AS_OF - dt.timedelta(days=i + 1),
+                                                    dt.time(9, 0)),
+                "headline": f"{news_id} headline", "source": "RSS",
+                "matched_in": matched_in, "resolution_method": method,
+                "resolution_confidence": confidence,
+            })
+            if label is not None:
+                sentiment.append({"news_id": news_id, "model": "test-model",
+                                  "label": label, "score": 0.9 if label == "positive" else -0.96})
+        two_dates_db.upsert_df("news", pd.DataFrame(news), ["news_id"])
+        two_dates_db.upsert_df("news_sentiment", pd.DataFrame(sentiment), ["news_id", "model"])
+        return two_dates_db, isin
+
+    def test_each_article_says_how_it_was_found_and_whether_it_counts(self, client, news_db):
+        _db, isin = news_db
+        rows = client.get(f"/v1/instruments/{isin}/news?limit=100").json()
+        got = {
+            r["headline"].split()[0]: (
+                r["relevance"], r["sentiment_status"], r["counts_toward_sentiment"]
+            )
+            for r in rows
+        }
+        assert got == {
+            "own": ("primary", "scored", True),
+            "body": ("mention", "scored", False),
+            "roundup": ("mention", "not_scored", False),
+            "waiting": ("primary", "pending", False),
+            "legacy": (None, "not_scored", False),
+        }
+
+    def test_relevant_only_keeps_the_articles_about_the_company(self, client, news_db):
+        _db, isin = news_db
+        rows = client.get(f"/v1/instruments/{isin}/news?relevant_only=true").json()
+        assert [r["headline"] for r in rows] == ["own headline", "waiting headline"]
+
+    def test_the_explanation_counts_only_what_the_factor_reads(self, client, news_db):
+        """The −0.96 'stocks to buy' roundup kept its label after demotion, and
+        the news mix beside RELIANCE's score still counted it."""
+        _db, isin = news_db
+        news = client.get(f"/v1/instruments/{isin}/explanation").json()["news"]
+        assert news == {"positive": 1, "negative": 0, "neutral": 0, "total": 1}
+
+
+# ----------------------------------------------------------------------
+# R13 — instrument profile fields
+# ----------------------------------------------------------------------
+
+
+class TestR13InstrumentProfile:
+    def test_industry_and_the_bse_code_are_returned(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute(
+            "UPDATE instruments SET bse_code = '500325', industry = 'Refineries' WHERE isin = ?",
+            [isin],
+        )
+        body = client.get(f"/v1/instruments/{isin}").json()
+        assert body["industry"] == "Refineries"
+        assert body["bse_code"] == "500325"
+        listed = {r["isin"]: r for r in client.get("/v1/instruments").json()}
+        assert listed[isin]["industry"] == "Refineries"
+        symbol = body["nse_symbol"]
+        assert client.get(f"/v1/instruments/by-symbol/{symbol}").json()["industry"] == "Refineries"
+
+
+# ----------------------------------------------------------------------
+# R14 — freshness in /v1/health
+# ----------------------------------------------------------------------
+
+
+class TestR14Freshness:
+    def test_health_says_how_far_each_input_reaches(self, client, two_dates_db):
+        newest = two_dates_db.query(
+            "SELECT (SELECT MAX(date) FROM prices_daily) AS p, "
+            "(SELECT MAX(filing_date) FROM fundamentals_annual) AS f, "
+            "(SELECT MAX(published_at) FROM news) AS n"
+        ).iloc[0]
+        body = client.get("/v1/health").json()
+        assert body["latest_price_date"] == newest["p"].date().isoformat()
+        assert body["latest_filing_date"] == newest["f"].date().isoformat()
+        assert body["latest_news_date"] == newest["n"].date().isoformat()
+
+    def test_the_newer_of_the_two_results_tables_is_the_filing_date(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _upsert_quarters(two_dates_db, [_quarter(isin, dt.date(2023, 9, 30), 4.0)])
+        assert client.get("/v1/health").json()["latest_filing_date"] == "2023-11-09"
+
+    def test_an_unattributed_article_does_not_count_as_news(self, client, two_dates_db):
+        two_dates_db.upsert_df("news", pd.DataFrame([{
+            "news_id": "orphan", "isin": None,
+            "published_at": dt.datetime(2030, 1, 1, 9, 0), "headline": "Nobody's",
+        }]), ["news_id"])
+        assert client.get("/v1/health").json()["latest_news_date"] < "2030-01-01"
+
+    def test_an_empty_database_has_no_dates(self, db):
+        from stockanalysis.serve import queries
+
+        assert vars(queries.freshness(db)) == {
+            "latest_price_date": None, "latest_filing_date": None, "latest_news_date": None,
+        }
+
+
+# ----------------------------------------------------------------------
+# R17 — units in the financials schema
+# ----------------------------------------------------------------------
+
+
+class TestR17FinancialUnits:
+    def test_the_units_are_stated_in_the_response_and_the_schema(self, client, two_dates_db):
+        from stockanalysis.serve.api import app
+
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        assert (body["unit"], body["per_share_unit"]) == ("INR crore", "INR")
+        assert [i["key"] for i in body["line_items"] if i["per_share"]] == ["eps"]
+
+        schemas = app.openapi()["components"]["schemas"]
+        assert "crore" in schemas["LineItemOut"]["properties"]["per_share"]["description"]
+        assert "crore" in schemas["FinancialsOut"]["properties"]["unit"]["description"]
+
+
+# ----------------------------------------------------------------------
+# R15 — the score on search results
+# ----------------------------------------------------------------------
+
+
+class TestR15SearchScores:
+    def test_each_match_carries_its_newest_score(self, client, partial_run_db):
+        rows = client.get("/v1/instruments/search?q=test&limit=50").json()
+        assert len(rows) == 30
+        newest = {
+            r["isin"]: r for r in client.get("/v1/signals?latest=per_instrument").json()
+        }
+        for row in rows:
+            assert row["as_of"] == newest[row["isin"]]["as_of"]
+            assert row["composite_score"] == newest[row["isin"]]["composite_score"]
+            assert row["signal"] == newest[row["isin"]]["signal"]
+
+    def test_an_unscored_match_has_none(self, client, two_dates_db):
+        two_dates_db.conn.execute(
+            "INSERT INTO instruments (isin, nse_symbol, name) "
+            "VALUES ('INE00NEW0001', 'NEWCO', 'New Listing Ltd')"
+        )
+        (row,) = client.get("/v1/instruments/search?q=newco").json()
+        assert (row["as_of"], row["composite_score"], row["signal"]) == (None, None, None)
+        assert row["nse_symbol"] == "NEWCO"
+
+
+# ----------------------------------------------------------------------
+# R16 — sector context per factor
+# ----------------------------------------------------------------------
+
+
+class TestR16SectorContext:
+    def _peers(self, db: Database, isin: str, factor: str) -> pd.Series:
+        return db.query(
+            "SELECT f.raw_value FROM factor_scores f JOIN instruments i ON i.isin = f.isin "
+            "WHERE f.as_of_date = ? AND f.factor_name = ? AND f.raw_value IS NOT NULL "
+            "AND i.sector = (SELECT sector FROM instruments WHERE isin = ?)",
+            [AS_OF, factor, isin],
+        )["raw_value"]
+
+    def test_each_factor_says_where_it_sits_in_its_sector(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        factors = client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+        assert factors
+        for f in factors:
+            peers = self._peers(two_dates_db, isin, f["factor_name"])
+            assert f["sector_n"] == len(peers)
+            assert f["sector_median"] == pytest.approx(peers.median())
+            below = (peers < f["raw_value"]).sum() + (peers == f["raw_value"]).sum() / 2
+            assert f["sector_percentile"] == pytest.approx(100 * below / len(peers))
+            assert f["zscore_basis"] == ("sector" if len(peers) >= 5 else "universe")
+        # Six sectors of five: the fundamental factors are taken within the sector.
+        assert {f["zscore_basis"] for f in factors if f["factor_name"] == "roe"} == {"sector"}
+
+    def test_drivers_carry_the_same_context(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        factors = {
+            f["factor_name"]: f
+            for f in client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+        }
+        explanation = client.get(f"/v1/instruments/{isin}/explanation").json()
+        for d in explanation["strengths"] + explanation["weaknesses"]:
+            for key in ("sector_median", "sector_n", "sector_percentile", "zscore_basis"):
+                assert d[key] == factors[d["name"]][key]
+
+    def test_a_sector_too_small_for_its_own_z_says_so(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        sector = two_dates_db.query(
+            "SELECT sector FROM instruments WHERE isin = ?", [isin]
+        )["sector"].iloc[0]
+        two_dates_db.conn.execute(
+            "DELETE FROM factor_scores WHERE as_of_date = ? AND factor_name = 'roe' "
+            "AND isin IN (SELECT isin FROM instruments WHERE sector = ? AND isin <> ?) "
+            "AND isin IN (SELECT isin FROM instruments WHERE sector = ? ORDER BY isin LIMIT 3)",
+            [AS_OF, sector, isin, sector],
+        )
+        roe = next(
+            f for f in client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+            if f["factor_name"] == "roe"
+        )
+        assert roe["sector_n"] < 5 and roe["zscore_basis"] == "universe"
+
+    def test_a_company_without_a_sector_is_scored_against_the_universe(
+        self, client, two_dates_db
+    ):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute("UPDATE instruments SET sector = NULL WHERE isin = ?", [isin])
+        factors = client.get(f"/v1/instruments/{isin}/latest").json()["factors"]
+        assert all(
+            (f["zscore_basis"], f["sector_n"], f["sector_median"]) == ("universe", None, None)
+            for f in factors
+        )
+
+
+# ----------------------------------------------------------------------
+# The two numbers the site's review found misread (B1, B2)
+# ----------------------------------------------------------------------
+
+
+class TestCoverageAndContributionAreDescribed:
+    def test_the_schema_says_what_coverage_and_contribution_are(self):
+        from stockanalysis.serve.api import app
+
+        schemas = app.openapi()["components"]["schemas"]
+        for model in ("SignalOut", "ExplanationOut"):
+            description = schemas[model]["properties"]["coverage"]["description"]
+            assert "weight" in description and "not a share of factors" in description
+        contribution = schemas["FamilyOut"]["properties"]["contribution"]["description"]
+        assert "sum of the weights of the families measured" in contribution
+
+    def test_the_contributions_do_sum_to_the_composite_z(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        families = client.get(f"/v1/instruments/{isin}/explanation").json()["families"]
+        measured = [f for f in families if f["z"] is not None]
+        total = sum(f["weight"] for f in measured)
+        for f in measured:
+            assert f["contribution"] == pytest.approx(f["z"] * f["weight"] / total)

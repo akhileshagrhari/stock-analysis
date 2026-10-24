@@ -84,6 +84,41 @@ FACTOR_LABELS: dict[str, tuple[str, str]] = {
     "news_sentiment_30d": ("News sentiment (30d)", "more positive news"),
 }
 
+# How each stored `raw_value` is to be read. Taken from the factor definitions
+# in `factors/`, not from the names: `relative_strength_6m` is a return minus the
+# universe's median return, so a difference in percentage points, and
+# `peg_inverse` is earnings yield times profit growth — a product of two
+# fractions with no unit of its own.
+PERCENT = "percent"                # a fraction, shown as %: 0.0785 is 7.85%
+PERCENTAGE_POINTS = "pp"           # a difference of two fractions: 0.012 is +1.2 pp
+MULTIPLE = "multiple"              # a ratio, shown as ×: 0.68 is 0.68×
+RATIO_VS_TREND = "ratio_vs_trend"  # price / its 200-day average: 0.89 is 11% below
+SCORE = "score"                    # signed, −1 (bearish) to +1 (bullish)
+RATIO = "ratio"                    # a plain number with no unit
+FACTOR_UNITS: dict[str, str] = {
+    "earnings_yield": PERCENT,
+    "book_to_price": MULTIPLE,
+    "ebitda_to_ev": PERCENT,
+    "fcf_yield": PERCENT,
+    "peg_inverse": RATIO,
+    "roe": PERCENT,
+    "roce": PERCENT,
+    "debt_to_equity": MULTIPLE,
+    "interest_coverage": MULTIPLE,
+    "cfo_to_pat": MULTIPLE,
+    "accruals": PERCENT,
+    "revenue_cagr_3y": PERCENT,
+    "pat_cagr_3y": PERCENT,
+    "quarterly_revenue_yoy": PERCENT,
+    "quarterly_pat_yoy": PERCENT,
+    "margin_trend": PERCENTAGE_POINTS,
+    "momentum_12_1": PERCENT,
+    "price_to_200dma": RATIO_VS_TREND,
+    "relative_strength_6m": PERCENTAGE_POINTS,
+    "news_sentiment_30d": SCORE,
+}
+UNITS = (PERCENT, PERCENTAGE_POINTS, MULTIPLE, RATIO_VS_TREND, SCORE, RATIO)
+
 FAMILY_MEANING = {
     "value": "how cheap it is against its sector",
     "quality": "balance-sheet strength and cash conversion",
@@ -109,6 +144,11 @@ def factor_label(name: str) -> str:
 
 def factor_meaning(name: str) -> str:
     return FACTOR_LABELS.get(name, ("", ""))[1]
+
+
+def factor_unit(name: str) -> str | None:
+    """None for a name the current model does not define (an old stored row)."""
+    return FACTOR_UNITS.get(name)
 
 
 @dataclass(frozen=True)
@@ -157,6 +197,24 @@ class FactorDriver:
     def meaning(self) -> str:
         return factor_meaning(self.name)
 
+    @property
+    def unit(self) -> str | None:
+        return factor_unit(self.name)
+
+
+@dataclass(frozen=True)
+class SectorContext:
+    """Where one company's raw value sits among its sector's that day."""
+
+    median: float | None
+    n: int | None           # sector companies with a value, this one included
+    percentile: float | None  # 0-100, raw value ascending
+    zscore_basis: str       # SECTOR, or UNIVERSE when the sector was too small
+
+
+SECTOR = "sector"
+UNIVERSE = "universe"
+
 
 @dataclass(frozen=True)
 class Explanation:
@@ -173,6 +231,7 @@ class Explanation:
     stale: bool = False
     stored_version: str | None = None
     current_version: str | None = None
+    sector_context: dict[str, SectorContext] = field(default_factory=dict)
 
 
 # ----------------------------------------------------------------------
@@ -252,6 +311,86 @@ def _family_rows(
     order = {name: i for i, name in enumerate(FAMILY_ORDER)}
     rows.sort(key=lambda r: order.get(r.family, len(order)))
     return rows
+
+
+def sector_context(
+    db: Database, isin: str, as_of: dt.date, config: ScoringConfig | None = None
+) -> dict[str, SectorContext]:
+    """Per factor, the company's sector peers on `as_of`: median, count, rank.
+
+    The group a stored z-score was taken against, which is what makes a "+15 SD
+    vs sector" readable: a robust z over six companies can be very large. The
+    model falls back to the whole universe for a sector with fewer than
+    `min_sector_size` values, and `zscore_basis` says when it did — the sector
+    figures are then context, not the z-score's denominator.
+    """
+    min_size = (config or ScoringConfig()).min_sector_size
+    rows = db.query(
+        "SELECT f.isin, f.factor_name, f.raw_value, i.sector FROM factor_scores f "
+        "JOIN instruments i ON i.isin = f.isin "
+        "WHERE f.as_of_date = ? AND f.raw_value IS NOT NULL",
+        [as_of],
+    )
+    if rows.empty or isin not in set(rows["isin"]):
+        return {}
+    rows["raw_value"] = pd.to_numeric(rows["raw_value"], errors="coerce")
+    sectors = rows.drop_duplicates("isin").set_index("isin")["sector"]
+    sector = queries._opt_str(sectors.get(isin))
+
+    out: dict[str, SectorContext] = {}
+    own = rows[rows["isin"] == isin].set_index("factor_name")["raw_value"]
+    for name, value in own.items():
+        if pd.isna(value):
+            continue
+        if sector is None:
+            out[str(name)] = SectorContext(None, None, None, UNIVERSE)
+            continue
+        peers = rows[(rows["factor_name"] == name) & (rows["sector"] == sector)]
+        values = peers["raw_value"].dropna()
+        n = len(values)
+        below = float((values < value).sum())
+        ties = float((values == value).sum())
+        out[str(name)] = SectorContext(
+            median=queries._opt_float(values.median()),
+            n=n,
+            percentile=100.0 * (below + ties / 2) / n,
+            zscore_basis=SECTOR if n >= min_size else UNIVERSE,
+        )
+    return out
+
+
+def family_history(
+    db: Database,
+    isin: str,
+    dates: list[dt.date],
+    config: ScoringConfig | None = None,
+) -> dict[dt.date, list[FamilyContribution]]:
+    """Each date's family breakdown for one company, as `explain` would give it.
+
+    One read for every date: the stored z-scores of the whole universe on those
+    days, since a family percentile is a rank within the day's cross-section.
+    Dates with no stored factors are absent from the result.
+    """
+    if not dates:
+        return {}
+    model = CompositeModel(config=config or ScoringConfig())
+    names = [f.name for f in model.factors]
+    marks = ", ".join("?" for _ in dates)
+    rows = db.query(
+        "SELECT as_of_date, isin, factor_name, sector_zscore FROM factor_scores "
+        f"WHERE as_of_date IN ({marks})",
+        list(dates),
+    )
+    out: dict[dt.date, list[FamilyContribution]] = {}
+    for day, block in rows.groupby("as_of_date"):
+        date = queries._opt_date(day)
+        if date is None:
+            continue
+        panel = block.pivot(
+            index="isin", columns="factor_name", values="sector_zscore"
+        ).reindex(columns=names)
+        out[date] = _family_rows(panel, isin, model)
+    return out
 
 
 def _drivers(
@@ -441,12 +580,20 @@ def explain(
     as_of: dt.date | None = None,
     config: ScoringConfig | None = None,
 ) -> Explanation | None:
-    """Full reasoning behind one stored signal. None if there is no signal."""
-    signal = queries.latest_signal(db, isin)
+    """Full reasoning behind one stored signal. None if there is no signal.
+
+    The latest signal when `as_of` is None, else the one stored for exactly that
+    date — never the nearest. Everything below reads the same date the signal
+    was stored for: an explanation pairing today's score with another day's
+    factors would describe a number nobody was shown.
+    """
+    signal = (
+        queries.latest_signal(db, isin) if as_of is None
+        else queries.signal_on(db, isin, as_of)
+    )
     if signal is None:
         return None
-    if as_of is None:
-        as_of = signal.as_of
+    as_of = signal.as_of
 
     config = config or ScoringConfig()
     model = CompositeModel(config=config)
@@ -473,4 +620,227 @@ def explain(
         ),
         stored_version=signal.model_version,
         current_version=current_version,
+        sector_context=sector_context(db, isin, as_of, config),
     )
+
+
+# ----------------------------------------------------------------------
+# Why a company is, or is not, scored
+# ----------------------------------------------------------------------
+
+SCORED = "scored"
+NOT_IN_LATEST_RUN = "not_in_latest_run"
+BELOW_COVERAGE_FLOOR = "below_coverage_floor"
+MISSING_FUNDAMENTALS = "missing_fundamentals"
+SECTOR_NOT_SUPPORTED = "sector_not_supported"
+NEVER_SCORED = "never_scored"
+SCORE_REASONS = (
+    SCORED,
+    NOT_IN_LATEST_RUN,
+    BELOW_COVERAGE_FLOOR,
+    MISSING_FUNDAMENTALS,
+    SECTOR_NOT_SUPPORTED,
+    NEVER_SCORED,
+)
+
+
+
+@dataclass(frozen=True)
+class ScoreStatus:
+    """What the stored runs say about one company's score, read back.
+
+    `measured_as_of` is the run the reason describes: the newest date a run
+    stored anything for the company. It can be later than `latest_as_of` — a
+    run that measured the company and could not score it stores factor rows but
+    no signal, so the older signal is what `/latest` still returns.
+    """
+
+    isin: str
+    scored: bool
+    reason: str
+    latest_as_of: dt.date | None
+    measured_as_of: dt.date | None
+    coverage: float | None
+    coverage_floor: float
+    factors_measured: int | None
+    factors_total: int
+    detail: str | None
+
+
+def _day(date: dt.date) -> str:
+    return f"{date.day} {date:%b %Y}"
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def score_status(
+    db: Database, isin: str, config: ScoringConfig | None = None
+) -> ScoreStatus:
+    """Whether a company has a score, and when it does not, the reason.
+
+    Read from what runs stored, never re-scored: a run writes a factor row for
+    every company it could measure at all, and a signal only for the ones that
+    cleared the coverage floor. Replaying the model's family aggregation over a
+    company's stored z-scores gives back the coverage that run saw — the number
+    it compared with the floor.
+    """
+    config = config or ScoringConfig()
+    model = CompositeModel(config=config)
+    names = [f.name for f in model.factors]
+    floor = config.min_coverage
+
+    dates = db.query(
+        "SELECT (SELECT MAX(as_of_date) FROM signals WHERE isin = ?) AS last_signal, "
+        "(SELECT MAX(as_of_date) FROM factor_scores WHERE isin = ?) AS last_measured, "
+        "(SELECT MAX(as_of_date) FROM signals) AS last_scored_run, "
+        "(SELECT MAX(as_of_date) FROM factor_scores) AS last_measured_run",
+        [isin, isin],
+    ).iloc[0]
+    last_signal = queries._opt_date(dates["last_signal"])
+    last_measured = queries._opt_date(dates["last_measured"])
+    runs = [
+        d for d in (
+            queries._opt_date(dates["last_scored_run"]),
+            queries._opt_date(dates["last_measured_run"]),
+        ) if d is not None
+    ]
+    measured_on = max((d for d in (last_signal, last_measured) if d), default=None)
+
+    def status(
+        scored: bool,
+        reason: str,
+        detail: str,
+        coverage: float | None = None,
+        factors_measured: int | None = None,
+    ) -> ScoreStatus:
+        return ScoreStatus(
+            isin=isin,
+            scored=scored,
+            reason=reason,
+            latest_as_of=last_signal,
+            measured_as_of=measured_on,
+            coverage=coverage,
+            coverage_floor=floor,
+            factors_measured=factors_measured,
+            factors_total=len(names),
+            detail=detail,
+        )
+
+    if measured_on is None:
+        return status(False, NEVER_SCORED, _never_measured(db, isin))
+
+    rows = db.query(
+        "SELECT factor_name, sector_zscore FROM factor_scores "
+        "WHERE isin = ? AND as_of_date = ?",
+        [isin, measured_on],
+    )
+    n_measured = coverage = None
+    unmeasured: list[str] = []
+    if not rows.empty:
+        panel = (
+            rows.set_index("factor_name")["sector_zscore"]
+            .astype(float).reindex(names).to_frame(isin).T
+        )
+        _family_z, replayed = model._aggregate_families(panel)
+        coverage = queries._opt_float(replayed.iloc[0])
+        n_measured = int(panel.iloc[0].notna().sum())
+        unmeasured = [
+            fam for fam in FAMILY_ORDER
+            if not panel.iloc[0][[f.name for f in model.factors if f.family == fam]]
+            .notna().any()
+        ]
+    counted = (
+        f" ({n_measured} of {len(names)} factors)" if n_measured is not None else ""
+    )
+
+    if last_signal is not None and last_signal >= measured_on:
+        signal = queries.signal_on(db, isin, last_signal)
+        if signal is not None and signal.coverage is not None:
+            coverage = signal.coverage
+        share = f"{coverage:.0%} of the model's weight" if coverage is not None else None
+        latest_run = max(runs, default=last_signal)
+        if last_signal >= latest_run:
+            detail = f"Scored on {_day(last_signal)}" + (
+                f" with {share} measured{counted}." if share else "."
+            )
+            return status(
+                True, SCORED, detail, coverage=coverage, factors_measured=n_measured
+            )
+        detail = (
+            f"Last scored on {_day(last_signal)}; the latest run, on "
+            f"{_day(latest_run)}, did not measure this company."
+        )
+        return status(
+            True, NOT_IN_LATEST_RUN, detail,
+            coverage=coverage, factors_measured=n_measured,
+        )
+
+    # Measured on `measured_on` and not scored.
+    weight = f"{coverage or 0.0:.0%} of the model's weight"
+    shortfall = (
+        f"below the {floor:.0%} floor"
+        if coverage is None or coverage < floor
+        # Only a run made under a stricter floor than today's leaves this.
+        else "yet that run stored no signal for it"
+    )
+    annual = db.query(
+        "SELECT COUNT(*) AS n FROM fundamentals_annual WHERE isin = ? AND filing_date <= ?",
+        [isin, measured_on],
+    ).iloc[0]["n"]
+    if int(annual) == 0:
+        latest_filing = db.query(
+            "SELECT xbrl_url FROM fundamentals_quarterly "
+            "WHERE isin = ? AND xbrl_url IS NOT NULL "
+            "ORDER BY period_end_date DESC LIMIT 1",
+            [isin],
+        )
+        kind = queries.unsupported_kind(
+            None if latest_filing.empty else latest_filing.iloc[0]["xbrl_url"]
+        )
+        if kind is not None:
+            detail = (
+                f"The model can't read annual statements from {kind}' results "
+                f"filings, so only {weight}{counted} could be measured on "
+                f"{_day(measured_on)}, {shortfall}."
+            )
+            return status(
+                False, SECTOR_NOT_SUPPORTED, detail,
+                coverage=coverage, factors_measured=n_measured,
+            )
+        detail = (
+            f"No annual results had been stored for this company by "
+            f"{_day(measured_on)}, so only {weight}{counted} could be measured, "
+            f"{shortfall}."
+        )
+        return status(
+            False, MISSING_FUNDAMENTALS, detail,
+            coverage=coverage, factors_measured=n_measured,
+        )
+
+    gaps = f"; nothing was measured for {_and(unmeasured)}" if unmeasured else ""
+    detail = (
+        f"Only {weight}{counted} could be measured on {_day(measured_on)}, "
+        f"{shortfall}{gaps}."
+    )
+    return status(
+        False, BELOW_COVERAGE_FLOOR, detail,
+        coverage=coverage, factors_measured=n_measured,
+    )
+
+
+def _never_measured(db: Database, isin: str) -> str:
+    held = db.query(
+        "SELECT (SELECT COUNT(*) FROM prices_daily WHERE isin = ?) AS prices, "
+        "(SELECT COUNT(*) FROM fundamentals_annual WHERE isin = ?) "
+        "+ (SELECT COUNT(*) FROM fundamentals_quarterly WHERE isin = ?) AS results",
+        [isin, isin, isin],
+    ).iloc[0]
+    missing = [name for name in ("prices", "results") if int(held[name]) == 0]
+    if missing:
+        return (
+            f"No scoring run has measured this company; no {' or '.join(missing)} "
+            f"are stored for it."
+        )
+    return "No scoring run has measured this company yet."

@@ -99,12 +99,14 @@ class TestSiteTables:
         A route that starts reading a new table must fail here, in the default
         suite, rather than as a 503 on the Postgres backend in production.
         """
+        import stockanalysis.factors.share_basis as share_basis_mod
         import stockanalysis.serve.api as api_mod
         import stockanalysis.serve.explain as explain_mod
         import stockanalysis.serve.queries as queries_mod
 
         referenced: set[str] = set()
-        for module in (queries_mod, explain_mod, api_mod):
+        # share_basis too: key_metrics reads through it.
+        for module in (queries_mod, explain_mod, api_mod, share_basis_mod):
             source = Path(module.__file__).read_text()
             # Upper-case keywords only: SQL here is written that way and prose
             # is not, so "from the" in a docstring is not mistaken for a table.
@@ -301,6 +303,20 @@ def _edge_cases(db: Database) -> None:
             FIRST, [dt.date(2022, 6, 30), dt.date(2022, 9, 30)], [50.5, 50.1]
         ),
         ["isin", "quarter_end"],
+    )
+    # A split and a dividend, so key-metrics restates on both engines: dates
+    # come back as datetime.date from psycopg and as Timestamps from DuckDB.
+    db.upsert_df(
+        "corporate_actions",
+        pd.DataFrame([
+            {"isin": FIRST, "ex_date": dt.date(2023, 3, 1), "action_type": "SPLIT",
+             "ratio": 2.0, "amount": None, "details": "Face value split 10 to 5",
+             "source": "NSE"},
+            {"isin": FIRST, "ex_date": dt.date(2023, 2, 1), "action_type": "DIVIDEND",
+             "ratio": None, "amount": 3.5, "details": "Interim dividend Rs 3.50",
+             "source": "NSE"},
+        ]),
+        ["isin", "ex_date", "action_type"],
     )
     # NaN beside NULL again, and a NULL in the one integer column a route
     # returns: psycopg hands back None in an object column, DuckDB a float NaN.
@@ -734,6 +750,7 @@ PARITY_URLS = [
     f"/instruments/{FIRST}/news",
     f"/instruments/{MM}/news?limit=100",
     f"/instruments/{NOSIGNAL}/news",
+    f"/v1/instruments/{MM}/news?relevant_only=true",
     "/signals",
     "/signals?limit=1000",
     "/signals?signal=buy",
@@ -749,16 +766,44 @@ PARITY_URLS = [
     f"/signals/red-flags?as_of={AS_OF}&limit=1",
     # The public site's routes, at the address it calls them by.
     "/v1/health",
+    "/v1/model",
     "/v1/signals",
+    "/v1/signals?latest=per_instrument",
+    "/v1/signals?latest=per_instrument&signal=SELL&sector=IT",
+    "/v1/signals?latest=per_instrument&limit=2",
+    f"/v1/signals?latest=per_instrument&as_of={AS_OF}",
+    "/v1/signals?latest=sometimes",
     f"/v1/instruments/{FIRST}/financials",
     f"/v1/instruments/{FIRST}/financials?quarters=1",
     f"/v1/instruments/{NOSIGNAL}/financials",
     "/v1/instruments/INE_MISSING/financials",
     f"/v1/instruments/{FIRST}/explanation",
+    f"/v1/instruments/{FIRST}/explanation?as_of={AS_OF}",
     f"/v1/instruments/{MM}/explanation",
+    f"/v1/instruments/{MM}/explanation?as_of={EARLIER}",
+    f"/v1/instruments/{MM}/explanation?as_of=1999-01-01",
+    f"/v1/instruments/{MM}/explanation?as_of=not-a-date",
     f"/v1/instruments/{BAJAJ}/explanation",
     f"/v1/instruments/{NOSIGNAL}/explanation",
     "/v1/instruments/INE_MISSING/explanation",
+    f"/v1/instruments/{FIRST}/score-status",
+    f"/v1/instruments/{MM}/score-status",
+    f"/v1/instruments/{BAJAJ}/score-status",
+    f"/v1/instruments/{NOSIGNAL}/score-status",
+    "/v1/instruments/INE_MISSING/score-status",
+    f"/v1/instruments/{FIRST}/corporate-actions",
+    f"/v1/instruments/{NOSIGNAL}/corporate-actions",
+    "/v1/instruments/INE_MISSING/corporate-actions",
+    f"/v1/instruments/{FIRST}/key-metrics",
+    f"/v1/instruments/{MM}/key-metrics",
+    f"/v1/instruments/{BAJAJ}/key-metrics",
+    f"/v1/instruments/{NOSIGNAL}/key-metrics",
+    "/v1/instruments/INE_MISSING/key-metrics",
+    f"/v1/instruments/{FIRST}/shareholding",
+    f"/v1/instruments/{FIRST}/shareholding?quarters=1",
+    f"/v1/instruments/{FIRST}/shareholding?quarters=0",
+    f"/v1/instruments/{NOSIGNAL}/shareholding",
+    "/v1/instruments/INE_MISSING/shareholding",
     f"/v1/instruments/{FIRST}/prices",
     f"/v1/instruments/{FIRST}/prices?from=2023-06-01&to=2023-06-30",
     f"/v1/instruments/{FIRST}/prices?from=2023-07-01&to=2023-06-01",
