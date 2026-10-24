@@ -53,7 +53,13 @@ export function WhyCard({ state, explanation, model }: { state: ScoreState; expl
             </span>
           )}
         </div>
-        {explanation.narrative && <p className={s.narrative}>{explanation.narrative}</p>}
+        {/* The narrative is written by an LLM (serve/narrative.py); say so. */}
+        {explanation.narrative && (
+          <div className={s.narrative}>
+            <p>{explanation.narrative}</p>
+            <p className={s.aiNote}>Written by an AI model from the figures above; it cannot change the score.</p>
+          </div>
+        )}
       </div>
       <ScaleBar
         score={state.score}

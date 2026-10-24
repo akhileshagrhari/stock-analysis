@@ -139,7 +139,9 @@ describe("stock page top: other states", () => {
 
   it("shows the narrative when there is one", () => {
     renderView("RELIANCE", (d) => ({ ...d, explanation: { ...d.explanation!, narrative: "Test narrative." } }));
-    expect(within(screen.getByTestId("why-card")).getByText("Test narrative.")).toBeInTheDocument();
+    const why = screen.getByTestId("why-card");
+    expect(within(why).getByText("Test narrative.")).toBeInTheDocument();
+    expect(within(why).getByText("Written by an AI model from the figures above; it cannot change the score.")).toBeVisible();
   });
 
   it("has the header and in-page tabs", () => {

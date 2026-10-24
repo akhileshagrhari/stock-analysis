@@ -96,6 +96,8 @@
 .cov { margin-left: auto; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; background: var(--accent-soft); color: var(--accent-ink); }
 .cov[data-low] { background: var(--hold-soft); color: var(--hold-ink); }
 .narrative { margin: 12px 0 0; font-size: 14px; line-height: 1.55; color: var(--ink2); }
+.narrative p { margin: 0; }
+.narrative .aiNote { margin-top: 6px; font-size: 12px; color: var(--ink3); }
 
 @container vp (min-width: 1181px) and (max-width: 1560px) {
   .ov { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.75fr); grid-template-areas: "score trend price" "why why price" "side side side"; }
