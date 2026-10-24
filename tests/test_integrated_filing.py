@@ -28,21 +28,25 @@ from stockanalysis.ingest.nse_fundamentals import (
     INTEGRATED_FINANCIALS,
     fetch_integrated_filings,
     fiscal_quarter_label,
+    fiscal_year_end_month,
     fiscal_year_end_months,
     parse_integrated_filings,
     record_results_filings,
 )
-from stockanalysis.ingest.xbrl import parse_annual_xbrl, parse_xbrl
+from stockanalysis.ingest.xbrl import parse_annual_xbrl, parse_xbrl, reporting_quarter
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 RELIANCE_FY2026 = FIXTURES / "reliance_fy2026_integrated.xml"
 RELIANCE_Q1_FY2027 = FIXTURES / "reliance_q1_fy2027_integrated.xml"
 HDFCBANK_Q1_FY2027 = FIXTURES / "hdfcbank_q1_fy2027_integrated.xml"
 INFOSYS_FY2024 = FIXTURES / "infosys_fy2024_annual.xml"
+ENRIN_FY2025 = FIXTURES / "enrin_fy2025_integrated.xml"
+ENRIN_H1_FY2026 = FIXTURES / "enrin_h1_fy2026_integrated.xml"
 
 RELIANCE = "INE002A01018"
 ABB = "INE117A01022"
 HDFCBANK = "INE040A01034"
+ENRIN = "INE1NPP01017"
 
 
 # ----------------------------------------------------------------------
@@ -167,6 +171,17 @@ def test_bank_filings_tag_profit_and_eps_under_their_own_names():
     assert v["eps_basic"] == pytest.approx(12.5)
 
 
+def test_an_integrated_instance_states_its_own_quarter():
+    """ENRIN's year runs October to September: its September 2025 filing is
+    the fourth quarter, its March 2026 one the second."""
+    assert reporting_quarter(ENRIN_FY2025.read_bytes()) == 4
+    assert reporting_quarter(ENRIN_H1_FY2026.read_bytes()) == 2
+    # Legacy instances name the span instead — "Yearly", "Half yearly" — which
+    # says nothing about where the year ends.
+    assert reporting_quarter(INFOSYS_FY2024.read_bytes()) is None
+    assert reporting_quarter((FIXTURES / "zydus_h1_fy2025.xml").read_bytes()) is None
+
+
 # ----------------------------------------------------------------------
 # The filing index
 # ----------------------------------------------------------------------
@@ -205,6 +220,25 @@ def _entry(symbol: str, qe: str, basis: str, audited: str, broadcast: str | None
 )
 def test_fiscal_quarter_label(period_end, fy_end, label):
     assert fiscal_quarter_label(period_end, fy_end) == label
+
+
+@pytest.mark.parametrize(
+    ("period_end", "quarter", "fy_end"),
+    [
+        (dt.date(2026, 3, 31), 4, 3),
+        (dt.date(2026, 6, 30), 1, 3),
+        (dt.date(2026, 3, 31), 1, 12),
+        # ENRIN runs October to September: March closes its second quarter.
+        (dt.date(2025, 9, 30), 4, 9),
+        (dt.date(2026, 3, 31), 2, 9),
+        (dt.date(2025, 12, 31), 1, 9),
+    ],
+)
+def test_the_year_end_follows_from_a_stated_quarter(period_end, quarter, fy_end):
+    assert fiscal_year_end_month(period_end, quarter) == fy_end
+    assert fiscal_quarter_label(period_end, fy_end) == (
+        ("First", "Second", "Third", "Fourth")[quarter - 1] + " Quarter"
+    )
 
 
 def test_integrated_entries_are_normalised_like_legacy_ones():
@@ -291,6 +325,89 @@ def test_fiscal_year_end_comes_from_the_latest_labelled_year_end(db_with_univers
     assert months["ABB"] == 12
     assert months["RELIANCE"] == 3
     assert "HDFCBANK" not in months  # no history: the caller's default applies
+
+
+def _enrin_entries() -> list[dict]:
+    """ENRIN's integrated filings to March 2026, field names as served."""
+    return [
+        _entry("ENRIN", "31-MAR-2025", "Non-Consolidated", "Un-Audited",
+               "14-Jul-2025 15:32:59", "1482063"),
+        _entry("ENRIN", "30-SEP-2025", "Non-Consolidated", "Un-Audited",
+               "24-Nov-2025 20:40:07", "1579443"),
+        _entry("ENRIN", "31-MAR-2026", "Non-Consolidated", "Un-Audited",
+               "14-May-2026 20:05:00", "1667325"),
+    ]
+
+
+def test_a_year_end_with_no_labelled_history_is_read_from_the_instance(
+    db_with_universe,
+):
+    """ENRIN listed in 2025, after the legacy index stopped, so NSE never
+    labelled one of its quarters, and its year runs October to September. The
+    March default labelled its half-years "Fourth Quarter" and its real year
+    end "Second Quarter", and from then on those labels were its history: the
+    latest "Fourth Quarter" on file was its own March half-year.
+
+    The instance says which quarter it is. A company NSE has never labelled is
+    read from its latest one, and the labels it was given are not history."""
+    db = db_with_universe
+    record_results_filings(db, parse_integrated_filings(_enrin_entries()))
+    session = _FakeSession({
+        "1579443": ENRIN_FY2025.read_bytes(),
+        "1667325": ENRIN_H1_FY2026.read_bytes(),
+    })
+
+    months = fiscal_year_end_months(db, session=session)
+
+    assert months["ENRIN"] == 9
+    assert session.calls == 1  # the latest instance answers
+
+
+def test_enrin_september_year_reaches_the_annual_path(db_with_universe):
+    from stockanalysis.ingest.xbrl_annual import pending_annual_filings
+
+    db = db_with_universe
+    record_results_filings(db, parse_integrated_filings(_enrin_entries()))
+    months = fiscal_year_end_months(
+        db, session=_FakeSession({"1667325": ENRIN_H1_FY2026.read_bytes()})
+    )
+    record_results_filings(db, parse_integrated_filings(_enrin_entries(), months))
+
+    (ref,) = pending_annual_filings(db)
+    assert (ref.isin, ref.period_end, ref.basis) == (
+        ENRIN, dt.date(2025, 9, 30), "STANDALONE"
+    )
+
+
+def test_nse_labels_still_decide_where_they_exist(db_with_universe):
+    """Only a company NSE never labelled is looked up: the rest keep the year
+    end their labelled history gives, and no instance is fetched for them."""
+    db = db_with_universe
+    db.upsert_df("results_filings", pd.DataFrame([
+        _filing(ABB, dt.date(2024, 12, 31), "Fourth Quarter"),
+        _filing(ABB, dt.date(2025, 12, 31), "Fourth Quarter"),
+        _filing(RELIANCE, dt.date(2024, 3, 31), "Fourth Quarter"),
+        _filing(RELIANCE, dt.date(2026, 3, 31), "Fourth Quarter"),
+    ]), ["isin", "period_end_date", "basis"])
+    session = _FakeSession({})
+
+    months = fiscal_year_end_months(db, session=session)
+
+    assert months == {"ABB": 12, "RELIANCE": 3}
+    assert session.calls == 0
+
+
+def test_a_year_end_nothing_states_is_not_assumed_silently(db_with_universe, caplog):
+    """No labelled history and no instance to read: the caller's March default
+    still applies, but the run says so rather than labelling quietly."""
+    db = db_with_universe
+    record_results_filings(db, parse_integrated_filings(_enrin_entries()))
+
+    with caplog.at_level("WARNING", logger="stockanalysis.ingest.nse_fundamentals"):
+        months = fiscal_year_end_months(db, session=_FakeSession({}))
+
+    assert "ENRIN" not in months
+    assert "ENRIN" in caplog.text
 
 
 def test_an_integrated_year_end_reaches_the_annual_path(db_with_universe):
@@ -414,7 +531,7 @@ def db_with_universe(tmp_path, monkeypatch) -> Database:
          "sector": "X", "industry": "X", "listing_date": dt.date(2000, 1, 1),
          "delisting_date": None, "is_active": True}
         for isin, sym in ((RELIANCE, "RELIANCE"), (ABB, "ABB"),
-                          (HDFCBANK, "HDFCBANK"))
+                          (HDFCBANK, "HDFCBANK"), (ENRIN, "ENRIN"))
     ]), ["isin"])
     return db
 

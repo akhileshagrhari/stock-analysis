@@ -160,6 +160,11 @@ _OPINION_ELEMENT = "declarationofunmodifiedopinionorstatementonimpactofauditqual
 # The period a context actually describes. See the module docstring.
 _PERIOD_START_ELEMENT = "dateofstartofreportingperiod"
 _PERIOD_END_ELEMENT = "dateofendofreportingperiod"
+# Which quarter of its own fiscal year an integrated filing reports.
+_REPORTING_QUARTER_ELEMENT = "reportingquarter"
+_QUARTER_ORDINALS = {
+    "first quarter": 1, "second quarter": 2, "third quarter": 3, "fourth quarter": 4,
+}
 
 # A duration this long ending at the period end is a year, not a quarter. Slack
 # for the 52/53-week retailers and for a first year after incorporation that
@@ -267,6 +272,22 @@ def parse_xbrl(source: str | bytes) -> XbrlFacts:
 
 
 _BSE_CODE = re.compile(r"\d{6}")
+
+
+def reporting_quarter(source: str | bytes) -> int | None:
+    """The quarter of its own fiscal year the instance reports, 1 to 4.
+
+    The integrated taxonomy states it as a fact — "Fourth quarter" on ENRIN's
+    September 2025 filing, whose year runs October to September — which makes it
+    the one place a company's year end is written down for a company NSE never
+    labelled. Anything else is None: legacy instances name the span ("Yearly",
+    "Half yearly"), and SIEMENS tagged a fifth quarter while moving its year end.
+    """
+    root = ElementTree.fromstring(source)
+    for node in root.iter():
+        if _local(node.tag) == _REPORTING_QUARTER_ELEMENT:
+            return _QUARTER_ORDINALS.get((node.text or "").strip().lower())
+    return None
 
 
 def scrip_code(root) -> str | None:

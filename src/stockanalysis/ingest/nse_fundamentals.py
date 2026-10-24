@@ -42,6 +42,7 @@ import pandas as pd
 
 from stockanalysis.config import settings
 from stockanalysis.db.database import Database
+from stockanalysis.ingest.xbrl import reporting_quarter
 
 log = logging.getLogger(__name__)
 
@@ -635,6 +636,9 @@ _INTEGRATED_PAGE_SIZE = 1000  # the largest NSE was measured to honour
 
 _QUARTER_LABELS = ("First Quarter", "Second Quarter", "Third Quarter", "Fourth Quarter")
 _MARCH = 3
+# The first quarter end NSE serves only from the integrated index, whose entries
+# carry no label. Every label on an earlier period is NSE's own.
+_INTEGRATED_FROM = dt.date(2025, 3, 31)
 
 
 def fiscal_quarter_label(period_end: dt.date, fy_end_month: int = _MARCH) -> str:
@@ -642,7 +646,16 @@ def fiscal_quarter_label(period_end: dt.date, fy_end_month: int = _MARCH) -> str
     return _QUARTER_LABELS[((period_end.month - fy_end_month - 1) % 12) // 3]
 
 
-def fiscal_year_end_months(db: Database) -> dict[str, int]:
+def fiscal_year_end_month(period_end: dt.date, quarter: int) -> int:
+    """The month a fiscal year ends in, given the quarter `period_end` closes.
+
+    The inverse of `fiscal_quarter_label`: ENRIN's March quarter is its second,
+    so its year ends two quarters later, in September.
+    """
+    return (period_end.month + 3 * (4 - quarter) - 1) % 12 + 1
+
+
+def fiscal_year_end_months(db: Database, session=None) -> dict[str, int]:
     """The month each company's fiscal year ends in, by NSE symbol.
 
     Needed because the integrated index labels no quarter, and the annual path
@@ -655,8 +668,18 @@ def fiscal_year_end_months(db: Database) -> dict[str, int]:
     Taken from the latest filing NSE itself labelled "Fourth Quarter" — the
     latest rather than the most common, because companies move year ends:
     Ambuja and Nestlé both left December for March, and their December filings
-    still outnumber the March ones. Companies with no labelled history are
-    absent, and the caller's default (March) applies.
+    still outnumber the March ones.
+
+    Only NSE's own labels count, which means periods before the integrated
+    index. A label on a later period is this function's output, and counting it
+    lets a wrong year end confirm itself: ENRIN's March 2026 half-year, labelled
+    "Fourth Quarter" by the March default, was the history that kept it there.
+
+    A company NSE never labelled — ENRIN listed in 2025, after the legacy index
+    stopped — is read from its latest integrated instance instead, which states
+    the quarter it reports. One instance per such company, fetched through the
+    same cache the XBRL steps read. Where it states none, the company is absent,
+    the caller's default (March) applies, and a warning says so.
     """
     df = db.query(
         """
@@ -664,15 +687,62 @@ def fiscal_year_end_months(db: Database) -> dict[str, int]:
         FROM results_filings f
         JOIN instruments i ON i.isin = f.isin
         WHERE f.relating_to = 'Fourth Quarter' AND i.nse_symbol IS NOT NULL
+          AND f.period_end_date < ?
         QUALIFY row_number() OVER (
             PARTITION BY f.isin ORDER BY f.period_end_date DESC
         ) = 1
-        """
+        """,
+        [_INTEGRATED_FROM],
     )
-    return {
+    months = {
         r.nse_symbol: pd.Timestamp(r.period_end_date).month
         for r in df.itertuples(index=False)
     }
+    months.update(_year_ends_stated_by_instances(db, set(months), session))
+    return months
+
+
+def _year_ends_stated_by_instances(
+    db: Database, labelled: set[str], session=None
+) -> dict[str, int]:
+    """Year ends for companies NSE never labelled, from their latest instance."""
+    from stockanalysis.ingest.xbrl_annual import fetch_instance
+
+    latest = db.query(
+        """
+        SELECT i.nse_symbol, f.period_end_date, f.xbrl_url
+        FROM results_filings f
+        JOIN instruments i ON i.isin = f.isin
+        WHERE f.period_end_date >= ? AND f.xbrl_url IS NOT NULL
+          AND i.nse_symbol IS NOT NULL
+        QUALIFY row_number() OVER (
+            PARTITION BY f.isin ORDER BY f.period_end_date DESC, f.basis
+        ) = 1
+        """,
+        [_INTEGRATED_FROM],
+    )
+    months: dict[str, int] = {}
+    for r in latest.itertuples(index=False):
+        if r.nse_symbol in labelled:
+            continue
+        try:
+            quarter = reporting_quarter(fetch_instance(r.xbrl_url, session=session))
+        except Exception as e:  # noqa: BLE001 - network and parse failures alike
+            log.warning("%s: could not read %s for its year end: %s",
+                        r.nse_symbol, r.xbrl_url, e)
+            quarter = None
+        if quarter is None:
+            log.warning(
+                "%s: NSE never labelled a year end for it and its latest instance "
+                "states no quarter; its quarters are labelled as if its year ends "
+                "in March", r.nse_symbol,
+            )
+            continue
+        period_end = pd.Timestamp(r.period_end_date).date()
+        months[r.nse_symbol] = fiscal_year_end_month(period_end, quarter)
+        log.info("%s: year ends in month %d, as its %s instance states",
+                 r.nse_symbol, months[r.nse_symbol], period_end)
+    return months
 
 
 def parse_integrated_filings(
