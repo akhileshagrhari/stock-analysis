@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { StockPageView } from "@/components/stock/StockPageView";
 import type { StockPageData } from "@/lib/stock/load";
@@ -61,6 +61,9 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
   });
 
   it("a full run under one model reads without caveats", () => {
+    renderView("RELIANCE", (d) => ({ ...d, runs: { ...d.runs, instruments: 4 } }));
+    expect(within(screen.getByTestId("score-card")).queryByText(/earlier model/)).toBeNull();
+    cleanup();
     renderView("CHOLAFIN");
     expect(screen.getByText("Scored 14 Aug 2026 · model a8756fe2")).toBeInTheDocument();
     expect(within(screen.getByTestId("trend-card")).getByText("points since first scored, 31 Jul 2026")).toBeInTheDocument();
@@ -94,7 +97,11 @@ describe("stock page top: CHOLAFIN (red-flag override, low coverage)", () => {
       "SELL forced by red flag: Promoter holding falling 3 consecutive quarters. Without it, the score would read BUY.",
     );
     expect(screen.getByText("Data behind 23% of the model's weight (5 of 20 factors), treat with caution")).toBeInTheDocument();
-    expect(screen.getByTestId("score-value")).toHaveTextContent("87");
+    expect(screen.getByTestId("score-value")).toHaveTextContent("87.3");
+    // An earlier model's score at 23% coverage: the current model would publish none.
+    expect(within(screen.getByTestId("score-card")).getByText(
+      "Scored under an earlier model (a8756fe2) with data behind only 23% of the model's weight. The current model publishes no score below 50%.",
+    )).toBeVisible();
   });
 });
 

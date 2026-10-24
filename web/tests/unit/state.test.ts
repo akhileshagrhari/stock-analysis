@@ -23,6 +23,12 @@ describe("scoreState", () => {
     expect(chola.stale).toEqual({ storedVersion: expect.stringContaining("a8756fe2") });
   });
 
+  it("spots a score the current model wouldn't publish: an earlier model, below today's coverage floor", () => {
+    expect(scoreState(fixtureStock("CHOLAFIN").explanation, m).belowCurrentFloor).toBe(true);
+    expect(scoreState(fixtureStock("RELIANCE").explanation, m).belowCurrentFloor).toBe(false);
+    expect(scoreState({ ...fixtureStock("CHOLAFIN").explanation!, coverage: 0.6 }, m).belowCurrentFloor).toBe(false);
+  });
+
   it("does not call it an override when the score was SELL anyway", () => {
     expect(scoreState(fixtureStock("ADANIENSOL").explanation, m).overridden).toBeNull();
   });

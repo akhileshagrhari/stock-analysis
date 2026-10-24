@@ -15,6 +15,11 @@ export type ScoreState = {
   band: SignalKey | null;
   overridden: { description: string; wouldBe: SignalKey } | null;
   stale: { storedVersion: string } | null;
+  /**
+   * Scored by an earlier model at a coverage the current model wouldn't
+   * publish a score at (its floor is LOW_COVERAGE until /v1/model gives it).
+   */
+  belowCurrentFloor: boolean;
 };
 
 export function bandOf(score: number, model: ModelInfo): SignalKey {
@@ -27,7 +32,7 @@ export function scoreState(expl: Explanation | null, model: ModelInfo): ScoreSta
   if (expl === null) {
     return {
       kind: "unscored", score: null, signal: null, asOf: null, coverage: null,
-      lowCoverage: false, band: null, overridden: null, stale: null,
+      lowCoverage: false, band: null, overridden: null, stale: null, belowCurrentFloor: false,
     };
   }
   const coverage = expl.coverage;
@@ -37,7 +42,7 @@ export function scoreState(expl: Explanation | null, model: ModelInfo): ScoreSta
   if (score === null || !Number.isFinite(score)) {
     return {
       kind: "below_floor", score: null, signal: null, asOf: expl.as_of, coverage,
-      lowCoverage, band: null, overridden: null, stale,
+      lowCoverage, band: null, overridden: null, stale, belowCurrentFloor: false,
     };
   }
   const signal = isSignalKey(expl.signal) ? expl.signal : null;
@@ -49,7 +54,8 @@ export function scoreState(expl: Explanation | null, model: ModelInfo): ScoreSta
       .join("; ");
     overridden = { description, wouldBe: band };
   }
-  return { kind: "scored", score, signal, asOf: expl.as_of, coverage, lowCoverage, band, overridden, stale };
+  const belowCurrentFloor = stale !== null && lowCoverage;
+  return { kind: "scored", score, signal, asOf: expl.as_of, coverage, lowCoverage, band, overridden, stale, belowCurrentFloor };
 }
 
 /** How far the displayed score is from the next band line. */

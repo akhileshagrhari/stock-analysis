@@ -4,7 +4,7 @@ import type { ScoreState } from "@/lib/stock/state";
 import { unscoredMessage } from "@/lib/stock/state";
 import { companies } from "@/lib/runs";
 import { SIGNALS } from "@/config/signals";
-import { UNIVERSE } from "@/config/site";
+import { LOW_COVERAGE, UNIVERSE } from "@/config/site";
 import { SegmentMeter } from "@/components/charts/SegmentMeter";
 import { Card } from "@/components/ui/Card";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -54,6 +54,12 @@ export function ScoreCard({
           {state.overridden && (
             <Notice tone="alert" className={s.gapTop}>
               {overrideText(state.overridden)}
+            </Notice>
+          )}
+          {state.belowCurrentFloor && (
+            <Notice tone="warn" className={s.gapTop}>
+              Scored under an earlier model ({shortModel(state.stale!.storedVersion)}) with data behind only {pct(state.coverage!, 0)} of the
+              model&apos;s weight. The current model publishes no score below {pct(LOW_COVERAGE, 0)}.
             </Notice>
           )}
           <div className="asof" style={{ marginTop: 8 }}>
