@@ -231,6 +231,7 @@ class AnnualFinancials:
     auditor_opinion: str | None
     confidence: float | None
     values: dict[str, float | None] = field(default_factory=dict)
+    eps_adjusted: float | None = None   # values["eps"] on today's share basis
 
 
 @dataclass(frozen=True)
@@ -249,6 +250,7 @@ class QuarterlyFinancials:
     revenue: float | None
     pat: float | None
     eps: float | None
+    eps_adjusted: float | None = None   # eps on today's share basis
 
 
 @dataclass(frozen=True)
@@ -680,8 +682,11 @@ def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
         """,
         [isin],
     )
+    basis = ShareBasis.load(db, [isin])
     out: list[AnnualFinancials] = []
     for _, row in df.iterrows():
+        filed = _opt_date(row.get("filing_date"))
+        eps = _opt_float(row.get("eps"))
         out.append(
             AnnualFinancials(
                 fiscal_year=int(row["fiscal_year"]),
@@ -694,9 +699,17 @@ def annual_financials(db: Database, isin: str) -> list[AnnualFinancials]:
                 values={
                     key: _opt_float(row.get(key)) for key, _label in ANNUAL_LINE_ITEMS
                 },
+                eps_adjusted=_adjusted(eps, basis, isin, filed),
             )
         )
     return out
+
+
+def _adjusted(
+    eps: float | None, basis: ShareBasis, isin: str, filed: dt.date | None
+) -> float | None:
+    """`eps` restated across every split and bonus since it was filed."""
+    return None if eps is None else eps / basis.factor(isin, filed)
 
 
 def quarterly_financials(
@@ -719,11 +732,14 @@ def quarterly_financials(
         """,
         [isin, int(limit)],
     )
+    basis = ShareBasis.load(db, [isin])
     out: list[QuarterlyFinancials] = []
     for _, row in df.iterrows():
         period_end = _opt_date(row["period_end_date"])
         if period_end is None:
             continue
+        filed = _opt_date(row.get("filing_date"))
+        eps = _opt_float(row.get("eps"))
         consolidated = row.get("is_consolidated")
         out.append(
             QuarterlyFinancials(
@@ -736,10 +752,47 @@ def quarterly_financials(
                 ),
                 revenue=_opt_float(row.get("revenue")),
                 pat=_opt_float(row.get("pat")),
-                eps=_opt_float(row.get("eps")),
+                eps=eps,
+                eps_adjusted=_adjusted(eps, basis, isin, filed),
             )
         )
     return out
+
+
+@dataclass(frozen=True)
+class CorporateAction:
+    ex_date: dt.date
+    action_type: str
+    ratio: float | None
+    amount: float | None
+    record_date: dt.date | None
+    details: str | None
+    source: str | None
+
+
+def corporate_actions(db: Database, isin: str) -> list[CorporateAction]:
+    """Every stored action for one company, newest first."""
+    df = db.query(
+        """
+        SELECT ex_date, action_type, ratio, amount, record_date, details, source
+        FROM corporate_actions
+        WHERE isin = ?
+        ORDER BY ex_date DESC, action_type
+        """,
+        [isin],
+    )
+    return [
+        CorporateAction(
+            ex_date=_opt_date(row["ex_date"]) or dt.date.min,
+            action_type=_req_str(row["action_type"]),
+            ratio=_opt_float(row["ratio"]),
+            amount=_opt_float(row["amount"]),
+            record_date=_opt_date(row["record_date"]),
+            details=_opt_str(row["details"]),
+            source=_opt_str(row["source"]),
+        )
+        for _, row in df.iterrows()
+    ]
 
 
 @dataclass(frozen=True)

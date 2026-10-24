@@ -409,6 +409,14 @@ LINE_ITEMS = [
 ]
 
 
+_EPS_ADJUSTED = (
+    "₹ per share: eps restated onto today's share basis — the basis of the "
+    "stored price series — across every split and bonus with an ex-date after "
+    "the filing (see /corporate-actions). Equal to eps when there was none; "
+    "comparable across years where eps is not. Null when eps is."
+)
+
+
 class AnnualOut(BaseModel):
     fiscal_year: int
     basis: str
@@ -420,6 +428,7 @@ class AnnualOut(BaseModel):
     # Keyed by `LineItemOut.key`; null is a figure the filing does not carry,
     # which is not the same thing as a zero.
     values: dict[str, float | None] = Field(default_factory=dict)
+    eps_adjusted: float | None = Field(default=None, description=_EPS_ADJUSTED)
 
 
 class QuarterOut(BaseModel):
@@ -430,6 +439,7 @@ class QuarterOut(BaseModel):
     revenue: float | None = None
     pat: float | None = None
     eps: float | None = None
+    eps_adjusted: float | None = Field(default=None, description=_EPS_ADJUSTED)
 
 
 class FinancialsOut(BaseModel):
@@ -645,6 +655,28 @@ class ScoreStatusOut(BaseModel):
 
 
 _RUPEES = "₹ per share, on the price series' share basis (see restated)."
+
+
+class CorporateActionOut(BaseModel):
+    ex_date: dt.date
+    action_type: Literal["SPLIT", "BONUS", "DIVIDEND", "RIGHTS", "DEMERGER", "BUYBACK"]
+    ratio: float | None = Field(
+        default=None,
+        description="SPLIT and BONUS: shares after per share before (a 1:1 bonus "
+        "is 2.0, a ₹10 to ₹2 split 5.0). RIGHTS: new shares offered per share "
+        "held. Null for the other types.",
+    )
+    amount: float | None = Field(
+        default=None,
+        description="DIVIDEND: ₹ per share on the share basis of the ex-date, "
+        "summed when one announcement pays several. Null otherwise.",
+    )
+    record_date: dt.date | None = None
+    details: str | None = Field(
+        default=None, description="The exchange's own wording of the action."
+    )
+    source: str | None = Field(default=None, description="NSE.")
+
 
 
 class KeyMetricsOut(BaseModel):
@@ -1065,6 +1097,27 @@ def price_history(
     return [
         PriceBarOut(**vars(bar))
         for bar in queries.price_history(db, isin, start_date, end_date)
+    ]
+
+
+@route(
+    "/instruments/{isin}/corporate-actions",
+    response_model=list[CorporateActionOut],
+    tags=["instruments"],
+)
+def instrument_corporate_actions(
+    db: DB, isin: Annotated[str, Path()]
+) -> list[CorporateActionOut]:
+    """Splits, bonuses, dividends and the rest, newest first.
+
+    The splits and bonuses here are what eps_adjusted and key-metrics restate
+    across. An empty list for a company also means its actions were never
+    fetched; dividends_ttm in key-metrics tells the two apart.
+    """
+    require_instrument(db, isin)
+    return [
+        CorporateActionOut(**dataclasses.asdict(row))
+        for row in queries.corporate_actions(db, isin)
     ]
 
 

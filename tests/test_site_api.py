@@ -742,3 +742,57 @@ class TestR7KeyMetrics:
 
     def test_an_unknown_isin_is_404(self, client):
         assert client.get("/v1/instruments/INE_MISSING/key-metrics").status_code == 404
+
+
+# ----------------------------------------------------------------------
+# R8 — corporate actions and adjusted EPS
+# ----------------------------------------------------------------------
+
+
+class TestR8CorporateActionsAndAdjustedEps:
+    def test_the_actions_are_listed_newest_first(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        _action(two_dates_db, isin, dt.date(2023, 5, 1), "BONUS", ratio=2.0)
+        _action(two_dates_db, isin, dt.date(2023, 8, 1), "DIVIDEND", amount=2.5)
+        rows = client.get(f"/v1/instruments/{isin}/corporate-actions").json()
+        assert [(r["ex_date"], r["action_type"], r["ratio"], r["amount"]) for r in rows] == [
+            ("2023-08-01", "DIVIDEND", None, 2.5),
+            ("2023-05-01", "BONUS", 2.0, None),
+        ]
+        assert rows[0]["source"] == "NSE"
+
+    def test_none_stored_is_an_empty_list_and_an_unknown_isin_404(self, client):
+        assert client.get("/v1/instruments/INE000000029/corporate-actions").json() == []
+        assert client.get("/v1/instruments/INE_MISSING/corporate-actions").status_code == 404
+
+    def test_eps_across_a_bonus_is_made_comparable(self, client, two_dates_db):
+        """RELIANCE's quarterly EPS halves at Dec 2024 because of the 1:1 bonus:
+        Sep '24 24.48 was filed before the 28 Oct ex-date, Dec '24 13.70 after."""
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.upsert_df(
+            "fundamentals_quarterly",
+            pd.DataFrame([
+                {"isin": isin, "period_end_date": dt.date(2022, 9, 30),
+                 "filing_date": dt.date(2022, 10, 14), "eps": 24.48},
+                {"isin": isin, "period_end_date": dt.date(2022, 12, 31),
+                 "filing_date": dt.date(2023, 1, 16), "eps": 13.70},
+            ]),
+            ["isin", "period_end_date"],
+        )
+        _action(two_dates_db, isin, dt.date(2022, 10, 28), "BONUS", ratio=2.0)
+
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        by_end = {q["period_end"]: q for q in body["quarterly"]}
+        assert by_end["2022-09-30"]["eps"] == 24.48
+        assert by_end["2022-09-30"]["eps_adjusted"] == pytest.approx(12.24)
+        assert by_end["2022-12-31"]["eps_adjusted"] == pytest.approx(13.70)
+
+        # Every annual row in the fixture was filed before the bonus.
+        for year in body["annual"]:
+            assert year["eps_adjusted"] == pytest.approx(year["values"]["eps"] / 2)
+
+    def test_without_actions_adjusted_is_reported(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        assert body["annual"]
+        assert all(y["eps_adjusted"] == y["values"]["eps"] for y in body["annual"])
