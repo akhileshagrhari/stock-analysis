@@ -69,7 +69,15 @@ describe("ScoreHistoryChart", () => {
     expect(container.innerHTML).not.toMatch(/NaN/);
   });
 
-  it("skips null scores rather than plotting them at 0", () => {
+  it("names the partial run on a point's tooltip", () => {
+    const abb = fixtureStock("ABB");
+    const { container } = render(<ScoreHistoryChart points={snapshots(abb.history, abb.runs)} thresholds={thresholds} />);
+    const titles = [...container.querySelectorAll("title")].map((t) => t.textContent);
+    expect(titles.find((t) => t?.startsWith("16 Aug 2026"))).toMatch(/partial run \(4 companies\)$/);
+    expect(titles.find((t) => t?.startsWith("14 Aug 2026"))).not.toMatch(/partial/);
+  });
+
+    it("skips null scores rather than plotting them at 0", () => {
     const pts = relHistory();
     pts[1] = { ...pts[1], score: null, signal: null };
     const { container } = render(<ScoreHistoryChart points={pts} thresholds={thresholds} />);

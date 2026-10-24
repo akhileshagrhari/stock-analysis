@@ -1,5 +1,6 @@
 import { ApiUnavailableError, serverGet, type Getter } from "@/lib/api/client";
-import type { Explanation, Financials, Instrument, ModelInfo, NewsItem, PriceBar, Signal } from "@/lib/api/types";
+import type { Explanation, Financials, Health, Instrument, ModelInfo, NewsItem, PriceBar, Signal } from "@/lib/api/types";
+import { loadRuns, type Runs } from "@/lib/runs";
 
 /** Everything the stock page renders, fetched once on the server. */
 export type StockPageData = {
@@ -12,6 +13,8 @@ export type StockPageData = {
   model: ModelInfo;
   peers: Signal[];
   peersAsOf: string | null;
+  /** Companies scored on each of this company's dates (and the peers' date). */
+  runs: Runs;
 };
 
 const EMPTY_FINANCIALS: Financials = { line_items: [], annual: [], quarterly: [] };
@@ -26,7 +29,7 @@ export async function loadStockPage(symbol: string, get: Getter = serverGet): Pr
   if (instrument === null) return null;
 
   const base = `/instruments/${encodeURIComponent(instrument.isin)}`;
-  const [explanation, history, prices, financials, news, model] = await Promise.all([
+  const [explanation, history, prices, financials, news, model, health] = await Promise.all([
     get<Explanation>(`${base}/explanation`),
     get<Signal[]>(`${base}/history?limit=500`),
     // Full stored range (~1,500 bars); the client chart slices by period.
@@ -34,16 +37,19 @@ export async function loadStockPage(symbol: string, get: Getter = serverGet): Pr
     get<Financials>(`${base}/financials?quarters=12`),
     get<NewsItem[]>(`${base}/news?limit=20`),
     get<ModelInfo>("/model"),
+    get<Health>("/health"),
   ]);
   if (model === null) throw new ApiUnavailableError(404, "/model");
 
   // Peers are the same sector on the same date. An unscored company has no
   // date of its own, so it gets the latest scored date.
   const peersAsOf = explanation?.as_of ?? model.scored_dates[0] ?? null;
-  const peers =
+  const [peers, runs] = await Promise.all([
     peersAsOf && instrument.sector
-      ? await get<Signal[]>(`/signals?sector=${encodeURIComponent(instrument.sector)}&as_of=${peersAsOf}&limit=1000`)
-      : [];
+      ? get<Signal[]>(`/signals?sector=${encodeURIComponent(instrument.sector)}&as_of=${peersAsOf}&limit=1000`)
+      : [],
+    loadRuns(get, [...(history ?? []).map((h) => h.as_of), ...(peersAsOf ? [peersAsOf] : [])], health?.instruments ?? 0),
+  ]);
 
   return {
     instrument,
@@ -55,5 +61,6 @@ export async function loadStockPage(symbol: string, get: Getter = serverGet): Pr
     model,
     peers: peers ?? [],
     peersAsOf,
+    runs,
   };
 }

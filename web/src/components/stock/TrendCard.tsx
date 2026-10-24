@@ -1,5 +1,5 @@
 import { fmtDate, scoreText, signedFixed } from "@/lib/format";
-import { changeSinceFirst, type Snapshot } from "@/lib/stock/history";
+import { changeSinceFirst, modelChangeIndexes, type Snapshot } from "@/lib/stock/history";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { Card } from "@/components/ui/Card";
 import { InfoTip } from "@/components/ui/InfoTip";
@@ -11,6 +11,12 @@ export function TrendCard({ points }: { points: Snapshot[] }) {
   const scored = points.filter((p) => p.score !== null);
   if (scored.length === 0) return null;
   const change = changeSinceFirst(points);
+  // A change across a model change or a partial run isn't a like-for-like move.
+  const caveats = [
+    ...(modelChangeIndexes(points).length ? ["a model change"] : []),
+    ...(scored.some((p) => p.partial) ? ["a partial run"] : []),
+  ];
+  const tone = caveats.length || change === null || change === 0 ? "" : change > 0 ? s.up : s.down;
   return (
     <Card className={s.aTrend} data-testid="trend-card">
       <div className={s.ct}>
@@ -23,10 +29,13 @@ export function TrendCard({ points }: { points: Snapshot[] }) {
         </>
       ) : (
         <>
-          <div className={`${s.big} tnum ${change === null || change === 0 ? "" : change > 0 ? s.up : s.down}`}>
+          <div className={`${s.big} tnum ${tone}`}>
             {change === null ? "—" : signedFixed(change, 1)}
           </div>
-          <div className="asof">points since first scored, {fmtDate(points[0].date)}</div>
+          <div className="asof">
+            points since first scored, {fmtDate(points[0].date)}
+            {caveats.length > 0 && `, across ${caveats.join(" and ")}`}
+          </div>
         </>
       )}
       <Sparkline points={points} />

@@ -34,6 +34,22 @@ export function fixtureSignals(date: "2026-08-14" | "2026-08-15" | "2026-08-16")
   return read(`signals-${date}.json`);
 }
 
+/**
+ * Companies scored per date, from the signals fixtures. 31 Jul isn't
+ * captured; the API reported 77 for it (24 Oct 2026).
+ */
+export function fixtureRuns(): StockPageData["runs"] {
+  return {
+    instruments: fixtureHealth().instruments,
+    counts: {
+      "2026-07-31": 77,
+      "2026-08-14": fixtureSignals("2026-08-14").length,
+      "2026-08-15": fixtureSignals("2026-08-15").length,
+      "2026-08-16": fixtureSignals("2026-08-16").length,
+    },
+  };
+}
+
 export function fixtureStock(symbol: FixtureSymbol): StockPageData {
   const model = fixtureModel();
   const explanation = read<StockPageData["explanation"]>(`${symbol}/explanation.json`);
@@ -47,5 +63,6 @@ export function fixtureStock(symbol: FixtureSymbol): StockPageData {
     model,
     peers: read(`${symbol}/peers.json`),
     peersAsOf: explanation?.as_of ?? model.scored_dates[0] ?? null,
+    runs: fixtureRuns(),
   };
 }

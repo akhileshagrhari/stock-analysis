@@ -78,3 +78,4 @@
   .secH { font-size: 19px; }
   .cmp { grid-template-columns: minmax(0, 1fr); }
 }
+.partialTag { display: block; font-size: 11.5px; color: var(--hold-ink, var(--ink2)); font-weight: 500; }

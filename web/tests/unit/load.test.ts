@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiUnavailableError } from "@/lib/api/client";
 import { loadStockPage } from "@/lib/stock/load";
-import { fixtureStock } from "../fixtures";
+import { fixtureHealth, fixtureSignals, fixtureStock } from "../fixtures";
 
 /** A getter that answers like the API for RELIANCE, whatever symbol is asked. */
 function fixtureGetter(symbol: "RELIANCE" | "HDFCBANK" = "RELIANCE") {
@@ -14,12 +14,21 @@ function fixtureGetter(symbol: "RELIANCE" | "HDFCBANK" = "RELIANCE") {
     if (path.includes("/financials")) return d.financials;
     if (path.includes("/news")) return d.news;
     if (path === "/model") return d.model;
+    if (path === "/health") return fixtureHealth();
+    const run = path.match(/^\/signals\?as_of=(\d{4}-\d{2}-\d{2})&limit=1000$/);
+    if (run) return ["2026-08-14", "2026-08-15", "2026-08-16"].includes(run[1]) ? fixtureSignals(run[1] as "2026-08-14") : null;
     if (path.startsWith("/signals")) return d.peers;
     throw new Error(`unexpected ${path}`);
   }) as unknown as (<T>(path: string) => Promise<T | null>) & { mock: { calls: string[][] } };
 }
 
 describe("loadStockPage", () => {
+  it("counts the companies in each of the company's scored runs", async () => {
+    const data = await loadStockPage("RELIANCE", fixtureGetter());
+    expect(data!.runs.instruments).toBe(100);
+    expect(data!.runs.counts).toMatchObject({ "2026-08-14": 77, "2026-08-16": 4 });
+  });
+
   it("upper-cases and encodes the symbol (Review Focus 1)", async () => {
     const get = fixtureGetter();
     await loadStockPage("m&m", get);

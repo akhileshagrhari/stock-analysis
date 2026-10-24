@@ -2,6 +2,7 @@ import type { ModelInfo } from "@/lib/api/types";
 import { fmtDate, pct, scoreText, shortModel } from "@/lib/format";
 import type { ScoreState } from "@/lib/stock/state";
 import { unscoredMessage } from "@/lib/stock/state";
+import { companies } from "@/lib/runs";
 import { SIGNALS } from "@/config/signals";
 import { UNIVERSE } from "@/config/site";
 import { SegmentMeter } from "@/components/charts/SegmentMeter";
@@ -17,7 +18,20 @@ export function overrideText(o: NonNullable<ScoreState["overridden"]>): string {
   return `${SIGNALS.SELL.label} forced by red flag: ${o.description}. Without it, the score would read ${SIGNALS[o.wouldBe].label}.`;
 }
 
-export function ScoreCard({ state, model, modelVersion, sector }: { state: ScoreState; model: ModelInfo; modelVersion: string | null; sector: string | null }) {
+export function ScoreCard({
+  state,
+  model,
+  modelVersion,
+  sector,
+  partialRun = null,
+}: {
+  state: ScoreState;
+  model: ModelInfo;
+  modelVersion: string | null;
+  sector: string | null;
+  /** Companies scored that day, when the run was partial. */
+  partialRun?: number | null;
+}) {
   const thresholds = { sell: model.sell_threshold, buy: model.buy_threshold };
   return (
     <Card className={s.aScore}>
@@ -43,6 +57,7 @@ export function ScoreCard({ state, model, modelVersion, sector }: { state: Score
           )}
           <div className="asof" style={{ marginTop: 8 }}>
             Scored {fmtDate(state.asOf!)}
+            {partialRun !== null && ` · partial run: ranked among ${companies(partialRun)}`}
             {modelVersion && ` · model ${shortModel(modelVersion)}`}
           </div>
         </>

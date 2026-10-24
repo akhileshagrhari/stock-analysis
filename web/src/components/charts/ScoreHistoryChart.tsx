@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { coverageShort } from "@/lib/coverage";
+import { companies } from "@/lib/runs";
 import { fmtDate, fmtDay, daysBetween, scoreText, shortModel } from "@/lib/format";
 import { modelChangeIndexes, type Snapshot } from "@/lib/stock/history";
 import { SIGNALS, signalLabel } from "@/config/signals";
@@ -113,7 +114,7 @@ export function ScoreHistoryChart({ points, thresholds, selected }: { points: Sn
           const sel = p.date === selected;
           return (
             <circle key={p.date} data-point="" cx={x(i)} cy={y(p.score!)} r={sel || hover === i ? 6 : 4.5} fill={sel ? "var(--accent)" : "#fff"} stroke="var(--accent)" strokeWidth={2}>
-              <title>{`${fmtDate(p.date)} · ${scoreText(p.score!)} · ${signalLabel(p.signal)} · ${coverageShort(p.coverage)} · model ${shortModel(p.model)}`}</title>
+              <title>{`${fmtDate(p.date)} · ${scoreText(p.score!)} · ${signalLabel(p.signal)} · ${coverageShort(p.coverage)} · model ${shortModel(p.model)}${p.partial ? ` · partial run (${companies(p.runSize!)})` : ""}`}</title>
             </circle>
           );
         })}
@@ -133,6 +134,12 @@ export function ScoreHistoryChart({ points, thresholds, selected }: { points: Sn
           <b>{scoreText(hp.score)}</b> · {signalLabel(hp.signal)} · {fmtDate(hp.date)}
           <br />
           {coverageShort(hp.coverage)} · model {shortModel(hp.model)}
+          {hp.partial && (
+            <>
+              <br />
+              Partial run ({companies(hp.runSize!)})
+            </>
+          )}
         </div>
       )}
     </div>

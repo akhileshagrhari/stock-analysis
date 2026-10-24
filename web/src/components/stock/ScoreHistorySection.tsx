@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ModelInfo } from "@/lib/api/types";
 import { fmtDate, pct, scoreText, shortModel, signedFixed } from "@/lib/format";
+import { companies } from "@/lib/runs";
 import { compare, modelChangeIndexes, type Snapshot } from "@/lib/stock/history";
 import { ScoreHistoryChart } from "@/components/charts/ScoreHistoryChart";
 import { Card } from "@/components/ui/Card";
@@ -39,6 +40,11 @@ function Column({ title, p }: { title: string; p: Snapshot }) {
       </div>
     </div>
   );
+}
+
+function partialSentence(p: Snapshot): string {
+  const n = p.runSize!;
+  return `${fmtDate(p.date)} was a partial run: only ${companies(n)} ${n === 1 ? "was" : "were"} scored, so the score ranks it against ${n === 1 ? "itself" : `those ${n}`}.`;
 }
 
 /**
@@ -90,8 +96,12 @@ export function ScoreHistorySection({ points, model }: { points: Snapshot[]; mod
                 </p>
                 {!cmp.comparable && (
                   <Notice tone="warn" className={s.notice}>
-                    Scored by different model versions ({shortModel(thenPoint.model)} → {shortModel(now.model)}), so the two
-                    scores are not strictly comparable.
+                    {cmp.modelChanged && `Scored by different model versions (${shortModel(thenPoint.model)} → ${shortModel(now.model)}). `}
+                    {[thenPoint, now]
+                      .filter((p) => p.partial)
+                      .map((p) => `${partialSentence(p)} `)
+                      .join("")}
+                    The two scores are not strictly comparable.
                   </Notice>
                 )}
               </>
@@ -115,7 +125,10 @@ export function ScoreHistorySection({ points, model }: { points: Snapshot[]; mod
             <tbody>
               {[...points].reverse().map((p) => (
                 <tr key={p.date}>
-                  <td>{fmtDate(p.date)}</td>
+                  <td>
+                    {fmtDate(p.date)}
+                    {p.partial && <small className={s.partialTag}>partial run ({companies(p.runSize!)})</small>}
+                  </td>
                   <td>{p.score === null ? "—" : scoreText(p.score)}</td>
                   <td className={s.left}>
                     <SignalChip signal={p.signal} />

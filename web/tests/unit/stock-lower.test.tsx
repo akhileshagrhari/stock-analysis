@@ -125,6 +125,23 @@ describe("other companies", () => {
     expect(value).toHaveTextContent("+0.39");
   });
 
+  it("RELIANCE history: the partial run is marked in the table", () => {
+    renderView("RELIANCE");
+    const row = within(section("history")).getByText("16 Aug 2026", { selector: "td *, td" }).closest("tr")!;
+    expect(row).toHaveTextContent("partial run (4 companies)");
+  });
+
+  it("ABB compare: two partial runs under one model still get a warning", async () => {
+    const user = userEvent.setup();
+    renderView("ABB");
+    await user.selectOptions(within(section("history")).getByLabelText("Compare with"), "2026-08-15");
+    const h = section("history");
+    expect(within(h).getByText(/\+43\.3 points/)).toBeInTheDocument();
+    const notice = within(h).getByText(/not strictly comparable/).closest("div")!;
+    expect(notice).toHaveTextContent("15 Aug 2026 was a partial run: only 1 company was scored, so the score ranks it against itself.");
+    expect(notice).toHaveTextContent("16 Aug 2026 was a partial run: only 4 companies were scored, so the score ranks it against those 4.");
+  });
+
   it("ADANIENSOL: one snapshot, nothing to compare", () => {
     renderView("ADANIENSOL");
     expect(within(section("history")).getByText(/Only one snapshot so far/)).toBeInTheDocument();

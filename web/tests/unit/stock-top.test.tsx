@@ -15,7 +15,7 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
     renderView("RELIANCE");
     expect(screen.getByTestId("score-value")).toHaveTextContent(/^28\.4 \/ 100$/);
     expect(screen.getAllByText("SELL").length).toBeGreaterThan(0);
-    expect(screen.getByText("Scored 16 Aug 2026 · model 4b05e87d")).toBeInTheDocument();
+    expect(screen.getByText("Scored 16 Aug 2026 · partial run: ranked among 4 companies · model 4b05e87d")).toBeInTheDocument();
   });
 
   it("explains why", () => {
@@ -46,7 +46,15 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
     renderView("RELIANCE");
     const trend = screen.getByTestId("trend-card");
     expect(within(trend).getByText("−4.1")).toBeInTheDocument();
-    expect(within(trend).getByText("points since first scored, 31 Jul 2026")).toBeInTheDocument();
+    expect(within(trend).getByText("points since first scored, 31 Jul 2026, across a model change and a partial run")).toBeInTheDocument();
+    // Not comparable, so not coloured as a gain or a loss.
+    expect(within(trend).getByText("−4.1").className).not.toMatch(/down|up/);
+  });
+
+  it("a full run under one model reads without caveats", () => {
+    renderView("CHOLAFIN");
+    expect(screen.getByText("Scored 14 Aug 2026 · model a8756fe2")).toBeInTheDocument();
+    expect(within(screen.getByTestId("trend-card")).getByText("points since first scored, 31 Jul 2026")).toBeInTheDocument();
   });
 
   it("marks four flags unchecked and none triggered", () => {

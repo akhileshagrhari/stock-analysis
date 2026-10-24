@@ -26,6 +26,28 @@ describe("history", () => {
     expect(compare(s[0], s[1]).comparable).toBe(true);
   });
 
+  it("marks snapshots from partial runs with the number of companies scored", () => {
+    const abb = fixtureStock("ABB");
+    const r = snapshots(abb.history, abb.runs);
+    expect(r.map((x) => [x.date, x.partial, x.runSize])).toEqual([
+      ["2026-07-31", false, 77],
+      ["2026-08-14", false, 77],
+      ["2026-08-15", true, 1],
+      ["2026-08-16", true, 4],
+    ]);
+  });
+
+  it("a partial run on either side is not comparable, even under the same model", () => {
+    const abb = fixtureStock("ABB");
+    const r = snapshots(abb.history, abb.runs);
+    expect(compare(r[2], r[3])).toMatchObject({ comparable: false, modelChanged: false });
+    expect(compare(r[0], r[1])).toMatchObject({ comparable: true, modelChanged: false });
+  });
+
+  it("without run sizes nothing is marked partial", () => {
+    expect(s.every((x) => x.partial === false && x.runSize === null)).toBe(true);
+  });
+
   it("gives no delta when either score is missing", () => {
     expect(compare({ ...s[0], score: null }, s[2]).scoreDelta).toBeNull();
   });

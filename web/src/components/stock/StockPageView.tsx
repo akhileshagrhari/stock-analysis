@@ -23,7 +23,8 @@ import s from "./stock.module.css";
 export function StockPageView({ data }: { data: StockPageData }) {
   const { instrument, explanation, model } = data;
   const state = scoreState(explanation, model);
-  const points = snapshots(data.history);
+  const points = snapshots(data.history, data.runs);
+  const current = points.find((p) => p.date === explanation?.as_of) ?? null;
   const closes = toCloses(data.prices);
   const lastVolume = data.prices.at(-1)?.volume ?? null;
   const scored = explanation !== null;
@@ -39,6 +40,7 @@ export function StockPageView({ data }: { data: StockPageData }) {
           model={model}
           modelVersion={explanation?.stored_version ?? explanation?.current_version ?? null}
           sector={instrument.sector}
+          partialRun={current?.partial ? current.runSize : null}
         />
         {scored && <TrendCard points={points} />}
         <PriceCard closes={closes} lastVolume={lastVolume} />
