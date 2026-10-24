@@ -18,7 +18,7 @@ describe("SegmentMeter", () => {
   it("places the marker at the score", () => {
     render(<SegmentMeter score={28.4} thresholds={thresholds} />);
     expect(screen.getByTestId("meter-marker")).toHaveStyle({ left: "28.4%" });
-    expect(screen.getByRole("img")).toHaveAccessibleName(/28 out of 100/);
+    expect(screen.getByRole("img")).toHaveAccessibleName(/28\.4 out of 100/);
   });
 
   it("has no marker for a null score (Review Focus 5)", () => {

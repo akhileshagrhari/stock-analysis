@@ -32,7 +32,8 @@ describe("signals list logic", () => {
     const cross = withPrevious(fixtureSignals("2026-08-16"), fixtureSignals("2026-08-14"));
     const rel = cross.find((r) => r.nse_symbol === "RELIANCE")!;
     expect(rel.modelChanged).toBe(true);
-    expect(rel.delta!.toFixed(1)).toBe("-4.7");
+    // Displayed 33.2 then 28.4: the change is taken from what is shown.
+    expect(rel.delta!.toFixed(1)).toBe("-4.8");
   });
 
   it("sorts null scores last in both directions", () => {

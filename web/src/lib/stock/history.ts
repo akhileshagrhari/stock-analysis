@@ -1,4 +1,5 @@
 import type { Signal } from "@/lib/api/types";
+import { scoreDelta } from "@/lib/format";
 import { isSignalKey, type SignalKey } from "@/config/signals";
 
 export type Snapshot = {
@@ -37,12 +38,12 @@ export function changeSinceFirst(s: Snapshot[]): number | null {
   if (s.length < 2) return null;
   const first = s[0].score;
   const last = s[s.length - 1].score;
-  return first === null || last === null ? null : last - first;
+  return first === null || last === null ? null : scoreDelta(first, last);
 }
 
 export function compare(then: Snapshot, now: Snapshot): { scoreDelta: number | null; signalChanged: boolean; comparable: boolean } {
   return {
-    scoreDelta: then.score === null || now.score === null ? null : now.score - then.score,
+    scoreDelta: then.score === null || now.score === null ? null : scoreDelta(then.score, now.score),
     signalChanged: then.signal !== now.signal,
     comparable: then.model === now.model,
   };

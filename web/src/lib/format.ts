@@ -104,12 +104,23 @@ export function absFixed(v: number, digits: number): string {
 }
 
 /**
- * A 0-100 composite score in whole points, rounded down: the band lines are
- * whole numbers, so 74.6 reads 74 beside its HOLD, never 75 beside "BUY ≥ 75".
+ * The composite score as displayed: one decimal, rounded half-up, except
+ * that it never rounds up across a whole number. The band lines are whole
+ * numbers, so 74.96 shows 74.9 beside its HOLD, never 75.0 beside "BUY ≥ 75".
  */
-export function scoreText(score: number, digits = 0): string {
-  const f = 10 ** digits;
-  return (Math.floor(Number((score * f).toPrecision(12))) / f).toFixed(digits);
+export function scoreValue(score: number): number {
+  const r = roundTo(score, 1);
+  return Math.floor(r) > Math.floor(Number(score.toPrecision(12))) ? Math.floor(score) + 0.9 : r;
+}
+
+/** "74.6": a composite score as text, see scoreValue. */
+export function scoreText(score: number): string {
+  return scoreValue(score).toFixed(1);
+}
+
+/** Change between two scores, from their displayed values so what's on screen adds up. */
+export function scoreDelta(from: number, to: number): number {
+  return roundTo(scoreValue(to) - scoreValue(from), 1);
 }
 
 export function ordinal(n: number): string {

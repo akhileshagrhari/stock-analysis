@@ -1,4 +1,5 @@
 import type { Explanation, Family, ModelInfo, NewsMix } from "@/lib/api/types";
+import { roundTo, scoreValue } from "@/lib/format";
 import { LOW_COVERAGE } from "@/config/site";
 import { RED_FLAGS } from "@/config/redflags";
 import { isSignalKey, SIGNALS, type SignalKey } from "@/config/signals";
@@ -51,11 +52,13 @@ export function scoreState(expl: Explanation | null, model: ModelInfo): ScoreSta
   return { kind: "scored", score, signal, asOf: expl.as_of, coverage, lowCoverage, band, overridden, stale };
 }
 
-/** How far the score is from the next band line, in whole points. */
+/** How far the displayed score is from the next band line. */
 export function bandGap(score: number, model: ModelInfo): string {
-  if (score < model.sell_threshold) return `${Math.ceil(model.sell_threshold - score)} pts to ${SIGNALS.HOLD.label}`;
-  if (score < model.buy_threshold) return `${Math.ceil(model.buy_threshold - score)} pts to ${SIGNALS.BUY.label}`;
-  return `${Math.floor(score - model.buy_threshold)} pts above the ${SIGNALS.BUY.label} line`;
+  const shown = scoreValue(score);
+  const gap = (line: number) => roundTo(Math.abs(line - shown), 1).toFixed(1);
+  if (score < model.sell_threshold) return `${gap(model.sell_threshold)} pts to ${SIGNALS.HOLD.label}`;
+  if (score < model.buy_threshold) return `${gap(model.buy_threshold)} pts to ${SIGNALS.BUY.label}`;
+  return `${gap(model.buy_threshold)} pts above the ${SIGNALS.BUY.label} line`;
 }
 
 const MOVES = 0.05;

@@ -23,7 +23,7 @@ function Column({ title, p }: { title: string; p: Snapshot }) {
         {title} · {fmtDate(p.date)}
       </h4>
       <div className={s.cmpRow}>
-        Score <b className="tnum">{p.score === null ? "Not scored" : scoreText(p.score, 1)}</b>
+        Score <b className="tnum">{p.score === null ? "Not scored" : scoreText(p.score)}</b>
       </div>
       <div className={s.cmpRow}>
         Signal <SignalChip signal={p.signal} />
@@ -116,7 +116,7 @@ export function ScoreHistorySection({ points, model }: { points: Snapshot[]; mod
               {[...points].reverse().map((p) => (
                 <tr key={p.date}>
                   <td>{fmtDate(p.date)}</td>
-                  <td>{p.score === null ? "—" : scoreText(p.score, 1)}</td>
+                  <td>{p.score === null ? "—" : scoreText(p.score)}</td>
                   <td className={s.left}>
                     <SignalChip signal={p.signal} />
                   </td>

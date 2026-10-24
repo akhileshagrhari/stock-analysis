@@ -23,8 +23,8 @@ export function Sparkline({ points }: { points: Snapshot[] }) {
   const last = scored[scored.length - 1];
   const summary =
     scored.length === 1
-      ? `Scored once: ${scoreText(first.score, 1)} on ${fmtDate(first.date)}`
-      : `Score on ${scored.length} dates, from ${scoreText(first.score, 1)} on ${fmtDate(first.date)} to ${scoreText(last.score, 1)} on ${fmtDate(last.date)}` +
+      ? `Scored once: ${scoreText(first.score)} on ${fmtDate(first.date)}`
+      : `Score on ${scored.length} dates, from ${scoreText(first.score)} on ${fmtDate(first.date)} to ${scoreText(last.score)} on ${fmtDate(last.date)}` +
         (changes.length ? `; the model changed ${changes.length === 1 ? "once" : `${changes.length} times`}` : "");
 
   return (
@@ -54,7 +54,7 @@ export function Sparkline({ points }: { points: Snapshot[] }) {
         return (
           <g key={p.date}>
             <circle cx={x(i)} cy={y(p.score!)} r={4} fill="#fff" stroke="var(--accent)" strokeWidth={2}>
-              <title>{`${fmtDate(p.date)} · ${scoreText(p.score!, 1)} · ${signalLabel(p.signal)}`}</title>
+              <title>{`${fmtDate(p.date)} · ${scoreText(p.score!)} · ${signalLabel(p.signal)}`}</title>
             </circle>
             {(labelAll || k === 0 || k === idx.length - 1) && (
               <text x={x(i)} y={H + 12} textAnchor={anchor} className={s.svgSmall}>

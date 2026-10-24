@@ -10,6 +10,7 @@ import {
   parseDay,
   pct,
   quarterLabel,
+  scoreDelta,
   scoreText,
   shortModel,
   zLabel,
@@ -83,13 +84,25 @@ describe("rounding", () => {
 });
 
 describe("scoreText", () => {
-  it("shows whole points that never cross a band line", () => {
-    expect(scoreText(74.6)).toBe("74");
-    expect(scoreText(75)).toBe("75");
-    expect(scoreText(44.99)).toBe("44");
-    expect(scoreText(0)).toBe("0");
-    expect(scoreText(74.96, 1)).toBe("74.9");
-    expect(scoreText(28.04, 1)).toBe("28.0");
+  it("shows one decimal, rounded as a reader would", () => {
+    expect(scoreText(74.6)).toBe("74.6");
+    expect(scoreText(28.435)).toBe("28.4");
+    expect(scoreText(32.55)).toBe("32.6");
+    expect(scoreText(75)).toBe("75.0");
+    expect(scoreText(0)).toBe("0.0");
+  });
+
+  it("never rounds up across a whole number, so a band line is never crossed", () => {
+    expect(scoreText(74.96)).toBe("74.9");
+    expect(scoreText(44.99)).toBe("44.9");
+  });
+});
+
+describe("scoreDelta", () => {
+  it("is the difference of the displayed scores, so the numbers on screen add up", () => {
+    // 10.04 shows 10.0 and 10.16 shows 10.2: the raw difference 0.12 would read +0.1.
+    expect(scoreDelta(10.04, 10.16)).toBe(0.2);
+    expect(scoreDelta(32.54, 28.435)).toBe(-4.1);
   });
 });
 

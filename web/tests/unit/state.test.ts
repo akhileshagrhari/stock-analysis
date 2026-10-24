@@ -36,9 +36,10 @@ describe("scoreState", () => {
 describe("bandGap", () => {
   it("measures the distance to the next band", () => {
     const rel = scoreState(fixtureStock("RELIANCE").explanation, m);
-    expect(bandGap(rel.score!, m)).toBe("17 pts to HOLD");
-    expect(bandGap(60, m)).toBe("15 pts to BUY");
-    expect(bandGap(93.29, m)).toBe("18 pts above the BUY line");
+    expect(bandGap(rel.score!, m)).toBe("16.6 pts to HOLD");
+    expect(bandGap(60, m)).toBe("15.0 pts to BUY");
+    expect(bandGap(74.96, m)).toBe("0.1 pts to BUY");
+    expect(bandGap(93.29, m)).toBe("18.3 pts above the BUY line");
   });
 });
 

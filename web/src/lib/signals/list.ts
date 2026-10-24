@@ -1,5 +1,5 @@
 import type { Signal } from "@/lib/api/types";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, scoreDelta } from "@/lib/format";
 import type { SignalKey } from "@/config/signals";
 
 /** A signal row with its change since the previous scored date. */
@@ -9,7 +9,7 @@ export function withPrevious(current: Signal[], previous: Signal[]): Row[] {
   const before = new Map(previous.map((p) => [p.isin, p]));
   return current.map((r) => {
     const p = before.get(r.isin);
-    const delta = p && p.composite_score !== null && r.composite_score !== null ? r.composite_score - p.composite_score : null;
+    const delta = p && p.composite_score !== null && r.composite_score !== null ? scoreDelta(p.composite_score, r.composite_score) : null;
     return { ...r, delta, modelChanged: p !== undefined && p.model_version !== r.model_version };
   });
 }

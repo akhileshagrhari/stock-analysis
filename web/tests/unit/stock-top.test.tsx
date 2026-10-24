@@ -13,7 +13,7 @@ function renderView(symbol: FixtureSymbol, patch: (d: StockPageData) => StockPag
 describe("stock page top: RELIANCE (scored, ordinary)", () => {
   it("shows the score, signal, date and model", () => {
     renderView("RELIANCE");
-    expect(screen.getByTestId("score-value")).toHaveTextContent("28");
+    expect(screen.getByTestId("score-value")).toHaveTextContent(/^28\.4 \/ 100$/);
     expect(screen.getAllByText("SELL").length).toBeGreaterThan(0);
     expect(screen.getByText("Scored 16 Aug 2026 · model 4b05e87d")).toBeInTheDocument();
   });
@@ -21,7 +21,7 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
   it("explains why", () => {
     renderView("RELIANCE");
     const why = screen.getByTestId("why-card");
-    expect(within(why).getByText("17 pts to HOLD")).toBeInTheDocument();
+    expect(within(why).getByText("16.6 pts to HOLD")).toBeInTheDocument();
     expect(within(why).getByText("Data behind 90% of the model's weight · 19 of 20 factors")).toBeInTheDocument();
     expect(within(why).getByText("Value pulls the score up; quality and momentum pull it down")).toBeInTheDocument();
     expect(within(why).getByText("Value 92nd")).toBeInTheDocument();
@@ -106,8 +106,8 @@ describe("stock page top: other states", () => {
   });
 
   it("a HOLD just under the BUY line never reads 75", () => {
-    renderView("RELIANCE", (d) => ({ ...d, explanation: { ...d.explanation!, composite_score: 74.6, signal: "HOLD", red_flags: [] } }));
-    expect(screen.getByTestId("score-value")).toHaveTextContent(/^74 \/ 100$/);
+    renderView("RELIANCE", (d) => ({ ...d, explanation: { ...d.explanation!, composite_score: 74.96, signal: "HOLD", red_flags: [] } }));
+    expect(screen.getByTestId("score-value")).toHaveTextContent(/^74\.9 \/ 100$/);
     expect(document.body.textContent).not.toMatch(/Score\s*75/);
   });
 

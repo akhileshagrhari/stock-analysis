@@ -113,7 +113,7 @@ export function ScoreHistoryChart({ points, thresholds, selected }: { points: Sn
           const sel = p.date === selected;
           return (
             <circle key={p.date} data-point="" cx={x(i)} cy={y(p.score!)} r={sel || hover === i ? 6 : 4.5} fill={sel ? "var(--accent)" : "#fff"} stroke="var(--accent)" strokeWidth={2}>
-              <title>{`${fmtDate(p.date)} · ${scoreText(p.score!, 1)} · ${signalLabel(p.signal)} · ${coverageShort(p.coverage)} · model ${shortModel(p.model)}`}</title>
+              <title>{`${fmtDate(p.date)} · ${scoreText(p.score!)} · ${signalLabel(p.signal)} · ${coverageShort(p.coverage)} · model ${shortModel(p.model)}`}</title>
             </circle>
           );
         })}
@@ -130,7 +130,7 @@ export function ScoreHistoryChart({ points, thresholds, selected }: { points: Sn
       </svg>
       {hp && hp.score !== null && (
         <div className={s.tip} style={{ left: x(hover!), top: y(hp.score) }}>
-          <b>{scoreText(hp.score, 1)}</b> · {signalLabel(hp.signal)} · {fmtDate(hp.date)}
+          <b>{scoreText(hp.score)}</b> · {signalLabel(hp.signal)} · {fmtDate(hp.date)}
           <br />
           {coverageShort(hp.coverage)} · model {shortModel(hp.model)}
         </div>
