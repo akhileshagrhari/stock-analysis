@@ -61,8 +61,9 @@ export function SearchBox({ autoFocus = false, size = "hero" }: { autoFocus?: bo
     try {
       const found = await browserGet<Instrument[]>(`/instruments/search?q=${encodeURIComponent(query)}&limit=${LIMIT}`, c.signal);
       if (id !== reqId.current) return;
+      // Search never 404s for "no match" (that's []), so null means no answer.
       setResults(found ?? []);
-      setFailed(false);
+      setFailed(found === null);
     } catch {
       // A request this box cancelled (the user kept typing) is not an outage.
       if (id !== reqId.current || c.signal.aborted) return;

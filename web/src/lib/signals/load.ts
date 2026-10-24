@@ -80,6 +80,14 @@ export async function loadSignals(q: { signal?: string; sector?: string; as_of?:
   };
 }
 
+export type RedFlagsData = { flagged: Signal[]; asOf: string | null };
+
+/** Companies with a triggered red flag on the API's latest date. */
+export async function loadRedFlags(get: Getter = serverGet): Promise<RedFlagsData> {
+  const [health, flagged] = await Promise.all([required<Health>(get, "/health"), required<Signal[]>(get, "/signals/red-flags?limit=1000")]);
+  return { flagged, asOf: health.latest_as_of ?? null };
+}
+
 export type HomeData = {
   asOf: string;
   counts: Record<SignalKey, number>;

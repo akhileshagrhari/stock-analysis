@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { counts, partialNotice, sortRows, withPrevious, type Row } from "@/lib/signals/list";
-import { loadHome, loadSignals } from "@/lib/signals/load";
+import { ApiUnavailableError } from "@/lib/api/client";
+import { loadHome, loadRedFlags, loadSignals } from "@/lib/signals/load";
 import { fixtureHealth, fixtureModel, fixtureRedFlags, fixtureSectors, fixtureSignals } from "../fixtures";
 
 /** Answers like the API from the captured fixtures, recording each path. */
@@ -94,5 +95,19 @@ describe("loadHome", () => {
     expect(h.fuller).toEqual({ date: "2026-08-14", count: 77 });
     const shown = [...h.top, ...h.bottom].map((r) => r.nse_symbol);
     expect(new Set(shown).size).toBe(shown.length);
+  });
+});
+
+describe("loadRedFlags", () => {
+  it("lists the flagged companies with the date", async () => {
+    const data = await loadRedFlags(apiStub());
+    expect(data.flagged.map((r) => r.nse_symbol)).toContain("ADANIENSOL");
+    expect(data.asOf).toBe("2026-08-16");
+  });
+
+  it("is an outage, not 'nothing flagged', when the API has no answer", async () => {
+    const stub = apiStub();
+    const get = (async (path: string) => (path.startsWith("/signals/red-flags") ? null : stub(path))) as typeof stub;
+    await expect(loadRedFlags(get)).rejects.toBeInstanceOf(ApiUnavailableError);
   });
 });

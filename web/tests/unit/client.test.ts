@@ -4,6 +4,7 @@ import { ApiUnavailableError, browserGet, serverGet } from "@/lib/api/client";
 const realFetch = global.fetch;
 afterEach(() => {
   global.fetch = realFetch;
+  vi.unstubAllEnvs();
 });
 
 function stubFetch(status: number, body: unknown) {
@@ -15,9 +16,26 @@ function stubFetch(status: number, body: unknown) {
 }
 
 describe("serverGet", () => {
-  it("maps 404 to null", async () => {
-    stubFetch(404, { detail: "No signal stored" });
+  it("maps the API's own 404 answer to null", async () => {
+    stubFetch(404, { detail: "No signal stored for 'INE040A01034'" });
     expect(await serverGet("/instruments/X/explanation")).toBeNull();
+  });
+
+  it("treats a 404 for an unknown route as an outage, not as absent data", async () => {
+    stubFetch(404, { detail: "Not Found" });
+    await expect(serverGet("/instruments/by-symbol/RELIANCE")).rejects.toMatchObject({ name: "ApiUnavailableError", status: 404 });
+  });
+
+  it("treats a 404 without the API's JSON detail as an outage", async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response("<html>404</html>", { status: 404, headers: { "content-type": "text/html" } })) as unknown as typeof fetch;
+    await expect(serverGet("/health")).rejects.toBeInstanceOf(ApiUnavailableError);
+  });
+
+  it("ignores trailing slashes on SA_API_URL", async () => {
+    vi.stubEnv("SA_API_URL", "http://localhost:8000//");
+    const f = stubFetch(200, []);
+    await serverGet("/sectors");
+    expect(f.mock.calls[0][0]).toBe("http://localhost:8000/v1/sectors");
   });
 
   it("throws ApiUnavailableError on 503", async () => {
@@ -43,8 +61,8 @@ describe("serverGet", () => {
 });
 
 describe("browserGet", () => {
-  it("goes through the /api/v1 proxy and maps 404 to null", async () => {
-    const f = stubFetch(404, {});
+  it("goes through the /api/v1 proxy and maps the API's own 404 to null", async () => {
+    const f = stubFetch(404, { detail: "No instrument for symbol 'X'" });
     expect(await browserGet("/instruments/search?q=x")).toBeNull();
     expect(f.mock.calls[0][0]).toBe("/api/v1/instruments/search?q=x");
   });
