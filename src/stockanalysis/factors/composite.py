@@ -389,9 +389,18 @@ def persist(
 ) -> tuple[int, int]:
     """Write factor-level scores and signals. Returns (factor rows, signal rows).
 
+    **A run is the whole answer for the date, for every company it scored.**
+    Each company's earlier rows for `result.as_of` are removed first, in the
+    same transaction as the writes. An upsert alone would leave a company that
+    has since fallen below the floor with the signal an earlier run stored that
+    day, and a factor that is now unmeasurable with its old value — which is how
+    a re-run over the 24 Oct 2026 one-company job would have kept that run's
+    stale-price momentum beside the corrected scores.
+
     With `generate_narratives`, each stored signal also gets a written
     explanation from Claude. Off by default: it is the only part of scoring that
-    costs money per run, and every test would otherwise pay for it.
+    costs money per run, and every test would otherwise pay for it. Narratives
+    are written before the transaction opens, so a slow API call never holds it.
     """
     rows = []
     for factor_name in result.raw.columns:
@@ -405,14 +414,6 @@ def persist(
             }
         )
         rows.append(block[block["raw_value"].notna()])
-
-    n_factors = 0
-    if rows:
-        n_factors = db.upsert_df(
-            "factor_scores",
-            pd.concat(rows, ignore_index=True),
-            ["isin", "as_of_date", "factor_name"],
-        )
 
     table = result.table()
     signals = pd.DataFrame(
@@ -433,7 +434,28 @@ def persist(
     if generate_narratives and not signals.empty:
         signals["narrative"] = _narratives(db, result, signals)
 
-    n_signals = db.upsert_df("signals", signals, ["isin", "as_of_date"])
+    isins = [str(isin) for isin in result.raw.index]
+    n_factors = 0
+    db.conn.execute("BEGIN TRANSACTION")
+    try:
+        if isins:
+            marks = ", ".join("?" for _ in isins)
+            for name in ("factor_scores", "signals"):
+                db.conn.execute(
+                    f"DELETE FROM {name} WHERE as_of_date = ? AND isin IN ({marks})",
+                    [result.as_of, *isins],
+                )
+        if rows:
+            n_factors = db.upsert_df(
+                "factor_scores",
+                pd.concat(rows, ignore_index=True),
+                ["isin", "as_of_date", "factor_name"],
+            )
+        n_signals = db.upsert_df("signals", signals, ["isin", "as_of_date"])
+        db.conn.execute("COMMIT")
+    except BaseException:
+        db.conn.execute("ROLLBACK")
+        raise
 
     return n_factors, n_signals
 
