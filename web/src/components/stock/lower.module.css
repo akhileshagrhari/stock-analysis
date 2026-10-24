@@ -10,7 +10,12 @@
 .kv .h { font-size: 12px; color: var(--ink3); padding-top: 0; }
 .kv .right { text-align: right; }
 .fam { color: var(--ink); font-weight: 500; }
-.w { color: var(--ink3); font-size: 12.5px; text-align: right; }
+.w { color: var(--ink3); font-size: 12.5px; text-align: right; white-space: nowrap; }
+.w b { color: var(--ink); font-weight: 600; }
+.w small { font-size: 11.5px; }
+.contrib { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.contrib > :first-child { flex: 1; min-width: 0; }
+.cval { font-size: 12.5px; color: var(--ink2); min-width: 3.4em; text-align: right; }
 .pctl { font-weight: 600; text-align: right; }
 .nm { color: var(--ink3); font-weight: 400; }
 .foot { font-size: 12px; color: var(--ink3); margin-top: 10px; line-height: 1.45; }

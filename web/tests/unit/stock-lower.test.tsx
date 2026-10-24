@@ -103,6 +103,28 @@ describe("other companies", () => {
     expect(within(peers).getAllByRole("row").length).toBe(8); // header + 7 companies
   });
 
+  it("CHOLAFIN breakdown: weights re-normalised over the measured families, with the contribution printed", () => {
+    renderView("CHOLAFIN");
+    const b = section("breakdown");
+    const row = (family: string) => b.querySelector(`[data-family="${family}"]`) as HTMLElement;
+    // Growth 0.20 and momentum 0.15 are the only measured weights: 0.20 / 0.35 and 0.15 / 0.35.
+    expect(row("growth")).toHaveTextContent(/57%\s*of 20%/);
+    expect(row("momentum")).toHaveTextContent(/43%\s*of 15%/);
+    expect(row("growth")).toHaveTextContent("+0.21");
+    expect(row("momentum")).toHaveTextContent("+0.64");
+    expect(row("value")).not.toHaveTextContent("25%");
+    expect(row("value")).toHaveTextContent("—");
+    expect(within(b).getByText(/Contribution = family z × weight, re-weighted over the measured families/)).toBeInTheDocument();
+    expect(within(b).queryByText(/Contribution = weight × family z-score/)).toBeNull();
+  });
+
+  it("RELIANCE breakdown: value's 25% becomes 28% with sentiment unmeasured", () => {
+    renderView("RELIANCE");
+    const value = section("breakdown").querySelector('[data-family="value"]') as HTMLElement;
+    expect(value).toHaveTextContent(/28%\s*of 25%/);
+    expect(value).toHaveTextContent("+0.39");
+  });
+
   it("ADANIENSOL: one snapshot, nothing to compare", () => {
     renderView("ADANIENSOL");
     expect(within(section("history")).getByText(/Only one snapshot so far/)).toBeInTheDocument();
