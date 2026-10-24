@@ -977,3 +977,24 @@ class TestR12NewsRelevanceAndStatus:
         _db, isin = news_db
         news = client.get(f"/v1/instruments/{isin}/explanation").json()["news"]
         assert news == {"positive": 1, "negative": 0, "neutral": 0, "total": 1}
+
+
+# ----------------------------------------------------------------------
+# R13 — instrument profile fields
+# ----------------------------------------------------------------------
+
+
+class TestR13InstrumentProfile:
+    def test_industry_and_the_bse_code_are_returned(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.conn.execute(
+            "UPDATE instruments SET bse_code = '500325', industry = 'Refineries' WHERE isin = ?",
+            [isin],
+        )
+        body = client.get(f"/v1/instruments/{isin}").json()
+        assert body["industry"] == "Refineries"
+        assert body["bse_code"] == "500325"
+        listed = {r["isin"]: r for r in client.get("/v1/instruments").json()}
+        assert listed[isin]["industry"] == "Refineries"
+        symbol = body["nse_symbol"]
+        assert client.get(f"/v1/instruments/by-symbol/{symbol}").json()["industry"] == "Refineries"

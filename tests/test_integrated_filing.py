@@ -574,6 +574,54 @@ def test_a_quarter_with_no_broadcast_date_is_dated_by_its_deadline(db_with_unive
     assert row["revenue"] + row["other_income"] == pytest.approx(row["total_income"])
 
 
+@pytest.mark.parametrize(
+    ("fixture", "code"),
+    [
+        ("reliance_q1_fy2027_integrated.xml", "500325"),   # entity identifier
+        ("hdfcbank_q1_fy2027_integrated.xml", "500180"),
+        ("infosys_fy2024_annual.xml", "500209"),           # legacy: the fact
+        ("lt_fy2024_consolidated.xml", "500510"),
+        ("zydus_h1_fy2025.xml", "532321"),
+    ],
+)
+def test_the_bse_code_is_read_from_either_format(fixture, code):
+    from xml.etree import ElementTree
+
+    from stockanalysis.ingest.xbrl import parse_xbrl, scrip_code
+
+    raw = (FIXTURES / fixture).read_bytes()
+    assert scrip_code(ElementTree.fromstring(raw)) == code
+    if "annual" not in fixture and "consolidated" not in fixture:
+        assert parse_xbrl(raw).scrip_code == code
+
+
+def test_reading_a_quarter_fills_the_bse_code_and_never_overwrites(db_with_universe):
+    from stockanalysis.ingest.xbrl_quarterly import (
+        ingest_quarterly_xbrl,
+        pending_quarterly_filings,
+    )
+
+    db = db_with_universe
+    db.conn.execute("UPDATE instruments SET bse_code = '999999' WHERE isin = ?", [HDFCBANK])
+    db.upsert_df("results_filings", pd.DataFrame([
+        _filing(RELIANCE, dt.date(2026, 6, 30), "First Quarter", seq="1695741",
+                broadcast=dt.date(2026, 7, 17)),
+        _filing(HDFCBANK, dt.date(2026, 6, 30), "First Quarter", seq="1696123",
+                broadcast=dt.date(2026, 7, 18)),
+    ]), ["isin", "period_end_date", "basis"])
+    session = _FakeSession({
+        "1695741": RELIANCE_Q1_FY2027.read_bytes(),
+        "1696123": HDFCBANK_Q1_FY2027.read_bytes(),
+    })
+    results = ingest_quarterly_xbrl(db, pending_quarterly_filings(db), session=session)
+    assert all(r.ok for r in results)
+
+    codes = dict(db.query("SELECT isin, bse_code FROM instruments").itertuples(index=False))
+    assert codes[RELIANCE] == "500325"
+    assert codes[HDFCBANK] == "999999"
+    assert pd.isna(codes[ABB])
+
+
 def test_a_bank_quarter_uses_total_income_as_its_top_line(db_with_universe):
     """A bank has no revenue from operations to tag. Interest earned plus
     other income is its top line, and the one the legacy feed carried."""

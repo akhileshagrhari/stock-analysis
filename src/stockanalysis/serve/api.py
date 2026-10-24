@@ -210,8 +210,19 @@ class InstrumentOut(BaseModel):
     nse_symbol: str
     name: str
     sector: str | None = None
-    bse_code: str | None = None
-    listing_date: dt.date | None = None
+    bse_code: str | None = Field(
+        default=None,
+        description="BSE scrip code, as the company's own results filings "
+        "identify it. Null until a filing has been read.",
+    )
+    listing_date: dt.date | None = Field(
+        default=None, description="Null: no source for it is ingested yet."
+    )
+    industry: str | None = Field(
+        default=None,
+        description="The exchange's industry classification. For the NIFTY 100 "
+        "universe today it repeats the sector.",
+    )
 
     @classmethod
     def of(cls, row: queries.Instrument) -> InstrumentOut:

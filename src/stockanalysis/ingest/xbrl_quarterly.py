@@ -237,6 +237,7 @@ def _ingest_one(db: Database, ref: QuarterlyFilingRef, session=None) -> QuarterR
     db.upsert_df(
         "fundamentals_quarterly", pd.DataFrame([row]), ["isin", "period_end_date"]
     )
+    record_bse_code(db, ref.isin, facts.scrip_code)
     return QuarterResult(ref, row=row)
 
 
@@ -252,6 +253,22 @@ QUARTERLY_PNL_FIELDS = (
     "profit_before_tax",
     "tax_expense",
 )
+
+
+def record_bse_code(db: Database, isin: str, code: str | None) -> bool:
+    """Fill `instruments.bse_code` from a filing that names it. Never overwrites.
+
+    The exchange master list the universe was loaded from carries no BSE code,
+    and every results filing states one, so the first filing read fills it.
+    """
+    if not code:
+        return False
+    db.conn.execute(
+        "UPDATE instruments SET bse_code = ? "
+        "WHERE isin = ? AND (bse_code IS NULL OR bse_code = '')",
+        [code, isin],
+    )
+    return True
 
 
 def to_row(ref: QuarterlyFilingRef, facts: XbrlFacts) -> dict:

@@ -117,6 +117,7 @@ class Instrument:
     sector: str | None = None
     bse_code: str | None = None
     listing_date: dt.date | None = None
+    industry: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -343,6 +344,7 @@ def _instrument(row: pd.Series) -> Instrument:
         sector=_opt_str(row.get("sector")),
         bse_code=_opt_str(row.get("bse_code")),
         listing_date=_opt_date(row.get("listing_date")),
+        industry=_opt_str(row.get("industry")),
     )
 
 
@@ -483,7 +485,7 @@ def sectors(db: Database) -> list[str]:
 
 def list_instruments(db: Database, sector: str | None = None) -> list[Instrument]:
     sql = (
-        "SELECT isin, nse_symbol, bse_code, name, sector, listing_date "
+        "SELECT isin, nse_symbol, bse_code, name, sector, industry, listing_date "
         "FROM instruments"
     )
     params: list[Any] = []
@@ -497,7 +499,7 @@ def list_instruments(db: Database, sector: str | None = None) -> list[Instrument
 
 def get_instrument(db: Database, isin: str) -> Instrument | None:
     df = db.query(
-        "SELECT isin, nse_symbol, bse_code, name, sector, listing_date "
+        "SELECT isin, nse_symbol, bse_code, name, sector, industry, listing_date "
         "FROM instruments WHERE isin = ?",
         [isin],
     )
@@ -509,7 +511,7 @@ def get_instrument(db: Database, isin: str) -> Instrument | None:
 def resolve_symbol(db: Database, symbol: str) -> Instrument | None:
     """Look an instrument up by NSE symbol — what a human types, not an ISIN."""
     df = db.query(
-        "SELECT isin, nse_symbol, bse_code, name, sector, listing_date "
+        "SELECT isin, nse_symbol, bse_code, name, sector, industry, listing_date "
         "FROM instruments WHERE upper(nse_symbol) = upper(?)",
         [symbol],
     )
