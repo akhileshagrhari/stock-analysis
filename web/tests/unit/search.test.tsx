@@ -110,6 +110,22 @@ describe("SearchBox", () => {
     expect(push).toHaveBeenCalledWith("/stocks/M%26M");
   });
 
+  it("Enter before the results arrive opens the typed symbol", async () => {
+    stubSearch({ "m&m": [] });
+    render(<SearchBox />);
+    await user.type(input(), " m&m {Enter}");
+    expect(push).toHaveBeenCalledWith("/stocks/M%26M");
+  });
+
+  it("Enter after a search that found nothing does nothing", async () => {
+    stubSearch({});
+    render(<SearchBox />);
+    await user.type(input(), "zzz");
+    await advance(160);
+    await user.keyboard("{Enter}");
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it("Escape closes the list", async () => {
     stubSearch({ reli: [RELIANCE] });
     render(<SearchBox />);

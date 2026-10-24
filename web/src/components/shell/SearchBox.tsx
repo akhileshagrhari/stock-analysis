@@ -27,6 +27,8 @@ export function SearchBox({ autoFocus = false, size = "hero" }: { autoFocus?: bo
 
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Instrument[] | null>(null);
+  // The query the current results answer; Enter before they arrive opens the typed symbol.
+  const [answered, setAnswered] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -63,6 +65,7 @@ export function SearchBox({ autoFocus = false, size = "hero" }: { autoFocus?: bo
       if (id !== reqId.current) return;
       // Search never 404s for "no match" (that's []), so null means no answer.
       setResults(found ?? []);
+      setAnswered(query);
       setFailed(found === null);
     } catch {
       // A request this box cancelled (the user kept typing) is not an outage.
@@ -105,6 +108,12 @@ export function SearchBox({ autoFocus = false, size = "hero" }: { autoFocus?: bo
     } else if (e.key === "Enter" && open && results && n) {
       e.preventDefault();
       go(results[active >= 0 ? active : 0]);
+    } else if (e.key === "Enter" && q.trim() && answered !== q.trim()) {
+      e.preventDefault();
+      if (timer.current) clearTimeout(timer.current);
+      controller.current?.abort();
+      setOpen(false);
+      router.push(`/stocks/${encodeURIComponent(q.trim().toUpperCase())}`);
     } else if (e.key === "Escape") {
       setOpen(false);
       setActive(-1);
