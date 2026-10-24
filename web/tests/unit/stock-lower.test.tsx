@@ -83,6 +83,21 @@ describe("other companies", () => {
     expect(screen.getByText("FY25 (Dec)")).toBeInTheDocument();
   });
 
+  it("ABB financials: the basis is given per column, and mixed bases are called out", async () => {
+    const user = userEvent.setup();
+    renderView("ABB");
+    const fin = section("financials");
+    // Every ABB quarter is standalone; no section-wide "consolidated" label.
+    expect(within(fin).queryByText(/· consolidated ·/)).toBeNull();
+    const qBasis = rowNamed("Basis");
+    expect(within(qBasis).getAllByText("Standalone")).toHaveLength(11);
+    expect(within(fin).queryByText(/mix consolidated and standalone/)).toBeNull();
+    await user.click(within(fin).getByRole("button", { name: "Annual" }));
+    const aBasis = rowNamed("Basis");
+    expect(within(aBasis).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Basis", "Consolidated", "Standalone", "Standalone"]);
+    expect(within(fin).getByText("These columns mix consolidated and standalone figures, so they don't compare like for like.")).toBeInTheDocument();
+  });
+
   it("HDFCBANK: no annual figures, no breakdown or history", async () => {
     const user = userEvent.setup();
     renderView("HDFCBANK");
