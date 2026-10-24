@@ -50,7 +50,13 @@ from stockanalysis.db.database import (
     SchemaOutOfDateError,
 )
 from stockanalysis.factors import redflags
-from stockanalysis.factors.composite import BUY_THRESHOLD, FAMILY_WEIGHTS, SELL_THRESHOLD
+from stockanalysis.factors.composite import (
+    BUY_THRESHOLD,
+    FAMILY_WEIGHTS,
+    SELL_THRESHOLD,
+    ScoringConfig,
+    default_factors,
+)
 from stockanalysis.serve import explain, queries
 
 app = FastAPI(
@@ -186,6 +192,17 @@ def validate_signal(signal: str | None) -> str | None:
 # ----------------------------------------------------------------------
 
 
+FactorUnit = Literal["percent", "pp", "multiple", "ratio_vs_trend", "score", "ratio"]
+_UNIT_DESCRIPTION = (
+    "How to read raw_value. percent: a fraction to show as % (0.0785 is 7.85%). "
+    "pp: a difference of two fractions, in percentage points (0.012 is +1.2 pp). "
+    "multiple: a ratio to show as × (0.68 is 0.68×). ratio_vs_trend: price over "
+    "its 200-day average (0.89 is 11% below trend). score: signed, −1 to +1. "
+    "ratio: a plain number with no unit. Null for a factor the current model "
+    "does not define."
+)
+
+
 class InstrumentOut(BaseModel):
     isin: str
     nse_symbol: str
@@ -203,6 +220,7 @@ class FactorOut(BaseModel):
     factor_name: str
     raw_value: float | None = None
     sector_zscore: float | None = None
+    unit: FactorUnit | None = Field(default=None, description=_UNIT_DESCRIPTION)
 
     @classmethod
     def of(cls, row: queries.FactorScore) -> FactorOut:
@@ -210,6 +228,7 @@ class FactorOut(BaseModel):
             factor_name=row.factor_name,
             raw_value=row.raw_value,
             sector_zscore=row.sector_zscore,
+            unit=explain.factor_unit(row.factor_name),
         )
 
 
@@ -276,11 +295,56 @@ class HealthOut(BaseModel):
     signals: int = 0
 
 
+class FamilyInfoOut(BaseModel):
+    family: str
+    meaning: str | None = None
+    weight: float = Field(description="Share of the composite, as a fraction (0-1).")
+
+
+class FactorInfoOut(BaseModel):
+    name: str = Field(description="The factor_name stored rows carry.")
+    label: str
+    meaning: str = Field(
+        description="What a positive (sign-adjusted) z-score says about the company."
+    )
+    family: str
+    unit: FactorUnit = Field(description=_UNIT_DESCRIPTION)
+    higher_is_better: bool = Field(
+        description="Direction of the raw metric before the model's sign flip. "
+        "False for debt/equity and accruals, whose z-scores are negated so that "
+        "a positive z is always good."
+    )
+
+
+class RedFlagInfoOut(BaseModel):
+    name: str
+    description: str
+    reachable: bool = Field(
+        description="False when no data source the system ingests can evaluate "
+        "the flag, so it is unknown for every company — never clear."
+    )
+
+
 class ModelInfoOut(BaseModel):
     family_weights: dict[str, float]
     buy_threshold: float
     sell_threshold: float
     scored_dates: list[dt.date]
+    version: str = Field(
+        description="The current model_version. Stored signals carry their own; "
+        "one that differs was scored under another configuration."
+    )
+    coverage_floor: float = Field(
+        description="Fraction (0-1) of the model's weight that must be backed "
+        "by data before a company is scored."
+    )
+    families: list[FamilyInfoOut] = Field(default_factory=list)
+    factors: list[FactorInfoOut] = Field(default_factory=list)
+    red_flags: list[RedFlagInfoOut] = Field(
+        default_factory=list,
+        description="Every flag the model checks. A flag is clear only when it "
+        "is in neither a signal's red_flags nor its unknown_flags.",
+    )
 
 
 class LineItemOut(BaseModel):
@@ -363,6 +427,7 @@ class DriverOut(BaseModel):
     # Sign-adjusted: positive is good for the company whichever way the
     # underlying metric runs. See `serve.explain`.
     z: float | None = None
+    unit: FactorUnit | None = Field(default=None, description=_UNIT_DESCRIPTION)
 
     @classmethod
     def of(cls, row: explain.FactorDriver) -> DriverOut:
@@ -373,6 +438,7 @@ class DriverOut(BaseModel):
             family=row.family,
             raw_value=row.raw_value,
             z=row.z,
+            unit=row.unit,
         )
 
 
@@ -564,12 +630,46 @@ def health(db: DB) -> HealthOut:
 
 @route("/model", response_model=ModelInfoOut, tags=["meta"])
 def model_info(db: DB) -> ModelInfoOut:
-    """What the numbers mean: live weights and thresholds, not a transcription."""
+    """What the numbers mean: live weights and thresholds, not a transcription.
+
+    The factor and flag lists are read from the model's own definitions, so a
+    factor added in Python appears here without anyone copying it.
+    """
+    config = ScoringConfig()
+    order = {name: i for i, name in enumerate(explain.FAMILY_ORDER)}
     return ModelInfoOut(
         family_weights=dict(FAMILY_WEIGHTS),
         buy_threshold=BUY_THRESHOLD,
         sell_threshold=SELL_THRESHOLD,
         scored_dates=queries.scored_dates(db),
+        version=config.version(),
+        coverage_floor=config.min_coverage,
+        families=[
+            FamilyInfoOut(
+                family=family,
+                meaning=explain.FAMILY_MEANING.get(family),
+                weight=weight,
+            )
+            for family, weight in sorted(
+                config.family_weights.items(),
+                key=lambda kv: order.get(kv[0], len(order)),
+            )
+        ],
+        factors=[
+            FactorInfoOut(
+                name=f.name,
+                label=explain.factor_label(f.name),
+                meaning=explain.factor_meaning(f.name),
+                family=f.family,
+                unit=explain.FACTOR_UNITS[f.name],
+                higher_is_better=f.higher_is_better,
+            )
+            for f in default_factors()
+        ],
+        red_flags=[
+            RedFlagInfoOut(name=d.name, description=d.description, reachable=d.reachable)
+            for d in redflags.DEFINITIONS
+        ],
     )
 
 

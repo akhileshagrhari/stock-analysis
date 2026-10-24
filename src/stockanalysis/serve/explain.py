@@ -85,6 +85,41 @@ FACTOR_LABELS: dict[str, tuple[str, str]] = {
     "news_sentiment_30d": ("News sentiment (30d)", "more positive news"),
 }
 
+# How each stored `raw_value` is to be read. Taken from the factor definitions
+# in `factors/`, not from the names: `relative_strength_6m` is a return minus the
+# universe's median return, so a difference in percentage points, and
+# `peg_inverse` is earnings yield times profit growth — a product of two
+# fractions with no unit of its own.
+PERCENT = "percent"                # a fraction, shown as %: 0.0785 is 7.85%
+PERCENTAGE_POINTS = "pp"           # a difference of two fractions: 0.012 is +1.2 pp
+MULTIPLE = "multiple"              # a ratio, shown as ×: 0.68 is 0.68×
+RATIO_VS_TREND = "ratio_vs_trend"  # price / its 200-day average: 0.89 is 11% below
+SCORE = "score"                    # signed, −1 (bearish) to +1 (bullish)
+RATIO = "ratio"                    # a plain number with no unit
+FACTOR_UNITS: dict[str, str] = {
+    "earnings_yield": PERCENT,
+    "book_to_price": MULTIPLE,
+    "ebitda_to_ev": PERCENT,
+    "fcf_yield": PERCENT,
+    "peg_inverse": RATIO,
+    "roe": PERCENT,
+    "roce": PERCENT,
+    "debt_to_equity": MULTIPLE,
+    "interest_coverage": MULTIPLE,
+    "cfo_to_pat": MULTIPLE,
+    "accruals": PERCENT,
+    "revenue_cagr_3y": PERCENT,
+    "pat_cagr_3y": PERCENT,
+    "quarterly_revenue_yoy": PERCENT,
+    "quarterly_pat_yoy": PERCENT,
+    "margin_trend": PERCENTAGE_POINTS,
+    "momentum_12_1": PERCENT,
+    "price_to_200dma": RATIO_VS_TREND,
+    "relative_strength_6m": PERCENTAGE_POINTS,
+    "news_sentiment_30d": SCORE,
+}
+UNITS = (PERCENT, PERCENTAGE_POINTS, MULTIPLE, RATIO_VS_TREND, SCORE, RATIO)
+
 FAMILY_MEANING = {
     "value": "how cheap it is against its sector",
     "quality": "balance-sheet strength and cash conversion",
@@ -110,6 +145,11 @@ def factor_label(name: str) -> str:
 
 def factor_meaning(name: str) -> str:
     return FACTOR_LABELS.get(name, ("", ""))[1]
+
+
+def factor_unit(name: str) -> str | None:
+    """None for a name the current model does not define (an old stored row)."""
+    return FACTOR_UNITS.get(name)
 
 
 @dataclass(frozen=True)
@@ -157,6 +197,10 @@ class FactorDriver:
     @property
     def meaning(self) -> str:
         return factor_meaning(self.name)
+
+    @property
+    def unit(self) -> str | None:
+        return factor_unit(self.name)
 
 
 @dataclass(frozen=True)

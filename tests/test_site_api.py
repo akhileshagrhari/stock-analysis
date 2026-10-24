@@ -294,3 +294,101 @@ class TestR2WhyACompanyIsntScored:
         assert set(get_args(ScoreReason)) == set(explain.SCORE_REASONS)
         schema = app.openapi()["components"]["schemas"]["ScoreStatusOut"]
         assert set(schema["properties"]["reason"]["enum"]) == set(explain.SCORE_REASONS)
+
+
+# ----------------------------------------------------------------------
+# R3 — the model catalogue
+# ----------------------------------------------------------------------
+
+
+class TestR3ModelCatalogue:
+    def test_the_lists_are_the_python_definitions_exactly(self, client):
+        from stockanalysis.factors import redflags
+        from stockanalysis.factors.composite import default_factors
+
+        body = client.get("/v1/model").json()
+        config = ScoringConfig()
+        assert body["version"] == config.version()
+        assert body["coverage_floor"] == config.min_coverage
+
+        assert [f["family"] for f in body["families"]] == explain.FAMILY_ORDER
+        assert {f["family"]: f["weight"] for f in body["families"]} == body["family_weights"]
+        assert all(f["meaning"] == explain.FAMILY_MEANING[f["family"]] for f in body["families"])
+
+        assert body["factors"] == [
+            {
+                "name": f.name,
+                "label": explain.FACTOR_LABELS[f.name][0],
+                "meaning": explain.FACTOR_LABELS[f.name][1],
+                "family": f.family,
+                "unit": explain.FACTOR_UNITS[f.name],
+                "higher_is_better": f.higher_is_better,
+            }
+            for f in default_factors()
+        ]
+        assert body["red_flags"] == [
+            {"name": d.name, "description": d.description, "reachable": d.reachable}
+            for d in redflags.DEFINITIONS
+        ]
+
+    def test_a_factor_added_in_python_must_be_labelled_and_given_a_unit(self):
+        """Otherwise the catalogue would show it under a made-up label."""
+        from stockanalysis.factors.composite import default_factors
+
+        names = [f.name for f in default_factors()]
+        assert set(explain.FACTOR_LABELS) == set(names)
+        assert set(explain.FACTOR_UNITS) == set(names)
+        assert set(explain.FACTOR_UNITS.values()) <= set(explain.UNITS)
+
+    def test_the_api_unit_enum_is_the_units_the_reader_assigns(self):
+        from typing import get_args
+
+        from stockanalysis.serve.api import FactorUnit
+
+        assert set(get_args(FactorUnit)) == set(explain.UNITS)
+
+    def test_units_follow_the_definitions_not_the_names(self, client):
+        units = {f["name"]: f["unit"] for f in client.get("/v1/model").json()["factors"]}
+        assert units["earnings_yield"] == "percent"
+        assert units["book_to_price"] == "multiple"
+        assert units["margin_trend"] == "pp"
+        # A return minus the universe's median return: percentage points.
+        assert units["relative_strength_6m"] == "pp"
+        # E/P × growth: a product of two fractions, not a multiple.
+        assert units["peg_inverse"] == "ratio"
+        assert units["price_to_200dma"] == "ratio_vs_trend"
+        assert units["news_sentiment_30d"] == "score"
+
+    def test_the_lower_is_better_metrics_say_so(self, client):
+        lower = {
+            f["name"] for f in client.get("/v1/model").json()["factors"]
+            if not f["higher_is_better"]
+        }
+        assert lower == {"debt_to_equity", "accruals"}
+
+    def test_unreachable_flags_are_marked(self, client):
+        flags = {f["name"]: f["reachable"] for f in client.get("/v1/model").json()["red_flags"]}
+        assert len(flags) == 6
+        assert {name for name, ok in flags.items() if not ok} == {
+            "promoter_pledge", "rating_downgrade"
+        }
+
+    def test_drivers_and_stored_factors_carry_their_unit(self, client, two_dates_db):
+        isin = _isin_scored_on_both(two_dates_db)
+        explanation = client.get(f"/v1/instruments/{isin}/explanation").json()
+        drivers = explanation["strengths"] + explanation["weaknesses"]
+        assert drivers
+        assert all(d["unit"] == explain.FACTOR_UNITS[d["name"]] for d in drivers)
+
+        latest = client.get(f"/v1/instruments/{isin}/latest").json()
+        assert latest["factors"]
+        assert all(
+            f["unit"] == explain.FACTOR_UNITS[f["factor_name"]] for f in latest["factors"]
+        )
+
+    def test_a_stored_factor_the_model_no_longer_defines_has_no_unit(self):
+        from stockanalysis.serve import queries
+        from stockanalysis.serve.api import FactorOut
+
+        row = queries.FactorScore(factor_name="retired_factor", raw_value=1.0, sector_zscore=0.1)
+        assert FactorOut.of(row).unit is None
