@@ -1,16 +1,21 @@
 import type { Signal } from "@/lib/api/types";
 import { fmtDate, scoreDelta } from "@/lib/format";
+import { isPartialRun } from "@/lib/runs";
 import type { SignalKey } from "@/config/signals";
 
-/** A signal row with its change since the previous scored date. */
-export type Row = Signal & { delta: number | null; modelChanged: boolean };
+/**
+ * A signal row with its change since the previous scored date. `partialRun`
+ * says one of the two dates was a partial run, so, like a model change, the
+ * change isn't like for like.
+ */
+export type Row = Signal & { delta: number | null; modelChanged: boolean; partialRun: boolean };
 
-export function withPrevious(current: Signal[], previous: Signal[]): Row[] {
+export function withPrevious(current: Signal[], previous: Signal[], partialRun = false): Row[] {
   const before = new Map(previous.map((p) => [p.isin, p]));
   return current.map((r) => {
     const p = before.get(r.isin);
     const delta = p && p.composite_score !== null && r.composite_score !== null ? scoreDelta(p.composite_score, r.composite_score) : null;
-    return { ...r, delta, modelChanged: p !== undefined && p.model_version !== r.model_version };
+    return { ...r, delta, modelChanged: p !== undefined && p.model_version !== r.model_version, partialRun: p !== undefined && partialRun };
   });
 }
 
@@ -33,7 +38,7 @@ export function sortRows(rows: Row[], key: SortKey, dir: "asc" | "desc"): Row[] 
 
 /** A notice when a date scored fewer than half the universe, pointing at the latest fuller date. */
 export function partialNotice(asOf: string, count: number, instruments: number, fuller: { date: string; count: number } | null): string | null {
-  if (instruments <= 0 || count >= 0.5 * instruments) return null;
+  if (!isPartialRun(count, instruments)) return null;
   const head = `Only ${count} of ${instruments} companies were scored on ${fmtDate(asOf)}.`;
   return fuller ? `${head} The most recent fuller list is ${fmtDate(fuller.date)} (${fuller.count} companies).` : head;
 }

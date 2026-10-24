@@ -28,8 +28,12 @@ describe("HomeView", () => {
     expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId("today-counts")).toHaveTextContent("BUY 1 · HOLD 0 · SELL 3");
     expect(screen.getByText("4 of 100 companies scored on 16 Aug 2026; 96 not scored on that date.")).toBeInTheDocument();
-    expect(within(screen.getByTestId("top-list")).getAllByRole("link")[0]).toHaveTextContent("ABB");
-    expect(within(screen.getByTestId("flag-list")).getByRole("link", { name: /ADANIENSOL/ })).toHaveAttribute("href", "/stocks/ADANIENSOL");
+    // The 16 Aug run ranked 4 companies, so the lists use 14 Aug and say so.
+    expect(screen.getByText("The lists below use 14 Aug 2026.")).toBeInTheDocument();
+    expect(within(screen.getByTestId("top-list")).getAllByRole("link")).toHaveLength(5);
+    expect(screen.getByTestId("top-list").closest("section, div")!.parentElement).toHaveTextContent("14 Aug 2026");
+    expect(within(screen.getByTestId("flag-list")).getByRole("link", { name: /CHOLAFIN/ })).toHaveAttribute("href", "/stocks/CHOLAFIN");
+    expect(screen.getByTestId("flag-list").closest("div")!.parentElement).toHaveTextContent(/Red flags\s*14 Aug 2026/);
     expect(screen.getByText(/Not investment advice\./)).toBeInTheDocument();
     expect(screen.getByText(/percentiles within the scored universe/i)).toBeInTheDocument();
   });

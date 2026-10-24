@@ -31,6 +31,7 @@ function StockList({ rows, testId, empty }: { rows: Signal[]; testId: string; em
 export function HomeView({ data }: { data: HomeData }) {
   const { counts, model } = data;
   const date = fmtDate(data.asOf);
+  const listsDate = fmtDate(data.listsAsOf);
   return (
     <>
       <section id="search" className={s.hero}>
@@ -65,6 +66,7 @@ export function HomeView({ data }: { data: HomeData }) {
           {data.notice && (
             <Notice tone="warn" className={s.notice}>
               <span>{data.notice}</span>
+              {data.listsAsOf !== data.asOf && <span>The lists below use {listsDate}.</span>}
               {data.fuller && <Link href={`/signals?as_of=${data.fuller.date}`}>See the {fmtDate(data.fuller.date)} list</Link>}
             </Notice>
           )}
@@ -72,21 +74,21 @@ export function HomeView({ data }: { data: HomeData }) {
 
         <Card>
           <h2 className={s.h2}>
-            Highest scores <span className="asof">{date}</span>
+            Highest scores <span className="asof">{listsDate}</span>
           </h2>
-          <StockList rows={data.top} testId="top-list" empty={`Nothing scored on ${date}.`} />
+          <StockList rows={data.top} testId="top-list" empty={`Nothing scored on ${listsDate}.`} />
         </Card>
         <Card>
           <h2 className={s.h2}>
-            Lowest scores <span className="asof">{date}</span>
+            Lowest scores <span className="asof">{listsDate}</span>
           </h2>
-          <StockList rows={data.bottom} testId="bottom-list" empty={`Too few scored on ${date} for a separate list.`} />
+          <StockList rows={data.bottom} testId="bottom-list" empty={`Too few scored on ${listsDate} for a separate list.`} />
         </Card>
         <Card>
           <h2 className={s.h2}>
-            Red flags <Link href="/red-flags">All</Link>
+            Red flags <span className="asof">{listsDate}</span> <Link href="/red-flags">All</Link>
           </h2>
-          <StockList rows={data.flagged} testId="flag-list" empty={`No red flag triggered on ${date}.`} />
+          <StockList rows={data.flagged} testId="flag-list" empty={`No red flag triggered on ${listsDate}.`} />
         </Card>
 
         <Card className={s.wide}>

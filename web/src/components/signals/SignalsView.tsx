@@ -33,11 +33,18 @@ function flagsText(r: Row): string {
 
 function Change({ r, previousAsOf }: { r: Row; previousAsOf: string | null }) {
   if (r.delta === null) return <span className="srOnly">{previousAsOf ? `Not scored on ${fmtDate(previousAsOf)}` : "No earlier date"}</span>;
+  // Across a model change or a partial run the change isn't like for like:
+  // no gain/loss colour, and a dagger saying why.
+  const caveat = r.modelChanged || r.partialRun;
+  const why = [
+    ...(r.modelChanged ? [`scored by a different model version on ${previousAsOf ? fmtDate(previousAsOf) : "the earlier date"}`] : []),
+    ...(r.partialRun ? ["one of the two dates was a partial run"] : []),
+  ].join("; ");
   return (
     <>
-      <span className={r.delta > 0 ? s.up : r.delta < 0 ? s.down : ""}>{signedFixed(r.delta, 1)}</span>
-      {r.modelChanged && (
-        <span className={s.dagger} title={`Scored by a different model version on ${previousAsOf ? fmtDate(previousAsOf) : "the earlier date"}, so not strictly comparable`}>
+      <span className={caveat ? "" : r.delta > 0 ? s.up : r.delta < 0 ? s.down : ""}>{signedFixed(r.delta, 1)}</span>
+      {caveat && (
+        <span className={s.dagger} title={`Not strictly comparable: ${why}`}>
           †
         </span>
       )}
@@ -207,8 +214,8 @@ export function SignalsView({ data, focusSector = false }: { data: SignalsData; 
         )}
       </Card>
       <p className="asof" style={{ marginTop: 10 }}>
-        Score is a percentile rank within the stocks scored that day. Coverage is the share of the model&apos;s weight backed by data. Red flags: triggered · ?unchecked. † scored by a
-        different model version on the earlier date.
+        Score is a percentile rank within the stocks scored that day. Coverage is the share of the model&apos;s weight backed by data. Red flags: triggered · ?unchecked. † not strictly
+        comparable: scored by a different model version, or one of the two dates was a partial run.
       </p>
     </>
   );

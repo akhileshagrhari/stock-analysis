@@ -71,6 +71,15 @@ describe("loadSignals", () => {
     expect(d.rows.find((r) => r.nse_symbol === "ABB")!.delta!.toFixed(1)).toBe("43.3");
   });
 
+  it("marks a change involving a partial run as not comparable, even under one model", async () => {
+    const d = await loadSignals({}, apiStub());
+    const abb = d.rows.find((r) => r.nse_symbol === "ABB")!;
+    expect(abb.modelChanged).toBe(false);
+    expect(abb.partialRun).toBe(true);
+    const full = await loadSignals({ as_of: "2026-08-14" }, apiStub());
+    expect(full.rows.every((r) => r.partialRun === false)).toBe(true);
+  });
+
   it("filters by signal and sector without changing the date's total", async () => {
     const d = await loadSignals({ as_of: "2026-08-14", signal: "BUY", sector: "Capital Goods" }, apiStub());
     expect(d.total).toBe(77);
@@ -91,11 +100,28 @@ describe("loadHome", () => {
     expect(h.asOf).toBe("2026-08-16");
     expect(h.counts).toEqual({ BUY: 1, HOLD: 0, SELL: 3 });
     expect(h.notScored).toBe(96);
-    expect(h.top[0].nse_symbol).toBe("ABB");
-    expect(h.flagged.map((r) => r.nse_symbol)).toContain("ADANIENSOL");
+    // 16 Aug ranked 4 companies; the lists come from the latest fuller run.
+    expect(h.listsAsOf).toBe("2026-08-14");
+    expect(h.top).toHaveLength(5);
+    expect(h.bottom).toHaveLength(5);
+    expect([...h.top, ...h.bottom].every((r) => r.as_of === "2026-08-14")).toBe(true);
+    expect(h.flagged.map((r) => r.nse_symbol)).toContain("CHOLAFIN");
     expect(h.fuller).toEqual({ date: "2026-08-14", count: 77 });
     const shown = [...h.top, ...h.bottom].map((r) => r.nse_symbol);
     expect(new Set(shown).size).toBe(shown.length);
+  });
+});
+
+describe("loadHome on a full run", () => {
+  it("uses the latest date for the lists", async () => {
+    const stub = apiStub();
+    const get = (async (path: string) => {
+      const v = await stub(path);
+      return path === "/model" ? { ...(v as object), scored_dates: ["2026-08-14"] } : v;
+    }) as typeof stub;
+    const h = await loadHome(get);
+    expect(h.listsAsOf).toBe("2026-08-14");
+    expect(h.notice).toBeNull();
   });
 });
 

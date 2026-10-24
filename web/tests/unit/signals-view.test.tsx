@@ -33,11 +33,13 @@ describe("SignalsView", () => {
     expect(screen.getByTestId("signal-cards")).toBeInTheDocument();
   });
 
-  it("shows the change since the previous date, with a dagger across a model change", async () => {
+  it("shows the change since the previous date, with a dagger when either date was a partial run", async () => {
     render(<SignalsView data={await loadSignals({}, get)} />);
     const row = within(screen.getByRole("table")).getByRole("link", { name: /^ABB/ }).closest("tr")!;
     expect(row).toHaveTextContent("+43.3");
-    expect(row).not.toHaveTextContent("†");
+    expect(row).toHaveTextContent("†");
+    expect(within(row).getByText("+43.3").className).not.toMatch(/up|down/);
+    expect(screen.getByText(/one of the two dates was a partial run/)).toBeInTheDocument();
   });
 
   it("puts filters in the URL", async () => {
