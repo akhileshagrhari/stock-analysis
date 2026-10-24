@@ -291,9 +291,19 @@ def _fill_pat(values: dict[str, float]) -> None:
     profit *is* the shareholders' profit. Only ever a fallback: overwriting a
     tagged attributable figure with the group total is what makes a consolidated
     PAT too large by exactly the minority's share.
+
+    A split tagged as two zeros is no split. NESTLEIND's consolidated filing has
+    no minority interest and fills both attribution elements with 0, and taking
+    that 0 as PAT left the company unscored. Owners are owed nothing of a
+    non-zero profit only if minorities are owed all of it, so a 0 beside a nil
+    or zero minority share is a filler, not a figure.
     """
-    if values.get("pat") is None and "profit_for_period" in values:
-        values["pat"] = values["profit_for_period"]
+    group = values.get("profit_for_period")
+    if group is None:
+        return
+    pat = values.get("pat")
+    if pat is None or (pat == 0 and not values.get("non_controlling_interest")):
+        values["pat"] = group
 
 
 class NotAnnualFiling(ValueError):
