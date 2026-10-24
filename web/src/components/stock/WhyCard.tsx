@@ -1,5 +1,6 @@
 import type { Explanation, ModelInfo } from "@/lib/api/types";
-import { fmtDate, ordinal, pct } from "@/lib/format";
+import { coverageText, factorCount } from "@/lib/coverage";
+import { fmtDate, ordinal } from "@/lib/format";
 import { bandGap, whySummary, type ScoreState } from "@/lib/stock/state";
 import { ScaleBar } from "@/components/charts/ScaleBar";
 import { Card } from "@/components/ui/Card";
@@ -20,6 +21,8 @@ export function WhyCard({ state, explanation, model }: { state: ScoreState; expl
     .filter((f) => f.contribution !== null && Math.abs(f.contribution) > MOVES && f.percentile !== null)
     .sort((a, b) => Math.abs(b.contribution!) - Math.abs(a.contribution!));
   const coverage = state.coverage;
+  const { measured, total } = factorCount(explanation.families);
+  const factors = `${measured} of ${total} factors`;
   return (
     <Card className={s.aWhy} data-testid="why-card">
       <div className={s.whyTop}>
@@ -46,7 +49,7 @@ export function WhyCard({ state, explanation, model }: { state: ScoreState; expl
           ))}
           {coverage !== null && (
             <span className={s.cov} data-low={state.lowCoverage ? "" : undefined}>
-              {state.lowCoverage ? `Based on ${pct(coverage, 0)} of factors, treat with caution` : `${pct(coverage, 0)} of factors measured`}
+              {state.lowCoverage ? `${coverageText(coverage)} (${factors}), treat with caution` : `${coverageText(coverage)} · ${factors}`}
             </span>
           )}
         </div>

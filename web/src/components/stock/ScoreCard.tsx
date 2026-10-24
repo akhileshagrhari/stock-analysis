@@ -54,8 +54,8 @@ export function ScoreCard({ state, model, modelVersion, sector }: { state: Score
           ) : (
             <p className={s.muted}>
               {state.coverage === null
-                ? `Not scored on ${fmtDate(state.asOf!)}: too few factors measured.`
-                : `Not scored on ${fmtDate(state.asOf!)}: only ${pct(state.coverage, 0)} of factors measured.`}
+                ? `Not scored on ${fmtDate(state.asOf!)}: not enough data.`
+                : `Not scored on ${fmtDate(state.asOf!)}: data behind only ${pct(state.coverage, 0)} of the model's weight.`}
             </p>
           )}
         </>

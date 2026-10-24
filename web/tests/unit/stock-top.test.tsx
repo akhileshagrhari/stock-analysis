@@ -22,7 +22,7 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
     renderView("RELIANCE");
     const why = screen.getByTestId("why-card");
     expect(within(why).getByText("17 pts to HOLD")).toBeInTheDocument();
-    expect(within(why).getByText("90% of factors measured")).toBeInTheDocument();
+    expect(within(why).getByText("Data behind 90% of the model's weight · 19 of 20 factors")).toBeInTheDocument();
     expect(within(why).getByText("Value pulls the score up; quality and momentum pull it down")).toBeInTheDocument();
     expect(within(why).getByText("Value 92nd")).toBeInTheDocument();
     expect(within(why).getByText("Momentum 21st")).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe("stock page top: CHOLAFIN (red-flag override, low coverage)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "SELL forced by red flag: Promoter holding falling 3 consecutive quarters. Without it, the score would read BUY.",
     );
-    expect(screen.getByText("Based on 23% of factors, treat with caution")).toBeInTheDocument();
+    expect(screen.getByText("Data behind 23% of the model's weight (5 of 20 factors), treat with caution")).toBeInTheDocument();
     expect(screen.getByTestId("score-value")).toHaveTextContent("87");
   });
 });
@@ -101,7 +101,7 @@ describe("stock page top: other states", () => {
 
   it("below the coverage floor (Review Focus 5)", () => {
     renderView("RELIANCE", (d) => ({ ...d, explanation: { ...d.explanation!, composite_score: null, signal: null } }));
-    expect(screen.getByText("Not scored on 16 Aug 2026: only 90% of factors measured.")).toBeInTheDocument();
+    expect(screen.getByText("Not scored on 16 Aug 2026: data behind only 90% of the model's weight.")).toBeInTheDocument();
     expect(document.body.innerHTML).not.toMatch(/NaN/);
   });
 

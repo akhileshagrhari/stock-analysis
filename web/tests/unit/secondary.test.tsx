@@ -15,6 +15,13 @@ describe("LearnView", () => {
     expect(screen.getByText(/BUY from 75/)).toBeInTheDocument();
     expect(document.getElementById("model")).not.toBeNull();
   });
+
+  it("defines coverage as a share of the model's weight, not of factors", () => {
+    render(<LearnView model={fixtureModel()} />);
+    const li = screen.getByText(/^Coverage$/).closest("li")!;
+    expect(li).toHaveTextContent("Coverage is the share of the model's weight backed by data");
+    expect(li).not.toHaveTextContent(/share of the model's factors/);
+  });
 });
 
 describe("RedFlagsView", () => {

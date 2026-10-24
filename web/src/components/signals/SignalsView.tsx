@@ -207,7 +207,7 @@ export function SignalsView({ data, focusSector = false }: { data: SignalsData; 
         )}
       </Card>
       <p className="asof" style={{ marginTop: 10 }}>
-        Score is a percentile rank within the stocks scored that day. Red flags: triggered · ?unchecked. † scored by a
+        Score is a percentile rank within the stocks scored that day. Coverage is the share of the model&apos;s weight backed by data. Red flags: triggered · ?unchecked. † scored by a
         different model version on the earlier date.
       </p>
     </>

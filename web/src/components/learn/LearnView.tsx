@@ -77,7 +77,8 @@ export function LearnView({ model }: { model: ModelInfo }) {
               less debt than the sector. Each factor says what a positive value means.
             </li>
             <li>
-              <b>Coverage</b> is the share of the model&apos;s factors that could be measured. Below {Math.round(LOW_COVERAGE * 100)}% the
+              <b>Coverage</b> is the share of the model&apos;s weight backed by data, weighted by family and by each factor&apos;s
+              weight within its family, so it is not a share of factors; stock pages give the factor count beside it. Below {Math.round(LOW_COVERAGE * 100)}% the
               site says to treat the score with caution; families with nothing measured show as n/m and the others are
               re-weighted.
             </li>

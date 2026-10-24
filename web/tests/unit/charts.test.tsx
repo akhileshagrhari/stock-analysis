@@ -65,7 +65,7 @@ describe("ScoreHistoryChart", () => {
     const { container } = render(<ScoreHistoryChart points={relHistory()} thresholds={thresholds} />);
     expect(container.querySelectorAll("[data-band]")).toHaveLength(3);
     expect(container.querySelectorAll("[data-model-change]")).toHaveLength(1);
-    expect(container.querySelector("title")?.textContent).toMatch(/31 Jul 2026.*32\.5.*23% of factors/);
+    expect(container.querySelector("title")?.textContent).toMatch(/31 Jul 2026.*32\.5.*data behind 23% of weight/);
     expect(container.innerHTML).not.toMatch(/NaN/);
   });
 
