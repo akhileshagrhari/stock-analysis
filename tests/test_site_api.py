@@ -392,3 +392,96 @@ class TestR3ModelCatalogue:
 
         row = queries.FactorScore(factor_name="retired_factor", raw_value=1.0, sector_zscore=0.1)
         assert FactorOut.of(row).unit is None
+
+
+# ----------------------------------------------------------------------
+# R4 — a signals list that isn't hostage to a partial run
+# ----------------------------------------------------------------------
+
+LATER = dt.date(2023, 2, 15)
+
+
+@pytest.fixture
+def partial_run_db(two_dates_db: Database) -> Database:
+    """A later run that scored three companies, the shape of 16 Aug 2026."""
+    two_dates_db.conn.execute(
+        """
+        INSERT INTO signals (isin, as_of_date, composite_score, signal, red_flags,
+                             unknown_flags, coverage, narrative, model_version)
+        SELECT isin, ? AS as_of_date, composite_score + 1 AS composite_score,
+               signal, red_flags, unknown_flags, coverage, narrative, model_version
+        FROM (
+            SELECT * FROM signals WHERE as_of_date = ? ORDER BY isin LIMIT 3
+        ) AS three
+        """,
+        [LATER, AS_OF],
+    )
+    return two_dates_db
+
+
+class TestR4SignalsPerInstrument:
+    def test_each_instrument_appears_once_at_its_newest_date(self, client, partial_run_db):
+        rows = client.get("/v1/signals?latest=per_instrument").json()
+        newest = partial_run_db.query(
+            "SELECT isin, MAX(as_of_date) AS d FROM signals GROUP BY isin"
+        )
+        assert len(rows) == len(newest) == 30
+        assert {r["isin"]: r["as_of"] for r in rows} == {
+            row.isin: row.d.date().isoformat() for row in newest.itertuples()
+        }
+        assert sum(r["as_of"] == LATER.isoformat() for r in rows) == 3
+
+    def test_it_is_one_ranking_across_dates(self, client, partial_run_db):
+        scores = [
+            r["composite_score"] for r in client.get("/v1/signals?latest=per_instrument").json()
+        ]
+        present = [s for s in scores if s is not None]
+        assert present == sorted(present, reverse=True)
+        assert scores[: len(present)] == present, "an unscored row sorted above a scored one"
+
+    def test_the_default_list_is_unchanged(self, client, partial_run_db):
+        rows = client.get("/v1/signals").json()
+        assert {r["as_of"] for r in rows} == {LATER.isoformat()}
+        assert len(rows) == 3
+
+    def test_it_combines_with_signal_and_sector(self, client, partial_run_db):
+        everyone = client.get("/v1/signals?latest=per_instrument").json()
+        sector = everyone[0]["sector"]
+        rows = client.get(
+            f"/v1/signals?latest=per_instrument&sector={sector}&signal=hold"
+        ).json()
+        assert rows == [r for r in everyone if r["sector"] == sector and r["signal"] == "HOLD"]
+
+    def test_it_refuses_a_date_and_an_unknown_mode(self, client, partial_run_db):
+        both = client.get(f"/v1/signals?latest=per_instrument&as_of={AS_OF}")
+        assert both.status_code == 422 and "as_of" in both.json()["detail"]
+        assert client.get("/v1/signals?latest=everything").status_code == 422
+
+    def test_health_names_the_newest_complete_run(self, client, partial_run_db):
+        body = client.get("/v1/health").json()
+        assert body["latest_as_of"] == LATER.isoformat()
+        assert body["latest_complete_as_of"] == AS_OF.isoformat()
+
+    def test_the_model_counts_each_dates_coverage(self, client, partial_run_db):
+        # Listed after AS_OF: active on the later date only.
+        partial_run_db.conn.execute(
+            "INSERT INTO instruments (isin, nse_symbol, name, listing_date) "
+            "VALUES ('INE00NEW0001', 'NEWCO', 'New Listing Ltd', DATE '2023-02-01')"
+        )
+        counts = client.get("/v1/model").json()["scored_date_counts"]
+        assert counts == [
+            {"as_of": LATER.isoformat(), "scored": 3, "instruments": 31},
+            {"as_of": AS_OF.isoformat(), "scored": 30, "instruments": 30},
+            {"as_of": EARLIER.isoformat(), "scored": 30, "instruments": 30},
+        ]
+        assert [c["as_of"] for c in counts] == client.get("/v1/model").json()["scored_dates"]
+
+    def test_a_delisted_instrument_is_not_counted_after_it_left(self, partial_run_db):
+        from stockanalysis.serve import queries
+
+        partial_run_db.conn.execute(
+            "UPDATE instruments SET delisting_date = DATE '2023-02-01' "
+            "WHERE isin = (SELECT MIN(isin) FROM instruments)"
+        )
+        counts = {c.as_of: c.instruments for c in queries.scored_date_counts(partial_run_db)}
+        assert counts[LATER] == 29 and counts[AS_OF] == 30

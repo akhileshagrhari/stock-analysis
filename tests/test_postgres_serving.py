@@ -749,7 +749,13 @@ PARITY_URLS = [
     f"/signals/red-flags?as_of={AS_OF}&limit=1",
     # The public site's routes, at the address it calls them by.
     "/v1/health",
+    "/v1/model",
     "/v1/signals",
+    "/v1/signals?latest=per_instrument",
+    "/v1/signals?latest=per_instrument&signal=SELL&sector=IT",
+    "/v1/signals?latest=per_instrument&limit=2",
+    f"/v1/signals?latest=per_instrument&as_of={AS_OF}",
+    "/v1/signals?latest=sometimes",
     f"/v1/instruments/{FIRST}/financials",
     f"/v1/instruments/{FIRST}/financials?quarters=1",
     f"/v1/instruments/{NOSIGNAL}/financials",

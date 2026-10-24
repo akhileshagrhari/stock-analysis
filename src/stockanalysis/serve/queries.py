@@ -303,6 +303,63 @@ _SIGNAL_COLUMNS = """
 # ----------------------------------------------------------------------
 
 
+#: A scoring date counts as a complete run when at least this share of the
+#: instruments active that day got a signal. The 16 Aug 2026 run scored 4 of
+#: 100 and the 15 Aug one 1; both sit in `signals` like any other date and
+#: became "latest", so the newest *complete* date is reported beside it.
+COMPLETE_RUN_SHARE = 0.5
+
+
+@dataclass(frozen=True)
+class ScoredDateCount:
+    as_of: dt.date
+    scored: int        # instruments with a signal that day
+    instruments: int   # instruments listed and not delisted that day
+
+
+def scored_date_counts(db: Database, limit: int | None = 90) -> list[ScoredDateCount]:
+    """How many companies each scoring date covered, newest first.
+
+    An instrument with no listing date counts as listed: the exchange's master
+    list leaves it blank for most of the universe.
+    """
+    sql = """
+        SELECT d.as_of_date, d.scored,
+            (SELECT COUNT(*) FROM instruments i
+             WHERE (i.listing_date IS NULL OR i.listing_date <= d.as_of_date)
+               AND (i.delisting_date IS NULL OR i.delisting_date > d.as_of_date)
+            ) AS instruments
+        FROM (
+            SELECT as_of_date, COUNT(signal) AS scored
+            FROM signals GROUP BY as_of_date
+        ) AS d
+        ORDER BY d.as_of_date DESC
+    """
+    params: list[Any] = []
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+    df = db.query(sql, params)
+    return [
+        ScoredDateCount(
+            as_of=_opt_date(row["as_of_date"]) or dt.date.min,
+            scored=int(row["scored"]),
+            instruments=int(row["instruments"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+
+def latest_complete_as_of(
+    db: Database, share: float = COMPLETE_RUN_SHARE
+) -> dt.date | None:
+    """Newest date on which at least `share` of active instruments were scored."""
+    for count in scored_date_counts(db, limit=None):
+        if count.instruments and count.scored >= share * count.instruments:
+            return count.as_of
+    return None
+
+
 def latest_as_of(db: Database) -> dt.date | None:
     """Most recent scored date, or None when nothing has been scored yet."""
     df = db.query("SELECT MAX(as_of_date) AS d FROM signals")
@@ -410,15 +467,31 @@ def signals_on(
     sector: str | None = None,
     flagged_only: bool = False,
     limit: int | None = None,
+    per_instrument: bool = False,
 ) -> list[Signal]:
     """Signals for one date, newest scored date when `as_of` is omitted.
+
+    With `per_instrument`, each instrument's newest signal instead, whatever its
+    date — one ranking across dates, each row carrying its own `as_of`. A
+    partial run then cannot hide everyone it left out; `as_of` makes no sense
+    with it and is refused.
 
     Ordering is score-descending with NULLs last: an unscored company (coverage
     below the floor) sorts to the bottom rather than to the top, which is where
     DuckDB's default NULL ordering would put it on a DESC sort.
     """
     params: list[Any] = []
-    if as_of is None:
+    newest = ""
+    if per_instrument:
+        if as_of is not None:
+            raise ValueError("per_instrument takes each instrument's own date, not as_of")
+        newest = """
+        JOIN (
+            SELECT isin, MAX(as_of_date) AS newest FROM signals GROUP BY isin
+        ) AS latest ON latest.isin = s.isin AND latest.newest = s.as_of_date
+        """
+        date_filter = "1 = 1"
+    elif as_of is None:
         date_filter = "s.as_of_date = (SELECT MAX(as_of_date) FROM signals)"
     else:
         date_filter = "s.as_of_date = ?"
@@ -427,6 +500,7 @@ def signals_on(
     sql = f"""
         SELECT {_SIGNAL_COLUMNS}
         FROM signals s
+        {newest}
         JOIN instruments i ON i.isin = s.isin
         WHERE {date_filter}
     """

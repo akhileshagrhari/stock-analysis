@@ -90,6 +90,7 @@ def route(path: str, **kwargs):
 
 
 SIGNALS = ("BUY", "HOLD", "SELL")
+LATEST_PER_INSTRUMENT = "per_instrument"
 
 # What a price chart opens on when the caller names no start date.
 DEFAULT_PRICE_WINDOW = dt.timedelta(days=365)
@@ -293,6 +294,23 @@ class HealthOut(BaseModel):
     latest_as_of: dt.date | None = None
     instruments: int = 0
     signals: int = 0
+    latest_complete_as_of: dt.date | None = Field(
+        default=None,
+        description="Newest scoring date on which at least "
+        f"{queries.COMPLETE_RUN_SHARE:.0%} of the instruments active that day "
+        "got a signal. latest_as_of can be a partial run (16 Aug 2026 scored 4 "
+        "of 100); this is the newest date a full list can be read from. Null "
+        "when no date qualifies.",
+    )
+
+
+class ScoredDateCountOut(BaseModel):
+    as_of: dt.date
+    scored: int = Field(description="Instruments with a signal that day.")
+    instruments: int = Field(
+        description="Instruments listed and not delisted that day; one with no "
+        "listing date counts as listed."
+    )
 
 
 class FamilyInfoOut(BaseModel):
@@ -344,6 +362,11 @@ class ModelInfoOut(BaseModel):
         default_factory=list,
         description="Every flag the model checks. A flag is clear only when it "
         "is in neither a signal's red_flags nor its unknown_flags.",
+    )
+    scored_date_counts: list[ScoredDateCountOut] = Field(
+        default_factory=list,
+        description="How many companies each date in scored_dates covered, "
+        "newest first, so a partial run can be told from a full one.",
     )
 
 
@@ -625,6 +648,7 @@ def health(db: DB) -> HealthOut:
         latest_as_of=queries.latest_as_of(db),
         instruments=int(counts.iloc[0]["instruments"]),
         signals=int(counts.iloc[0]["signals"]),
+        latest_complete_as_of=queries.latest_complete_as_of(db),
     )
 
 
@@ -669,6 +693,10 @@ def model_info(db: DB) -> ModelInfoOut:
         red_flags=[
             RedFlagInfoOut(name=d.name, description=d.description, reachable=d.reachable)
             for d in redflags.DEFINITIONS
+        ],
+        scored_date_counts=[
+            ScoredDateCountOut(as_of=c.as_of, scored=c.scored, instruments=c.instruments)
+            for c in queries.scored_date_counts(db)
         ],
     )
 
@@ -908,14 +936,34 @@ def list_signals(
         str | None, Query(description="YYYY-MM-DD; defaults to the latest scored date")
     ] = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    latest: Annotated[
+        str | None,
+        Query(
+            description="per_instrument: each instrument's newest signal, whatever "
+            "its date, ranked together; every row's as_of says which date it is "
+            "from. Combines with signal and sector, not with as_of."
+        ),
+    ] = None,
 ) -> list[SignalOut]:
-    """Signals for one date, best score first."""
+    """Signals for one date, best score first — or each company's newest."""
+    date = parse_as_of(as_of)
+    if latest is not None and latest != LATEST_PER_INSTRUMENT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"latest must be {LATEST_PER_INSTRUMENT!r}, got {latest!r}",
+        )
+    if latest is not None and date is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="latest=per_instrument takes each company's own date; drop as_of",
+        )
     rows = queries.signals_on(
         db,
-        as_of=parse_as_of(as_of),
+        as_of=date,
         signal=validate_signal(signal),
         sector=sector,
         limit=limit,
+        per_instrument=latest is not None,
     )
     return [SignalOut.of(row) for row in rows]
 
