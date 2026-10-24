@@ -1035,3 +1035,22 @@ class TestR14Freshness:
         assert vars(queries.freshness(db)) == {
             "latest_price_date": None, "latest_filing_date": None, "latest_news_date": None,
         }
+
+
+# ----------------------------------------------------------------------
+# R17 — units in the financials schema
+# ----------------------------------------------------------------------
+
+
+class TestR17FinancialUnits:
+    def test_the_units_are_stated_in_the_response_and_the_schema(self, client, two_dates_db):
+        from stockanalysis.serve.api import app
+
+        isin = _isin_scored_on_both(two_dates_db)
+        body = client.get(f"/v1/instruments/{isin}/financials").json()
+        assert (body["unit"], body["per_share_unit"]) == ("INR crore", "INR")
+        assert [i["key"] for i in body["line_items"] if i["per_share"]] == ["eps"]
+
+        schemas = app.openapi()["components"]["schemas"]
+        assert "crore" in schemas["LineItemOut"]["properties"]["per_share"]["description"]
+        assert "crore" in schemas["FinancialsOut"]["properties"]["unit"]["description"]

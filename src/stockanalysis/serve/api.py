@@ -443,7 +443,11 @@ class LineItemOut(BaseModel):
 
     key: str
     label: str
-    per_share: bool = False   # rupees per share; every other line is ₹ crore
+    per_share: bool = Field(
+        default=False,
+        description="True: the line is in rupees per share (FinancialsOut."
+        "per_share_unit). False: it is in ₹ crore (FinancialsOut.unit).",
+    )
 
 
 # Statement order and units are decided once, in `queries`; a client renders
@@ -531,6 +535,16 @@ class FinancialsOut(BaseModel):
     line_items: list[LineItemOut]
     annual: list[AnnualOut]
     quarterly: list[QuarterOut]
+    unit: Literal["INR crore"] = Field(
+        default="INR crore",
+        description="Unit of every figure except per-share ones: ₹ crore "
+        "(1 crore = 10 million).",
+    )
+    per_share_unit: Literal["INR"] = Field(
+        default="INR",
+        description="Unit of per-share figures (eps, eps_adjusted, and lines "
+        "with per_share true): rupees per share.",
+    )
 
 
 class FamilyOut(BaseModel):
