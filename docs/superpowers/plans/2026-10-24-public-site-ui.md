@@ -6,7 +6,7 @@
 
 **Architecture:**
 - Server components fetch the FastAPI server-side from `SA_API_URL`.
-- Browser calls go to `/api/v1/*`, which a Next.js rewrite proxies to the API. No CORS or backend change is needed.
+- Browser calls go to `/api/v1/*`, which a Next.js rewrite proxies to the API. No CORS or backend change is needed. *(Superseded in the final review: a rewrite's destination is fixed at build time, so the proxy is now a route handler, `web/src/app/api/v1/[...path]/route.ts`, that reads `SA_API_URL` per request and forwards search only.)*
 - All view logic is plain, tested functions in `src/lib/**`: state derivation, formatting, joins and period slicing.
 - Pages are thin async loaders that pass data into synchronous `*View` components. That keeps the components testable with fixtures captured from the real API.
 
@@ -114,7 +114,7 @@ web/
   - `npm i -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event openapi-typescript @playwright/test`.
   - Scripts: `"test": "vitest run"`, `"typecheck": "tsc --noEmit"`, `"gen:api": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts"`, `"fixtures": "node scripts/capture-fixtures.mjs"`, `"e2e": "playwright test"`.
   - `vitest.config.ts`: environment jsdom, `test.env.TZ = 'Asia/Kolkata'`, setup file importing jest-dom, alias `@` → `src`.
-- [ ] **Step 2: Add the proxy.** In `next.config.ts`, `rewrites()` returns `[{ source: '/api/v1/:path*', destination: \`${process.env.SA_API_URL ?? 'http://localhost:8000'}/v1/:path*\` }]`. `.env.example` documents `SA_API_URL=http://localhost:8000`.
+- [ ] **Step 2: Add the proxy.** *(Superseded: see the route handler note under Architecture.)* In `next.config.ts`, `rewrites()` returns `[{ source: '/api/v1/:path*', destination: \`${process.env.SA_API_URL ?? 'http://localhost:8000'}/v1/:path*\` }]`. `.env.example` documents `SA_API_URL=http://localhost:8000`.
 - [ ] **Step 3: Generate types.** From the repo root, run `.venv/bin/stockanalysis export-openapi web/openapi.json`, then `npm --prefix web run gen:api`. Write `types.ts` aliases.
 - [ ] **Step 4: Capture fixtures.** With the API running, `scripts/capture-fixtures.mjs` fetches into `tests/fixtures/`:
   - Per symbol (RELIANCE, ABB, HDFCBANK, CHOLAFIN, ADANIENSOL): `by-symbol`, `explanation`, `history?limit=500`, `prices?from=2000-01-01`, `financials?quarters=12`, `news?limit=20`, and `peers.json` = `/signals?sector=<sector>&as_of=<explanation.as_of, or model.scored_dates[0] when unscored>&limit=1000`.

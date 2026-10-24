@@ -229,7 +229,7 @@ These are my decisions, not the owner's. The owner may override them.
 - **Data fetching.**
   - Server components fetch the FastAPI server-side from `SA_API_URL` (default `http://localhost:8000`), with `revalidate: 300` to match the API's `Cache-Control`.
   - Browser-side calls go to `/api/v1/…`. Those are search autocomplete, chart period changes if not preloaded, and the compare picker if not preloaded.
-  - A Next.js **rewrite** proxies `/api/v1/:path*` to `${SA_API_URL}/v1/:path*`. So the browser never talks to the API's origin, and `SA_API_CORS_ORIGINS` can stay empty with no backend change.
+  - A Next.js **route handler** (`web/src/app/api/v1/[...path]/route.ts`) proxies the browser's calls to `${SA_API_URL}/v1/...`, reading `SA_API_URL` at request time (a `next.config` rewrite would fix it at build time). It forwards only what browser code calls (search) and times out after 5 seconds. So the browser never talks to the API's origin, and `SA_API_CORS_ORIGINS` can stay empty with no backend change.
 - **Typed client.** `stockanalysis export-openapi web/openapi.json`, then `openapi-typescript` generates `web/src/lib/api/schema.d.ts`. Commit both. A thin `api.ts` wraps fetch, returns typed results, and maps 404 to `null` so "unscored" is a value, not an exception.
 - **Styling:** CSS Modules plus a global tokens file. This ports straight from the mock's CSS, with no utility-framework dependency.
 - **Price data:** the stock page fetches the full stored range once on the server (`from=2000-01-01`, about 1,500 bars) and passes a compact `[date, close][]` to the client chart, which slices by period locally.

@@ -31,8 +31,11 @@ npm run build        # needs no API: every data page renders on request
 npm run e2e          # Playwright smoke at 1440x900 and 390x844; needs the API
 ```
 
-`npm run e2e` uses Playwright's own Chromium (`npx playwright install chromium`).
-To use an installed Google Chrome instead: `PLAYWRIGHT_CHANNEL=chrome npm run e2e`.
+`npm run e2e` starts this checkout's dev server on port 3000 (`PLAYWRIGHT_PORT` to
+change it) and fails if the port is busy, so it never tests another checkout's
+server by accident. If you already run this checkout's dev server on that port,
+add `PLAYWRIGHT_REUSE=1`. It uses Playwright's own Chromium (`npx playwright
+install chromium`); `PLAYWRIGHT_CHANNEL=chrome` uses an installed Google Chrome.
 
 ## Keep in sync with the API
 

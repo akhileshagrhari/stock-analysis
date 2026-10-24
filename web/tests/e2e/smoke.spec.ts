@@ -1,8 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Texts that hold whatever date the pipeline last scored, so a re-run
+// doesn't break the smoke suite.
 const PAGES: { path: string; text: string | RegExp; status?: number }[] = [
   { path: "/", text: "Search NIFTY100 stocks" },
-  { path: "/stocks/RELIANCE", text: "Scored 16 Aug 2026 · model 4b05e87d" },
+  { path: "/stocks/RELIANCE", text: /^Scored \d{1,2} [A-Z][a-z]{2} \d{4}/ },
   { path: "/stocks/HDFCBANK", text: "Not scored" },
   { path: "/stocks/CHOLAFIN", text: /SELL forced by red flag/ },
   { path: "/signals", text: /stocks scored on/ },
