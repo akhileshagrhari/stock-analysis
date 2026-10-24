@@ -560,3 +560,52 @@ class TestR5PreviousScore:
         latest = client.get(f"/v1/instruments/{isin}/latest").json()
         assert latest["previous"]["model_version"] == "phase2-composite-oldmodel"
         assert latest["model_version"] != "phase2-composite-oldmodel"
+
+
+# ----------------------------------------------------------------------
+# R6 — shareholding pattern
+# ----------------------------------------------------------------------
+
+
+class TestR6Shareholding:
+    QUARTERS = [dt.date(2022, 3, 31), dt.date(2022, 6, 30), dt.date(2022, 9, 30),
+                dt.date(2022, 12, 31)]
+
+    @pytest.fixture
+    def held_db(self, two_dates_db: Database) -> tuple[Database, str]:
+        from conftest import make_shareholding
+
+        isin = _isin_scored_on_both(two_dates_db)
+        two_dates_db.upsert_df(
+            "shareholding",
+            make_shareholding(isin, self.QUARTERS, [51.0, 50.6, 50.2, 49.9]),
+            ["isin", "quarter_end"],
+        )
+        return two_dates_db, isin
+
+    def test_newest_first_with_the_falling_quarters_on_top(self, client, held_db):
+        _db, isin = held_db
+        rows = client.get(f"/v1/instruments/{isin}/shareholding").json()
+        assert [r["quarter_end"] for r in rows] == [
+            q.isoformat() for q in reversed(self.QUARTERS)
+        ]
+        assert [r["promoter_pct"] for r in rows[:3]] == [49.9, 50.2, 50.6]
+        newest = rows[0]
+        assert newest["public_pct"] == pytest.approx(50.1)
+        assert newest["disclosed_date"] == "2023-01-21"
+        assert newest["disclosed_date_source"] == "ASSUMED_LODR_DEADLINE"
+
+    def test_an_unknown_pledge_is_null_not_zero(self, client, held_db):
+        _db, isin = held_db
+        rows = client.get(f"/v1/instruments/{isin}/shareholding").json()
+        assert all(r["promoter_pledged_pct"] is None for r in rows)
+
+    def test_quarters_limits_the_list(self, client, held_db):
+        _db, isin = held_db
+        rows = client.get(f"/v1/instruments/{isin}/shareholding?quarters=2").json()
+        assert [r["quarter_end"] for r in rows] == ["2022-12-31", "2022-09-30"]
+        assert client.get(f"/v1/instruments/{isin}/shareholding?quarters=0").status_code == 422
+
+    def test_a_company_with_none_is_an_empty_list_and_an_unknown_one_404(self, client):
+        assert client.get("/v1/instruments/INE000000029/shareholding").json() == []
+        assert client.get("/v1/instruments/INE_MISSING/shareholding").status_code == 404

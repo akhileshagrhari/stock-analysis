@@ -643,6 +643,53 @@ class ScoreStatusOut(BaseModel):
         )
 
 
+_PCT = "Percent of total shares, 0-100 (not a fraction)."
+
+
+class ShareholdingOut(BaseModel):
+    quarter_end: dt.date
+    disclosed_date: dt.date | None = Field(
+        default=None,
+        description="When the pattern became public — its knowledge date. See "
+        "disclosed_date_source for whether it was observed or assumed.",
+    )
+    disclosed_date_source: str | None = Field(
+        default=None,
+        description="NSE: the exchange's own disclosure date. "
+        "ASSUMED_LODR_DEADLINE: not reported, so the regulatory deadline "
+        "(21 days after quarter end) stands in for it.",
+    )
+    promoter_pct: float | None = Field(default=None, description=_PCT)
+    promoter_pledged_pct: float | None = Field(
+        default=None,
+        description="Pledged shares as a percent of the promoter holding. Null "
+        "means unknown — the shareholding feed carries no pledge figure — never "
+        "zero pledged.",
+    )
+    fii_pct: float | None = Field(
+        default=None, description=_PCT + " Null where the source did not break it out."
+    )
+    dii_pct: float | None = Field(
+        default=None, description=_PCT + " Null where the source did not break it out."
+    )
+    public_pct: float | None = Field(default=None, description=_PCT)
+    employee_trust_pct: float | None = Field(default=None, description=_PCT)
+
+    @classmethod
+    def of(cls, row: queries.ShareholdingQuarter) -> ShareholdingOut:
+        return cls(
+            quarter_end=row.quarter_end,
+            disclosed_date=row.disclosed_date,
+            disclosed_date_source=row.disclosed_date_source,
+            promoter_pct=row.promoter_pct,
+            promoter_pledged_pct=row.promoter_pledged_pct,
+            fii_pct=row.fii_pct,
+            dii_pct=row.dii_pct,
+            public_pct=row.public_pct,
+            employee_trust_pct=row.employee_trust_pct,
+        )
+
+
 class PriceBarOut(BaseModel):
     date: dt.date
     open: float | None = None
@@ -922,6 +969,25 @@ def price_history(
         PriceBarOut(**vars(bar))
         for bar in queries.price_history(db, isin, start_date, end_date)
     ]
+
+
+@route(
+    "/instruments/{isin}/shareholding",
+    response_model=list[ShareholdingOut],
+    tags=["instruments"],
+)
+def instrument_shareholding(
+    db: DB,
+    isin: Annotated[str, Path()],
+    quarters: Annotated[int, Query(ge=1, le=80)] = 12,
+) -> list[ShareholdingOut]:
+    """Quarterly shareholding pattern, newest first.
+
+    The context for the promoter_selling red flag: the falling quarters it
+    fired on are the first rows here.
+    """
+    require_instrument(db, isin)
+    return [ShareholdingOut.of(row) for row in queries.shareholding(db, isin, quarters)]
 
 
 @route("/instruments/{isin}/news", response_model=list[NewsOut], tags=["news"])

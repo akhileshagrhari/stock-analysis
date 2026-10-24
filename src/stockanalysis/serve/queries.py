@@ -740,6 +740,50 @@ def quarterly_financials(
     return out
 
 
+@dataclass(frozen=True)
+class ShareholdingQuarter:
+    """One quarter's shareholding pattern, as percentages of total shares."""
+
+    quarter_end: dt.date
+    disclosed_date: dt.date | None
+    disclosed_date_source: str | None
+    promoter_pct: float | None
+    promoter_pledged_pct: float | None
+    fii_pct: float | None
+    dii_pct: float | None
+    public_pct: float | None
+    employee_trust_pct: float | None
+
+
+def shareholding(db: Database, isin: str, quarters: int = 12) -> list[ShareholdingQuarter]:
+    """The newest `quarters` patterns, newest first."""
+    df = db.query(
+        """
+        SELECT quarter_end, disclosed_date, disclosed_date_source, promoter_pct,
+               promoter_pledged_pct, fii_pct, dii_pct, public_pct, employee_trust_pct
+        FROM shareholding
+        WHERE isin = ?
+        ORDER BY quarter_end DESC
+        LIMIT ?
+        """,
+        [isin, int(quarters)],
+    )
+    return [
+        ShareholdingQuarter(
+            quarter_end=_opt_date(row["quarter_end"]) or dt.date.min,
+            disclosed_date=_opt_date(row["disclosed_date"]),
+            disclosed_date_source=_opt_str(row["disclosed_date_source"]),
+            promoter_pct=_opt_float(row["promoter_pct"]),
+            promoter_pledged_pct=_opt_float(row["promoter_pledged_pct"]),
+            fii_pct=_opt_float(row["fii_pct"]),
+            dii_pct=_opt_float(row["dii_pct"]),
+            public_pct=_opt_float(row["public_pct"]),
+            employee_trust_pct=_opt_float(row["employee_trust_pct"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+
 def latest_price_date(db: Database, isin: str) -> dt.date | None:
     """The last day with a stored bar for one company, or None if it has none."""
     df = db.query("SELECT MAX(date) AS d FROM prices_daily WHERE isin = ?", [isin])
