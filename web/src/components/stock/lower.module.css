@@ -46,7 +46,7 @@
 .tbl th:first-child, .tbl td:first-child { text-align: left; position: sticky; left: 0; background: #fff; color: var(--ink2); font-weight: 500; }
 .tbl thead th { font-size: 12.5px; color: var(--ink3); font-weight: 600; }
 .tbl tr.filed td { font-size: 11.5px; color: var(--ink3); border-bottom: 0; }
-.tbl .na { color: var(--track); }
+.tbl .na { color: var(--ink3); }
 .tbl tr[aria-current="true"] td { background: var(--accent-soft); }
 .tbl tr[aria-current="true"] td:first-child { background: var(--accent-soft); }
 .tbl a { color: var(--ink); font-weight: 600; text-decoration: none; }
