@@ -1,0 +1,153 @@
+import { describe, expect, it, vi } from "vitest";
+import { counts, partialNotice, sortRows, withPrevious, type Row } from "@/lib/signals/list";
+import { ApiUnavailableError } from "@/lib/api/client";
+import { loadHome, loadRedFlags, loadSignals } from "@/lib/signals/load";
+import { fixtureHealth, fixtureModel, fixtureRedFlags, fixtureSectors, fixtureSignals } from "../fixtures";
+
+/** Answers like the API from the captured fixtures, recording each path. */
+function apiStub() {
+  return vi.fn(async (path: string) => {
+    if (path === "/model") return fixtureModel();
+    if (path === "/health") return fixtureHealth();
+    if (path === "/sectors") return fixtureSectors();
+    if (path.startsWith("/signals/red-flags")) return fixtureRedFlags();
+    const m = path.match(/^\/signals\?as_of=(\d{4}-\d{2}-\d{2})&limit=1000$/);
+    if (m) {
+      const d = m[1];
+      return d === "2026-08-14" || d === "2026-08-15" || d === "2026-08-16" ? fixtureSignals(d) : [];
+    }
+    throw new Error(`unexpected ${path}`);
+  }) as unknown as (<T>(path: string) => Promise<T | null>) & { mock: { calls: string[][] } };
+}
+
+describe("signals list logic", () => {
+  const rows = withPrevious(fixtureSignals("2026-08-16"), fixtureSignals("2026-08-15"));
+
+  it("joins the previous date's score by ISIN", () => {
+    expect(rows.find((r) => r.nse_symbol === "ABB")!.delta!.toFixed(1)).toBe("43.3");
+    expect(rows.find((r) => r.nse_symbol === "RELIANCE")!.delta).toBeNull();
+  });
+
+  it("flags a change of model between the two dates", () => {
+    const cross = withPrevious(fixtureSignals("2026-08-16"), fixtureSignals("2026-08-14"));
+    const rel = cross.find((r) => r.nse_symbol === "RELIANCE")!;
+    expect(rel.modelChanged).toBe(true);
+    // Displayed 33.2 then 28.4: the change is taken from what is shown.
+    expect(rel.delta!.toFixed(1)).toBe("-4.8");
+  });
+
+  it("sorts null scores last in both directions", () => {
+    const withNull = [...rows, { ...rows[0], isin: "X", nse_symbol: "ZZZ", composite_score: null } as Row];
+    expect(sortRows(withNull, "score", "asc").at(-1)!.nse_symbol).toBe("ZZZ");
+    expect(sortRows(withNull, "score", "desc").at(-1)!.nse_symbol).toBe("ZZZ");
+    expect(sortRows(withNull, "score", "desc")[0].nse_symbol).toBe("ABB");
+    expect(sortRows(withNull, "symbol", "asc")[0].nse_symbol).toBe("ABB");
+  });
+
+  it("explains a partial date", () => {
+    expect(partialNotice("2026-08-16", 4, 100, { date: "2026-08-14", count: 77 })).toBe(
+      "Only 4 of 100 companies were scored on 16 Aug 2026. The most recent fuller list is 14 Aug 2026 (77 companies).",
+    );
+    expect(partialNotice("2026-08-14", 77, 100, null)).toBeNull();
+    expect(partialNotice("2026-08-16", 4, 100, null)).toBe("Only 4 of 100 companies were scored on 16 Aug 2026.");
+  });
+
+  it("counts signals", () => {
+    expect(counts(fixtureSignals("2026-08-14"))).toEqual({ BUY: 16, HOLD: 19, SELL: 42 });
+    expect(counts(fixtureSignals("2026-08-16"))).toEqual({ BUY: 1, HOLD: 0, SELL: 3 });
+  });
+});
+
+describe("loadSignals", () => {
+  it("defaults to the latest date, joins the previous one and finds the fuller list", async () => {
+    const get = apiStub();
+    const d = await loadSignals({}, get);
+    expect(d.asOf).toBe("2026-08-16");
+    expect(d.previousAsOf).toBe("2026-08-15");
+    expect(d.total).toBe(4);
+    expect(d.rows).toHaveLength(4);
+    expect(d.fuller).toEqual({ date: "2026-08-14", count: 77 });
+    expect(d.notice).toContain("Only 4 of 100 companies");
+    expect(d.rows.find((r) => r.nse_symbol === "ABB")!.delta!.toFixed(1)).toBe("43.3");
+  });
+
+  it("marks a change involving a partial run as not comparable, even under one model", async () => {
+    const d = await loadSignals({}, apiStub());
+    const abb = d.rows.find((r) => r.nse_symbol === "ABB")!;
+    expect(abb.modelChanged).toBe(false);
+    expect(abb.partialRun).toBe(true);
+    const full = await loadSignals({ as_of: "2026-08-14" }, apiStub());
+    expect(full.rows.every((r) => r.partialRun === false)).toBe(true);
+  });
+
+  it("filters by signal and sector without changing the date's total", async () => {
+    const d = await loadSignals({ as_of: "2026-08-14", signal: "BUY", sector: "Capital Goods" }, apiStub());
+    expect(d.total).toBe(77);
+    expect(d.notice).toBeNull();
+    expect(d.rows.every((r) => r.signal === "BUY" && r.sector === "Capital Goods")).toBe(true);
+  });
+
+  it("ignores an unknown date or signal rather than erroring", async () => {
+    const d = await loadSignals({ as_of: "1999-01-01", signal: "MAYBE" }, apiStub());
+    expect(d.asOf).toBe("2026-08-16");
+    expect(d.filters.signal).toBeNull();
+  });
+});
+
+describe("loadHome", () => {
+  it("summarises the latest date", async () => {
+    const h = await loadHome(apiStub());
+    expect(h.asOf).toBe("2026-08-16");
+    expect(h.counts).toEqual({ BUY: 1, HOLD: 0, SELL: 3 });
+    expect(h.notScored).toBe(96);
+    // 16 Aug ranked 4 companies; the lists come from the latest fuller run.
+    expect(h.listsAsOf).toBe("2026-08-14");
+    expect(h.top).toHaveLength(5);
+    expect(h.bottom).toHaveLength(5);
+    expect([...h.top, ...h.bottom].every((r) => r.as_of === "2026-08-14")).toBe(true);
+    expect(h.flagged.map((r) => r.nse_symbol)).toContain("CHOLAFIN");
+    expect(h.fuller).toEqual({ date: "2026-08-14", count: 77 });
+    const shown = [...h.top, ...h.bottom].map((r) => r.nse_symbol);
+    expect(new Set(shown).size).toBe(shown.length);
+  });
+});
+
+describe("loadHome on a full run", () => {
+  it("uses the latest date for the lists", async () => {
+    const stub = apiStub();
+    const get = (async (path: string) => {
+      const v = await stub(path);
+      return path === "/model" ? { ...(v as object), scored_dates: ["2026-08-14"] } : v;
+    }) as typeof stub;
+    const h = await loadHome(get);
+    expect(h.listsAsOf).toBe("2026-08-14");
+    expect(h.notice).toBeNull();
+  });
+});
+
+describe("loadRedFlags", () => {
+  it("lists the flagged companies with the date, and explains a partial date", async () => {
+    const get = apiStub();
+    const data = await loadRedFlags({}, get);
+    expect(data.flagged.map((r) => r.nse_symbol)).toContain("ADANIENSOL");
+    expect(data.asOf).toBe("2026-08-16");
+    expect(get).toHaveBeenCalledWith("/signals/red-flags?as_of=2026-08-16&limit=1000");
+    expect(data.notice).toContain("Only 4 of 100 companies were scored on 16 Aug 2026");
+    expect(data.fuller).toEqual({ date: "2026-08-14", count: 77 });
+  });
+
+  it("takes a scored date from the URL, and ignores an unknown one", async () => {
+    const get = apiStub();
+    const data = await loadRedFlags({ as_of: "2026-08-14" }, get);
+    expect(data.asOf).toBe("2026-08-14");
+    expect(get).toHaveBeenCalledWith("/signals/red-flags?as_of=2026-08-14&limit=1000");
+    expect(data.notice).toBeNull();
+    expect((await loadRedFlags({ as_of: "1999-01-01" }, apiStub())).asOf).toBe("2026-08-16");
+  });
+
+  it("is an outage, not 'nothing flagged', when the API has no answer", async () => {
+    const stub = apiStub();
+    const get = (async (path: string) => (path.startsWith("/signals/red-flags") ? null : stub(path))) as typeof stub;
+    await expect(loadRedFlags({}, get)).rejects.toBeInstanceOf(ApiUnavailableError);
+  });
+});

@@ -1,0 +1,205 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { StockPageView } from "@/components/stock/StockPageView";
+import { fixtureStock, type FixtureSymbol } from "../fixtures";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+
+const renderView = (symbol: FixtureSymbol) => render(<StockPageView data={fixtureStock(symbol)} />);
+const section = (id: string) => {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`no #${id}`);
+  return el;
+};
+const rowNamed = (label: string) => within(section("financials")).getByText(label).closest("tr") as HTMLElement;
+
+describe("RELIANCE lower sections", () => {
+  it("breakdown: percentiles, an unmeasured family and the footnote", () => {
+    renderView("RELIANCE");
+    const b = section("breakdown");
+    expect(within(b).getByText("92nd")).toBeInTheDocument();
+    expect(within(b).getByText("n/m")).toBeInTheDocument();
+    expect(within(b).getByText(/Sentiment wasn't measured, so the others were re-weighted/)).toBeInTheDocument();
+    expect(within(b).getByText(/Percentile within the scored universe on 16 Aug 2026/)).toBeInTheDocument();
+  });
+
+  it("drivers: z-score, raw value and what positive means, both ways", async () => {
+    const user = userEvent.setup();
+    renderView("RELIANCE");
+    expect(screen.getByText("+15.2 SD vs sector")).toBeInTheDocument();
+    expect(screen.getByText("1.04×")).toBeInTheDocument();
+    expect(screen.getByText("Positive = cheap on book value")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Pulling down" }));
+    expect(screen.getByText("−1.4 SD vs sector")).toBeInTheDocument();
+    expect(screen.getByText("Positive = stronger price trend")).toBeInTheDocument();
+    expect(screen.queryByText(/^Weak:/)).toBeNull();
+  });
+
+  it("news: links only http and https URLs", () => {
+    const d = fixtureStock("RELIANCE");
+    const item = d.news.find((n) => n.score !== null)!;
+    const news = [
+      { ...item, headline: "Safe link", url: "https://example.com/a" },
+      { ...item, headline: "Script link", url: "javascript:alert(1)" },
+      { ...item, headline: "Data link", url: "data:text/html,hi" },
+    ];
+    render(<StockPageView data={{ ...d, news }} />);
+    const n = section("news");
+    expect(within(n).getByRole("link", { name: "Safe link" })).toHaveAttribute("href", "https://example.com/a");
+    expect(within(n).queryByRole("link", { name: "Script link" })).toBeNull();
+    expect(within(n).getByText("Script link")).toBeInTheDocument();
+    expect(within(n).queryByRole("link", { name: "Data link" })).toBeNull();
+  });
+
+  it("news: scored first, unscored items labelled", async () => {
+    const user = userEvent.setup();
+    renderView("RELIANCE");
+    const news = section("news");
+    expect(within(news).queryByText("Not scored yet")).toBeNull();
+    await user.click(within(news).getByRole("button", { name: "All 19" }));
+    expect(within(news).getAllByText("Not scored yet").length).toBeGreaterThan(0);
+    const link = within(news).getAllByRole("link")[0];
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("history: compare across a model change", async () => {
+    const user = userEvent.setup();
+    renderView("RELIANCE");
+    await user.selectOptions(screen.getByLabelText("Compare with"), "2026-07-31");
+    const h = section("history");
+    expect(within(h).getByText(/not strictly comparable/)).toBeInTheDocument();
+    expect(within(h).getByText(/Family changes: coming soon/)).toBeInTheDocument();
+    expect(within(h).getAllByRole("row")).toHaveLength(4); // header + 3 snapshots
+  });
+
+  it("financials: quarterly then annual, with gaps marked", async () => {
+    const user = userEvent.setup();
+    renderView("RELIANCE");
+    expect(within(section("financials")).getByText("Jun '26")).toBeInTheDocument();
+    await user.click(within(section("financials")).getByRole("button", { name: "Annual" }));
+    expect(within(section("financials")).getByText("10,75,675")).toBeInTheDocument();
+    expect(within(section("financials")).getByText("FY26")).toBeInTheDocument();
+    expect(within(rowNamed("EBITDA")).getAllByTitle("Not in the filing").length).toBeGreaterThan(0);
+    expect(within(section("financials")).getByText(/₹ crore/)).toBeInTheDocument();
+  });
+
+  it("peers: says so when no other company in the sector was scored that day", () => {
+    renderView("RELIANCE");
+    expect(screen.getByText("No other Oil Gas & Consumable Fuels company was scored on 16 Aug 2026")).toBeInTheDocument();
+  });
+});
+
+describe("other companies", () => {
+  it("ABB: Dec fiscal year", async () => {
+    const user = userEvent.setup();
+    renderView("ABB");
+    await user.click(within(section("financials")).getByRole("button", { name: "Annual" }));
+    expect(screen.getByText("FY25 (Dec)")).toBeInTheDocument();
+  });
+
+  it("ABB financials: the basis is given per column, and mixed bases are called out", async () => {
+    const user = userEvent.setup();
+    renderView("ABB");
+    const fin = section("financials");
+    // Every ABB quarter is standalone; no section-wide "consolidated" label.
+    expect(within(fin).queryByText(/· consolidated ·/)).toBeNull();
+    const qBasis = rowNamed("Basis");
+    expect(within(qBasis).getAllByText("Standalone")).toHaveLength(11);
+    expect(within(fin).queryByText(/mix consolidated and standalone/)).toBeNull();
+    await user.click(within(fin).getByRole("button", { name: "Annual" }));
+    const aBasis = rowNamed("Basis");
+    expect(within(aBasis).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Basis", "Consolidated", "Standalone", "Standalone"]);
+    expect(within(fin).getByText("These columns mix consolidated and standalone figures, so they don't compare like for like.")).toBeInTheDocument();
+  });
+
+  it("HDFCBANK: no annual figures, no breakdown or history", async () => {
+    const user = userEvent.setup();
+    renderView("HDFCBANK");
+    await user.click(within(section("financials")).getByRole("button", { name: "Annual" }));
+    expect(screen.getByText("No annual figures in this company's filings")).toBeInTheDocument();
+    expect(document.getElementById("breakdown")).toBeNull();
+    expect(document.getElementById("history")).toBeNull();
+    expect(document.getElementById("news")).not.toBeNull();
+  });
+
+  it("CHOLAFIN: stale breakdown and the company highlighted among peers", () => {
+    renderView("CHOLAFIN");
+    expect(screen.getByText(/re-derived with current weights/)).toBeInTheDocument();
+    expect(within(section("breakdown")).getByText(/Value, quality and sentiment weren't measured/)).toBeInTheDocument();
+    const peers = section("peers");
+    const me = within(peers).getByText("CHOLAFIN").closest("tr")!;
+    expect(me).toHaveAttribute("aria-current", "true");
+    expect(within(peers).getAllByRole("row").length).toBe(8); // header + 7 companies
+  });
+
+  it("CHOLAFIN breakdown: weights re-normalised over the measured families, with the contribution printed", () => {
+    renderView("CHOLAFIN");
+    const b = section("breakdown");
+    const row = (family: string) => b.querySelector(`[data-family="${family}"]`) as HTMLElement;
+    // Growth 0.20 and momentum 0.15 are the only measured weights: 0.20 / 0.35 and 0.15 / 0.35.
+    expect(row("growth")).toHaveTextContent(/57%\s*of 20%/);
+    expect(row("momentum")).toHaveTextContent(/43%\s*of 15%/);
+    expect(row("growth")).toHaveTextContent("+0.21");
+    expect(row("momentum")).toHaveTextContent("+0.64");
+    expect(row("value")).not.toHaveTextContent("25%");
+    expect(row("value")).toHaveTextContent("—");
+    expect(within(b).getByText(/Contribution = family z × weight, re-weighted over the measured families/)).toBeInTheDocument();
+    expect(within(b).queryByText(/Contribution = weight × family z-score/)).toBeNull();
+  });
+
+  it("RELIANCE breakdown: value's 25% becomes 28% with sentiment unmeasured", () => {
+    renderView("RELIANCE");
+    const value = section("breakdown").querySelector('[data-family="value"]') as HTMLElement;
+    expect(value).toHaveTextContent(/28%\s*of 25%/);
+    expect(value).toHaveTextContent("+0.39");
+  });
+
+  it("RELIANCE history: the partial run is marked in the table", () => {
+    renderView("RELIANCE");
+    const row = within(section("history")).getByText("16 Aug 2026", { selector: "td *, td" }).closest("tr")!;
+    expect(row).toHaveTextContent("partial run (4 companies)");
+  });
+
+  it("compare defaults to the previous snapshot", () => {
+    renderView("RELIANCE");
+    expect(within(section("history")).getByLabelText("Compare with")).toHaveValue("2026-08-14");
+  });
+
+  it("ABB compare: two partial runs under one model still get a warning", async () => {
+    const user = userEvent.setup();
+    renderView("ABB");
+    await user.selectOptions(within(section("history")).getByLabelText("Compare with"), "2026-08-15");
+    const h = section("history");
+    expect(within(h).getByText(/\+43\.3 points/)).toBeInTheDocument();
+    const notice = within(h).getByText(/not strictly comparable/).closest("div")!;
+    expect(notice).toHaveTextContent("15 Aug 2026 was a partial run: only 1 company was scored, so the score ranks it against itself.");
+    expect(notice).toHaveTextContent("16 Aug 2026 was a partial run: only 4 companies were scored, so the score ranks it against those 4.");
+  });
+
+  it("HDFCBANK (unscored): peers from the latest full run, never 'other'", () => {
+    renderView("HDFCBANK");
+    const peers = section("peers");
+    expect(within(peers).getByText("Financial Services companies scored on 14 Aug 2026")).toBeInTheDocument();
+    expect(within(peers).getAllByRole("row")).toHaveLength(8); // header + 7
+  });
+
+  it("an unscored company with no scored peers is not called 'other'", () => {
+    render(<StockPageView data={{ ...fixtureStock("HDFCBANK"), peers: [] }} />);
+    expect(within(section("peers")).getByText("No Financial Services company was scored on 14 Aug 2026")).toBeInTheDocument();
+  });
+
+  it("RELIANCE peers: the partial run is named", () => {
+    renderView("RELIANCE");
+    const peers = section("peers");
+    expect(within(peers).getByText("No other Oil Gas & Consumable Fuels company was scored on 16 Aug 2026")).toBeInTheDocument();
+    expect(within(peers).getByText("16 Aug 2026 was a partial run: only 4 companies were scored.")).toBeInTheDocument();
+  });
+
+  it("ADANIENSOL: one snapshot, nothing to compare", () => {
+    renderView("ADANIENSOL");
+    expect(within(section("history")).getByText(/Only one snapshot so far/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Compare with")).toBeNull();
+  });
+});

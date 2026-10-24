@@ -1,0 +1,61 @@
+[
+  {
+    "isin": "INE002A01018",
+    "nse_symbol": "RELIANCE",
+    "name": "Reliance Industries Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-07-31",
+    "composite_score": 32.50210369340205,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE002A01018",
+    "nse_symbol": "RELIANCE",
+    "name": "Reliance Industries Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-08-14",
+    "composite_score": 33.15457798644233,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE002A01018",
+    "nse_symbol": "RELIANCE",
+    "name": "Reliance Industries Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-08-16",
+    "composite_score": 28.435051298620962,
+    "signal": "SELL",
+    "coverage": 0.8999999999999999,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-4b05e87d"
+  }
+]

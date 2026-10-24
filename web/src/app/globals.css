@@ -1,0 +1,68 @@
+/* Design tokens, from the approved mock. Colours live only here so a dark
+   theme later is a token swap. */
+:root {
+  --bg: #F5F5F8;
+  --card: #FFFFFF;
+  --line: #ECECF1;
+  --line2: #E2E2E9;
+  --ink: #16161D;
+  --ink2: #55556A;
+  --ink3: #646477;
+  --accent: #6B3CF0;
+  --accent-soft: #F0EBFE;
+  --accent-ink: #5326D6;
+  --pos: #0F7B57;
+  --pos-soft: #E5F5EE;
+  --neg: #C9302C;
+  --neg-soft: #FDECEA;
+  --hold: #A15C00;
+  --hold-soft: #FFF3DE;
+  --hold-ink: #7A4A00;
+  --price: #2B59E8;
+  --price-soft: #EAF0FF;
+  --muted: #F2F2F6;
+  --muted2: #F7F7FA;
+  --track: #B8B8C6;
+  /* Score zones: soft fills and solid marks for SELL / HOLD / BUY. */
+  --zone-sell: #D9534F;
+  --zone-sell-soft: #F4C9C6;
+  --zone-hold: #E0A23A;
+  --zone-hold-soft: #F3E2BF;
+  --zone-buy: #2E9C6F;
+  --zone-buy-soft: #BFE5D3;
+  --zone-neutral: #D8D8E2;
+  --grid: #EEEEF3;
+  --radius: 18px;
+  --shadow: 0 1px 2px rgba(20, 20, 40, .04), 0 0 0 1px rgba(20, 20, 40, .035);
+  --font: var(--font-inter), Inter, system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--accent-ink); }
+
+.tnum { font-variant-numeric: tabular-nums; }
+.asof { font-size: 12px; color: var(--ink3); }
+.srOnly {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+main:focus { outline: none; }
+
+/* Hidden until a keyboard user tabs to it. */
+.skipLink {
+  position: absolute; left: 12px; top: -60px; z-index: 100; padding: 10px 14px; border-radius: 10px;
+  background: var(--ink); color: #fff; font-weight: 600; text-decoration: none;
+}
+.skipLink:focus { top: 12px; }

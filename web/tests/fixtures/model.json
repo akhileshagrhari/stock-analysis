@@ -1,0 +1,17 @@
+{
+  "family_weights": {
+    "value": 0.25,
+    "quality": 0.3,
+    "growth": 0.2,
+    "momentum": 0.15,
+    "sentiment": 0.1
+  },
+  "buy_threshold": 75,
+  "sell_threshold": 45,
+  "scored_dates": [
+    "2026-08-16",
+    "2026-08-15",
+    "2026-08-14",
+    "2026-07-31"
+  ]
+}

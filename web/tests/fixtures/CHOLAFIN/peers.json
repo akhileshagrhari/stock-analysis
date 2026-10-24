@@ -1,0 +1,144 @@
+[
+  {
+    "isin": "INE918I01026",
+    "nse_symbol": "BAJAJFINSV",
+    "name": "Bajaj Finserv Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 96.94954781424502,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE121A01024",
+    "nse_symbol": "CHOLAFIN",
+    "name": "Cholamandalam Investment and Finance Company Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 87.30583178066934,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [
+      "promoter_selling"
+    ],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE296A01032",
+    "nse_symbol": "BAJFINANCE",
+    "name": "Bajaj Finance Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 75.07223742222709,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE127D01025",
+    "nse_symbol": "HDFCAMC",
+    "name": "HDFC Asset Management Company Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 48.17252191206341,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE134E01011",
+    "nse_symbol": "PFC",
+    "name": "Power Finance Corporation Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 40.320170878242116,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE758E01017",
+    "nse_symbol": "JIOFIN",
+    "name": "Jio Financial Services Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 23.078837172641848,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE053F01010",
+    "nse_symbol": "IRFC",
+    "name": "Indian Railway Finance Corporation Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 5.517848521346902,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  }
+]

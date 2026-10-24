@@ -1,0 +1,20 @@
+[
+  {
+    "isin": "INE117A01022",
+    "nse_symbol": "ABB",
+    "name": "ABB India Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-16",
+    "composite_score": 93.29402517827474,
+    "signal": "BUY",
+    "coverage": 0.73,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "weak_cash_conversion",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-4b05e87d"
+  }
+]

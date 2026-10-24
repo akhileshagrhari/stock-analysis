@@ -1,0 +1,27 @@
+.box { position: relative; width: 100%; }
+.field {
+  display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line2);
+  border-radius: 13px; padding: 0 12px; color: var(--ink3);
+}
+.field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.field input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 10px 0;
+  font-size: 14.5px; color: var(--ink);
+}
+.field input::placeholder { color: var(--ink3); }
+.field kbd { font: 500 11.5px var(--font); border: 1px solid var(--line2); border-radius: 6px; padding: 2px 6px; color: var(--ink3); }
+.hero .field { border-radius: 16px; padding: 0 16px; box-shadow: var(--shadow); }
+.hero .field input { padding: 16px 0; font-size: 17px; }
+
+.pop {
+  position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 6px); background: #fff;
+  border: 1px solid var(--line2); border-radius: 14px; box-shadow: 0 12px 32px rgba(20, 20, 40, .12);
+  padding: 6px; max-height: 360px; overflow-y: auto;
+}
+.pop ul { list-style: none; margin: 0; padding: 0; }
+.opt { display: flex; align-items: baseline; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; font-size: 14px; }
+.opt[aria-selected="true"], .opt:hover { background: var(--accent-soft); }
+.opt b { color: var(--ink); font-weight: 700; min-width: 0; }
+.opt .name { color: var(--ink2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt .sector { color: var(--ink3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+.status { padding: 10px; font-size: 13.5px; color: var(--ink2); }

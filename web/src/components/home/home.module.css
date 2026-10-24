@@ -1,0 +1,36 @@
+.hero { padding: 26px 0 8px; max-width: 760px; scroll-margin-top: 80px; }
+.hero h1 { margin: 0 0 6px; font-size: 34px; letter-spacing: -.03em; }
+.hero p { margin: 0 0 18px; color: var(--ink2); font-size: 15.5px; line-height: 1.5; }
+.grid { display: grid; gap: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 26px; }
+.wide { grid-column: 1 / -1; }
+.h2 { margin: 0 0 10px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.h2 a { font-size: 13px; font-weight: 500; }
+.counts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.counts .pos { color: var(--pos); }
+.counts .hold { color: var(--hold); }
+.counts .neg { color: var(--neg); }
+.counts .sep { color: var(--ink3); font-weight: 400; }
+.sub { color: var(--ink2); font-size: 14px; margin: 6px 0 0; }
+.notice { margin-top: 12px; }
+.notice a { font-weight: 600; margin-left: 4px; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { border-bottom: 1px solid var(--line); }
+.list li:last-child { border-bottom: 0; }
+.list a { display: flex; align-items: center; gap: 10px; padding: 10px 2px; color: inherit; text-decoration: none; }
+.list a:hover b { text-decoration: underline; }
+.list .name { flex: 1; min-width: 0; color: var(--ink3); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list .score { font-weight: 700; min-width: 28px; text-align: right; }
+.empty { color: var(--ink3); font-size: 13.5px; padding: 8px 0; }
+.weights { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 12px; align-items: center; font-size: 14px; margin: 8px 0 12px; }
+.weights i { display: block; height: 6px; border-radius: 3px; background: var(--accent); }
+.weights span:first-child { text-transform: capitalize; }
+.small { font-size: 13px; color: var(--ink2); line-height: 1.5; margin: 0; }
+
+@container vp (max-width: 1180px) {
+  .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@container vp (max-width: 720px) {
+  .grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .hero h1 { font-size: 26px; }
+}
+.listsNote { margin: 0 0 -8px; }

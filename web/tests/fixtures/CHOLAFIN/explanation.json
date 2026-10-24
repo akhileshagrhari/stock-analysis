@@ -1,0 +1,137 @@
+{
+  "isin": "INE121A01024",
+  "nse_symbol": "CHOLAFIN",
+  "name": "Cholamandalam Investment and Finance Company Ltd.",
+  "as_of": "2026-08-14",
+  "signal": "SELL",
+  "composite_score": 87.30583178066934,
+  "coverage": 0.23,
+  "headline": "SELL — forced by the red-flag overlay (promoter_selling), overriding a factor score of 87/100.",
+  "reasons": [
+    "Red flag — Promoter holding falling 3 consecutive quarters. This caps the signal at SELL on its own.",
+    "Momentum is pulling the score up — price trend and relative strength, ranking around the 93rd percentile of the universe.",
+    "Growth is pulling the score up — how fast revenue and profit are compounding, ranking around the 64th percentile of the universe.",
+    "Strongest single factor is relative strength (6m) (+1.7 SD vs sector): outperforming the index.",
+    "No scored news in the last 30 days, so sentiment contributed nothing and the score rests on the other families.",
+    "Not measured for want of data: value, quality, sentiment. The remaining families were reweighted to fill the gap.",
+    "These red flags could not be evaluated: promoter_pledge, auditor_qualification, weak_cash_conversion, contingent_liabilities, rating_downgrade. Their absence is not a clean bill of health."
+  ],
+  "families": [
+    {
+      "family": "value",
+      "meaning": "how cheap it is against its sector",
+      "weight": 0.25,
+      "percentile": null,
+      "z": null,
+      "contribution": null,
+      "factors_measured": 0,
+      "factors_total": 5,
+      "verdict": "not measured"
+    },
+    {
+      "family": "quality",
+      "meaning": "balance-sheet strength and cash conversion",
+      "weight": 0.3,
+      "percentile": null,
+      "z": null,
+      "contribution": null,
+      "factors_measured": 0,
+      "factors_total": 6,
+      "verdict": "not measured"
+    },
+    {
+      "family": "growth",
+      "meaning": "how fast revenue and profit are compounding",
+      "weight": 0.2,
+      "percentile": 64.37702032059111,
+      "z": 0.3685547973820851,
+      "contribution": 0.2106027413611915,
+      "factors_measured": 2,
+      "factors_total": 5,
+      "verdict": "neutral"
+    },
+    {
+      "family": "momentum",
+      "meaning": "price trend and relative strength",
+      "weight": 0.15,
+      "percentile": 93.3216128921261,
+      "z": 1.5001801557739594,
+      "contribution": 0.642934352474554,
+      "factors_measured": 3,
+      "factors_total": 3,
+      "verdict": "strength"
+    },
+    {
+      "family": "sentiment",
+      "meaning": "tone of the last 30 days of news",
+      "weight": 0.1,
+      "percentile": null,
+      "z": null,
+      "contribution": null,
+      "factors_measured": 0,
+      "factors_total": 1,
+      "verdict": "not measured"
+    }
+  ],
+  "strengths": [
+    {
+      "name": "relative_strength_6m",
+      "label": "Relative strength (6m)",
+      "meaning": "outperforming the index",
+      "family": "momentum",
+      "raw_value": 0.10344635855565332,
+      "z": 1.6931197069857378
+    },
+    {
+      "name": "price_to_200dma",
+      "label": "Price vs 200-DMA",
+      "meaning": "trading above its trend",
+      "family": "momentum",
+      "raw_value": 1.1508795239265721,
+      "z": 1.4992510328871358
+    },
+    {
+      "name": "quarterly_revenue_yoy",
+      "label": "Revenue growth (YoY)",
+      "meaning": "revenue growing faster",
+      "family": "growth",
+      "raw_value": 0.3764001321116648,
+      "z": 1.0525851349069129
+    },
+    {
+      "name": "momentum_12_1",
+      "label": "12-1 month momentum",
+      "meaning": "stronger price trend",
+      "family": "momentum",
+      "raw_value": 0.2130172814300637,
+      "z": 0.7759911699161561
+    },
+    {
+      "name": "quarterly_pat_yoy",
+      "label": "Profit growth (YoY)",
+      "meaning": "profit growing faster",
+      "family": "growth",
+      "raw_value": 0.2630329578092827,
+      "z": 0.47911783171929007
+    }
+  ],
+  "weaknesses": [],
+  "news": null,
+  "red_flags": [
+    {
+      "name": "promoter_selling",
+      "description": "Promoter holding falling 3 consecutive quarters"
+    }
+  ],
+  "unknown_flags": [
+    "promoter_pledge",
+    "auditor_qualification",
+    "weak_cash_conversion",
+    "contingent_liabilities",
+    "rating_downgrade"
+  ],
+  "narrative": null,
+  "stale": true,
+  "stored_version": "phase2-composite-a8756fe2",
+  "current_version": "phase2-composite-4b05e87d"
+}

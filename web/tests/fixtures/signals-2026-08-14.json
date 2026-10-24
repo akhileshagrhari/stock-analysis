@@ -1,0 +1,1548 @@
+[
+  {
+    "isin": "INE364U01010",
+    "nse_symbol": "ADANIGREEN",
+    "name": "Adani Green Energy Ltd.",
+    "sector": "Power",
+    "as_of": "2026-08-14",
+    "composite_score": 99.98586284218315,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE397D01024",
+    "nse_symbol": "BHARTIARTL",
+    "name": "Bharti Airtel Ltd.",
+    "sector": "Telecommunication",
+    "as_of": "2026-08-14",
+    "composite_score": 99.87699510549135,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE918I01026",
+    "nse_symbol": "BAJAJFINSV",
+    "name": "Bajaj Finserv Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 96.94954781424502,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE192A01025",
+    "nse_symbol": "TATACONSUM",
+    "name": "Tata Consumer Products Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 96.39751217216401,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE669C01036",
+    "nse_symbol": "TECHM",
+    "name": "Tech Mahindra Ltd.",
+    "sector": "Information Technology",
+    "as_of": "2026-08-14",
+    "composite_score": 96.29185879417068,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE343H01029",
+    "nse_symbol": "SOLARINDS",
+    "name": "Solar Industries India Ltd.",
+    "sector": "Chemicals",
+    "as_of": "2026-08-14",
+    "composite_score": 92.77869223117254,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE038A01020",
+    "nse_symbol": "HINDALCO",
+    "name": "Hindalco Industries Ltd.",
+    "sector": "Metals & Mining",
+    "as_of": "2026-08-14",
+    "composite_score": 92.25677690928455,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE361B01024",
+    "nse_symbol": "DIVISLAB",
+    "name": "Divi's Laboratories Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 87.62208993509718,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE121A01024",
+    "nse_symbol": "CHOLAFIN",
+    "name": "Cholamandalam Investment and Finance Company Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 87.30583178066934,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [
+      "promoter_selling"
+    ],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE522F01014",
+    "nse_symbol": "COALINDIA",
+    "name": "Coal India Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-08-14",
+    "composite_score": 86.8680890269454,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE117A01022",
+    "nse_symbol": "ABB",
+    "name": "ABB India Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 85.76604909155395,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE775A01035",
+    "nse_symbol": "MOTHERSON",
+    "name": "Samvardhana Motherson International Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 84.82274446945696,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE854D01024",
+    "nse_symbol": "UNITDSPR",
+    "name": "United Spirits Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 81.54721671484786,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE239A01024",
+    "nse_symbol": "NESTLEIND",
+    "name": "Nestle India Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 78.22459812115333,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE280A01028",
+    "nse_symbol": "TITAN",
+    "name": "Titan Company Ltd.",
+    "sector": "Consumer Durables",
+    "as_of": "2026-08-14",
+    "composite_score": 77.87727023989916,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE267A01025",
+    "nse_symbol": "HINDZINC",
+    "name": "Hindustan Zinc Ltd.",
+    "sector": "Metals & Mining",
+    "as_of": "2026-08-14",
+    "composite_score": 76.8462303333207,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE296A01032",
+    "nse_symbol": "BAJFINANCE",
+    "name": "Bajaj Finance Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 75.07223742222709,
+    "signal": "BUY",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE079A01024",
+    "nse_symbol": "AMBUJACEM",
+    "name": "Ambuja Cements Ltd.",
+    "sector": "Construction Materials",
+    "as_of": "2026-08-14",
+    "composite_score": 74.02235935796,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE685A01028",
+    "nse_symbol": "TORNTPHARM",
+    "name": "Torrent Pharmaceuticals Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 67.77858197610436,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE758T01015",
+    "nse_symbol": "ETERNAL",
+    "name": "Eternal Ltd.",
+    "sector": "Consumer Services",
+    "as_of": "2026-08-14",
+    "composite_score": 64.50468484839533,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE066A01021",
+    "nse_symbol": "EICHERMOT",
+    "name": "Eicher Motors Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 63.111581326166835,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE917I01010",
+    "nse_symbol": "BAJAJ-AUTO",
+    "name": "Bajaj Auto Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 61.737577963541945,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE044A01036",
+    "nse_symbol": "SUNPHARMA",
+    "name": "Sun Pharmaceutical Industries Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 61.09619685410765,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE067A01029",
+    "nse_symbol": "CGPOWER",
+    "name": "CG Power and Industrial Solutions Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 60.98666268579558,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE494B01023",
+    "nse_symbol": "TVSMOTOR",
+    "name": "TVS Motor Company Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 59.603074125755676,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE200M01039",
+    "nse_symbol": "VBL",
+    "name": "Varun Beverages Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 58.645748788389284,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE814H01029",
+    "nse_symbol": "ADANIPOWER",
+    "name": "Adani Power Ltd.",
+    "sector": "Power",
+    "as_of": "2026-08-14",
+    "composite_score": 57.74676842868192,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE323A01026",
+    "nse_symbol": "BOSCHLTD",
+    "name": "Bosch Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 54.971939181714525,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE860A01027",
+    "nse_symbol": "HCLTECH",
+    "name": "HCL Technologies Ltd.",
+    "sector": "Information Technology",
+    "as_of": "2026-08-14",
+    "composite_score": 54.91591717141559,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE318A01026",
+    "nse_symbol": "PIDILITIND",
+    "name": "Pidilite Industries Ltd.",
+    "sector": "Chemicals",
+    "as_of": "2026-08-14",
+    "composite_score": 52.423237377226414,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE298A01020",
+    "nse_symbol": "CUMMINSIND",
+    "name": "Cummins India Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 52.39248568266488,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE742F01042",
+    "nse_symbol": "ADANIPORTS",
+    "name": "Adani Ports and Special Economic Zone Ltd.",
+    "sector": "Services",
+    "as_of": "2026-08-14",
+    "composite_score": 52.00166868187418,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE214T01019",
+    "nse_symbol": "LTM",
+    "name": "LTM Ltd.",
+    "sector": "Information Technology",
+    "as_of": "2026-08-14",
+    "composite_score": 51.05911243046683,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [
+      "promoter_selling"
+    ],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE101A01026",
+    "nse_symbol": "M&M",
+    "name": "Mahindra & Mahindra Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 50.0561588685003,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE127D01025",
+    "nse_symbol": "HDFCAMC",
+    "name": "HDFC Asset Management Company Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 48.17252191206341,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE029A01011",
+    "nse_symbol": "BPCL",
+    "name": "Bharat Petroleum Corporation Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-08-14",
+    "composite_score": 47.38406551837744,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE053A01029",
+    "nse_symbol": "INDHOTEL",
+    "name": "Indian Hotels Co. Ltd.",
+    "sector": "Consumer Services",
+    "as_of": "2026-08-14",
+    "composite_score": 46.3519298290215,
+    "signal": "HOLD",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE437A01024",
+    "nse_symbol": "APOLLOHOSP",
+    "name": "Apollo Hospitals Enterprise Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 43.61899306170577,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE849A01020",
+    "nse_symbol": "TRENT",
+    "name": "Trent Ltd.",
+    "sector": "Consumer Services",
+    "as_of": "2026-08-14",
+    "composite_score": 41.660912417250096,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE216A01030",
+    "nse_symbol": "BRITANNIA",
+    "name": "Britannia Industries Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 41.102030625740035,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE134E01011",
+    "nse_symbol": "PFC",
+    "name": "Power Finance Corporation Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 40.320170878242116,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE018A01030",
+    "nse_symbol": "LT",
+    "name": "Larsen & Toubro Ltd.",
+    "sector": "Construction",
+    "as_of": "2026-08-14",
+    "composite_score": 39.45858716054116,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE019A01038",
+    "nse_symbol": "JSWSTEEL",
+    "name": "JSW Steel Ltd.",
+    "sector": "Metals & Mining",
+    "as_of": "2026-08-14",
+    "composite_score": 39.24274078314792,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE010B01027",
+    "nse_symbol": "ZYDUSLIFE",
+    "name": "Zydus Lifesciences Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 39.17432015296395,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE192R01011",
+    "nse_symbol": "DMART",
+    "name": "Avenue Supermarts Ltd.",
+    "sector": "Consumer Services",
+    "as_of": "2026-08-14",
+    "composite_score": 38.48639681828689,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE081A01020",
+    "nse_symbol": "TATASTEEL",
+    "name": "Tata Steel Ltd.",
+    "sector": "Metals & Mining",
+    "as_of": "2026-08-14",
+    "composite_score": 38.152096885989955,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE467B01029",
+    "nse_symbol": "TCS",
+    "name": "Tata Consultancy Services Ltd.",
+    "sector": "Information Technology",
+    "as_of": "2026-08-14",
+    "composite_score": 38.10913919136873,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE585B01010",
+    "nse_symbol": "MARUTI",
+    "name": "Maruti Suzuki India Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 36.193260004252856,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE245A01021",
+    "nse_symbol": "TATAPOWER",
+    "name": "Tata Power Co. Ltd.",
+    "sector": "Power",
+    "as_of": "2026-08-14",
+    "composite_score": 36.0324789740056,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE646L01027",
+    "nse_symbol": "INDIGO",
+    "name": "InterGlobe Aviation Ltd.",
+    "sector": "Services",
+    "as_of": "2026-08-14",
+    "composite_score": 35.90833939938033,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE263A01024",
+    "nse_symbol": "BEL",
+    "name": "Bharat Electronics Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 35.591152177410535,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE749A01030",
+    "nse_symbol": "JINDALSTEL",
+    "name": "Jindal Steel Ltd.",
+    "sector": "Metals & Mining",
+    "as_of": "2026-08-14",
+    "composite_score": 34.87090125010489,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE066F01020",
+    "nse_symbol": "HAL",
+    "name": "Hindustan Aeronautics Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 34.11337424987689,
+    "signal": "SELL",
+    "coverage": 0.33,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE089A01031",
+    "nse_symbol": "DRREDDY",
+    "name": "Dr. Reddy's Laboratories Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 33.914333897595505,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE002A01018",
+    "nse_symbol": "RELIANCE",
+    "name": "Reliance Industries Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-08-14",
+    "composite_score": 33.15457798644233,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE021A01026",
+    "nse_symbol": "ASIANPAINT",
+    "name": "Asian Paints Ltd.",
+    "sector": "Consumer Durables",
+    "as_of": "2026-08-14",
+    "composite_score": 32.633823418083644,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE249Z01020",
+    "nse_symbol": "MAZDOCK",
+    "name": "Mazagoan Dock Shipbuilders Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 28.919218955118666,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE213A01029",
+    "nse_symbol": "ONGC",
+    "name": "Oil & Natural Gas Corporation Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-08-14",
+    "composite_score": 28.549833186047113,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE047A01021",
+    "nse_symbol": "GRASIM",
+    "name": "Grasim Industries Ltd.",
+    "sector": "Construction Materials",
+    "as_of": "2026-08-14",
+    "composite_score": 27.540103111391918,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE423A01024",
+    "nse_symbol": "ADANIENT",
+    "name": "Adani Enterprises Ltd.",
+    "sector": "Metals & Mining",
+    "as_of": "2026-08-14",
+    "composite_score": 26.81185957202773,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE009A01021",
+    "nse_symbol": "INFY",
+    "name": "Infosys Ltd.",
+    "sector": "Information Technology",
+    "as_of": "2026-08-14",
+    "composite_score": 23.959859194190724,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [
+      "promoter_selling"
+    ],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE059A01026",
+    "nse_symbol": "CIPLA",
+    "name": "Cipla Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 23.291480706938106,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE758E01017",
+    "nse_symbol": "JIOFIN",
+    "name": "Jio Financial Services Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 23.078837172641848,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE030A01027",
+    "nse_symbol": "HINDUNILVR",
+    "name": "Hindustan Unilever Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 21.60895660563315,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE003A01024",
+    "nse_symbol": "SIEMENS",
+    "name": "Siemens Ltd.",
+    "sector": "Capital Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 21.217890467117723,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE075A01022",
+    "nse_symbol": "WIPRO",
+    "name": "Wipro Ltd.",
+    "sector": "Information Technology",
+    "as_of": "2026-08-14",
+    "composite_score": 16.734246549886944,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE027H01010",
+    "nse_symbol": "MAXHEALTH",
+    "name": "Max Healthcare Institute Ltd.",
+    "sector": "Healthcare",
+    "as_of": "2026-08-14",
+    "composite_score": 16.104403157854076,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE733E01010",
+    "nse_symbol": "NTPC",
+    "name": "NTPC Ltd.",
+    "sector": "Power",
+    "as_of": "2026-08-14",
+    "composite_score": 15.720209896219817,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE242A01010",
+    "nse_symbol": "IOC",
+    "name": "Indian Oil Corporation Ltd.",
+    "sector": "Oil Gas & Consumable Fuels",
+    "as_of": "2026-08-14",
+    "composite_score": 15.052042252000042,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE102D01028",
+    "nse_symbol": "GODREJCP",
+    "name": "Godrej Consumer Products Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 14.996855742235994,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE752E01010",
+    "nse_symbol": "POWERGRID",
+    "name": "Power Grid Corporation of India Ltd.",
+    "sector": "Power",
+    "as_of": "2026-08-14",
+    "composite_score": 13.584309835940612,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE154A01025",
+    "nse_symbol": "ITC",
+    "name": "ITC Ltd.",
+    "sector": "Fast Moving Consumer Goods",
+    "as_of": "2026-08-14",
+    "composite_score": 13.008948798083797,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE271C01023",
+    "nse_symbol": "DLF",
+    "name": "DLF Ltd.",
+    "sector": "Realty",
+    "as_of": "2026-08-14",
+    "composite_score": 11.969425451615423,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE070A01015",
+    "nse_symbol": "SHREECEM",
+    "name": "Shree Cement Ltd.",
+    "sector": "Construction Materials",
+    "as_of": "2026-08-14",
+    "composite_score": 8.479451609048894,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE053F01010",
+    "nse_symbol": "IRFC",
+    "name": "Indian Railway Finance Corporation Ltd.",
+    "sector": "Financial Services",
+    "as_of": "2026-08-14",
+    "composite_score": 5.517848521346902,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE205A01025",
+    "nse_symbol": "VEDL",
+    "name": "Vedanta Ltd.",
+    "sector": "Metals & Mining",
+    "as_of": "2026-08-14",
+    "composite_score": 1.972646736603123,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  },
+  {
+    "isin": "INE155A01022",
+    "nse_symbol": "TMPV",
+    "name": "Tata Motors Passenger Vehicles Ltd.",
+    "sector": "Automobile and Auto Components",
+    "as_of": "2026-08-14",
+    "composite_score": 1.0901582280626432,
+    "signal": "SELL",
+    "coverage": 0.23,
+    "red_flags": [],
+    "unknown_flags": [
+      "promoter_pledge",
+      "auditor_qualification",
+      "weak_cash_conversion",
+      "contingent_liabilities",
+      "rating_downgrade"
+    ],
+    "narrative": null,
+    "model_version": "phase2-composite-a8756fe2"
+  }
+]

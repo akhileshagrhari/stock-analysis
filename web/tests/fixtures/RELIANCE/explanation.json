@@ -1,0 +1,250 @@
+{
+  "isin": "INE002A01018",
+  "nse_symbol": "RELIANCE",
+  "name": "Reliance Industries Ltd.",
+  "as_of": "2026-08-16",
+  "signal": "SELL",
+  "composite_score": 28.435051298620962,
+  "coverage": 0.8999999999999999,
+  "headline": "SELL — 28/100, below the 45 threshold.",
+  "reasons": [
+    "Value is pulling the score up — how cheap it is against its sector, ranking around the 92nd percentile of the universe.",
+    "Quality is pulling it down — balance-sheet strength and cash conversion, around the 30th percentile.",
+    "Momentum is pulling it down — price trend and relative strength, around the 21st percentile.",
+    "Strongest single factor is book-to-price (+15.2 SD vs sector): cheap on book value.",
+    "Weakest single factor is 12-1 month momentum (-1.4 SD vs sector).",
+    "News over 30 days is mixed: 1 positive, 1 negative, 1 neutral.",
+    "Not measured for want of data: sentiment. The remaining families were reweighted to fill the gap.",
+    "These red flags could not be evaluated: promoter_pledge, weak_cash_conversion, contingent_liabilities, rating_downgrade. Their absence is not a clean bill of health."
+  ],
+  "families": [
+    {
+      "family": "value",
+      "meaning": "how cheap it is against its sector",
+      "weight": 0.25,
+      "percentile": 92.12444065990478,
+      "z": 1.4134917452943785,
+      "contribution": 0.3926365959151052,
+      "factors_measured": 5,
+      "factors_total": 5,
+      "verdict": "strength"
+    },
+    {
+      "family": "quality",
+      "meaning": "balance-sheet strength and cash conversion",
+      "weight": 0.3,
+      "percentile": 29.6217983808367,
+      "z": -0.5353093418351796,
+      "contribution": -0.17843644727839322,
+      "factors_measured": 6,
+      "factors_total": 6,
+      "verdict": "neutral"
+    },
+    {
+      "family": "growth",
+      "meaning": "how fast revenue and profit are compounding",
+      "weight": 0.2,
+      "percentile": 43.641810844924535,
+      "z": -0.16005694481633526,
+      "contribution": -0.035568209959185616,
+      "factors_measured": 5,
+      "factors_total": 5,
+      "verdict": "neutral"
+    },
+    {
+      "family": "momentum",
+      "meaning": "price trend and relative strength",
+      "weight": 0.15,
+      "percentile": 21.13140432156889,
+      "z": -0.8018701295949827,
+      "contribution": -0.1336450215991638,
+      "factors_measured": 3,
+      "factors_total": 3,
+      "verdict": "weakness"
+    },
+    {
+      "family": "sentiment",
+      "meaning": "tone of the last 30 days of news",
+      "weight": 0.1,
+      "percentile": null,
+      "z": null,
+      "contribution": null,
+      "factors_measured": 0,
+      "factors_total": 1,
+      "verdict": "not measured"
+    }
+  ],
+  "strengths": [
+    {
+      "name": "book_to_price",
+      "label": "Book-to-price",
+      "meaning": "cheap on book value",
+      "family": "value",
+      "raw_value": 1.0445166551155762,
+      "z": 15.179665000494934
+    },
+    {
+      "name": "earnings_yield",
+      "label": "Earnings yield",
+      "meaning": "cheap on earnings",
+      "family": "value",
+      "raw_value": 0.07854961832061069,
+      "z": 9.044278641818071
+    },
+    {
+      "name": "ebitda_to_ev",
+      "label": "EBITDA/EV",
+      "meaning": "cheap on enterprise value",
+      "family": "value",
+      "raw_value": 0.16008390025057823,
+      "z": 4.534843951774095
+    },
+    {
+      "name": "fcf_yield",
+      "label": "Free cash flow yield",
+      "meaning": "cheap on free cash flow",
+      "family": "value",
+      "raw_value": 0.00666229293148915,
+      "z": 0.7974259488162244
+    },
+    {
+      "name": "debt_to_equity",
+      "label": "Debt/equity",
+      "meaning": "carries less debt",
+      "family": "quality",
+      "raw_value": 0.3506439919290377,
+      "z": 0.7444269738930704
+    },
+    {
+      "name": "peg_inverse",
+      "label": "Inverse PEG",
+      "meaning": "cheap relative to growth",
+      "family": "value",
+      "raw_value": 0.0034302775620007066,
+      "z": 0.7071067811865475
+    },
+    {
+      "name": "margin_trend",
+      "label": "Margin trend",
+      "meaning": "margins improving",
+      "family": "growth",
+      "raw_value": 0.0014334834780558026,
+      "z": 0.7071067811865475
+    },
+    {
+      "name": "quarterly_revenue_yoy",
+      "label": "Revenue growth (YoY)",
+      "meaning": "revenue growing faster",
+      "family": "growth",
+      "raw_value": -0.015529996705304416,
+      "z": 0.12366586143864572
+    },
+    {
+      "name": "interest_coverage",
+      "label": "Interest coverage",
+      "meaning": "covers interest comfortably",
+      "family": "quality",
+      "raw_value": 5.513366208149494,
+      "z": 0.028432525525995664
+    },
+    {
+      "name": "accruals",
+      "label": "Accruals",
+      "meaning": "earnings backed by cash, not accruals",
+      "family": "quality",
+      "raw_value": -0.05077887864709627,
+      "z": 0.025763672542570528
+    }
+  ],
+  "weaknesses": [
+    {
+      "name": "momentum_12_1",
+      "label": "12-1 month momentum",
+      "meaning": "stronger price trend",
+      "family": "momentum",
+      "raw_value": -0.05183079480913644,
+      "z": -1.384405151138124
+    },
+    {
+      "name": "pat_cagr_3y",
+      "label": "Profit CAGR (3y)",
+      "meaning": "profit compounding faster",
+      "family": "growth",
+      "raw_value": 0.04367020025481949,
+      "z": -0.7071067811865476
+    },
+    {
+      "name": "revenue_cagr_3y",
+      "label": "Revenue CAGR (3y)",
+      "meaning": "revenue compounding faster",
+      "family": "growth",
+      "raw_value": 0.024059021368323608,
+      "z": -0.7071067811865475
+    },
+    {
+      "name": "price_to_200dma",
+      "label": "Price vs 200-DMA",
+      "meaning": "trading above its trend",
+      "family": "momentum",
+      "raw_value": 0.9364601591492727,
+      "z": -0.6061660648080517
+    },
+    {
+      "name": "cfo_to_pat",
+      "label": "Cash conversion (CFO/PAT)",
+      "meaning": "profits arrive as cash",
+      "family": "quality",
+      "raw_value": 2.2807486246965714,
+      "z": -0.5452745209235169
+    },
+    {
+      "name": "roe",
+      "label": "Return on equity",
+      "meaning": "earns well on shareholder funds",
+      "family": "quality",
+      "raw_value": 0.0752018820723535,
+      "z": -0.41920114948420895
+    },
+    {
+      "name": "relative_strength_6m",
+      "label": "Relative strength (6m)",
+      "meaning": "outperforming the index",
+      "family": "momentum",
+      "raw_value": -0.09054975035860013,
+      "z": -0.08521970707868289
+    },
+    {
+      "name": "roce",
+      "label": "Return on capital employed",
+      "meaning": "earns well on capital employed",
+      "family": "quality",
+      "raw_value": 0.10193296598715622,
+      "z": -0.07847569541904842
+    },
+    {
+      "name": "quarterly_pat_yoy",
+      "label": "Profit growth (YoY)",
+      "meaning": "profit growing faster",
+      "family": "growth",
+      "raw_value": -0.12122128174123337,
+      "z": -0.05975847474245197
+    }
+  ],
+  "news": {
+    "positive": 1,
+    "negative": 1,
+    "neutral": 1,
+    "total": 3
+  },
+  "red_flags": [],
+  "unknown_flags": [
+    "promoter_pledge",
+    "weak_cash_conversion",
+    "contingent_liabilities",
+    "rating_downgrade"
+  ],
+  "narrative": null,
+  "stale": false,
+  "stored_version": "phase2-composite-4b05e87d",
+  "current_version": "phase2-composite-4b05e87d"
+}

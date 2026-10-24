@@ -1,0 +1,212 @@
+{
+  "isin": "INE117A01022",
+  "nse_symbol": "ABB",
+  "name": "ABB India Ltd.",
+  "as_of": "2026-08-16",
+  "signal": "BUY",
+  "composite_score": 93.29402517827474,
+  "coverage": 0.73,
+  "headline": "BUY — 93/100, at or above the 75 threshold.",
+  "reasons": [
+    "Quality is pulling the score up — balance-sheet strength and cash conversion, ranking around the 93rd percentile of the universe.",
+    "Momentum is pulling the score up — price trend and relative strength, ranking around the 93rd percentile of the universe.",
+    "Value is pulling it down — how cheap it is against its sector, around the 40th percentile.",
+    "Strongest single factor is interest coverage (+8.2 SD vs sector): covers interest comfortably.",
+    "Weakest single factor is accruals (-1.9 SD vs sector).",
+    "No scored news in the last 30 days, so sentiment contributed nothing and the score rests on the other families.",
+    "Not measured for want of data: sentiment. The remaining families were reweighted to fill the gap.",
+    "These red flags could not be evaluated: promoter_pledge, weak_cash_conversion, rating_downgrade. Their absence is not a clean bill of health."
+  ],
+  "families": [
+    {
+      "family": "value",
+      "meaning": "how cheap it is against its sector",
+      "weight": 0.25,
+      "percentile": 39.90733026971873,
+      "z": -0.25574647622568086,
+      "contribution": -0.07104068784046691,
+      "factors_measured": 4,
+      "factors_total": 5,
+      "verdict": "neutral"
+    },
+    {
+      "family": "quality",
+      "meaning": "balance-sheet strength and cash conversion",
+      "weight": 0.3,
+      "percentile": 93.28876521474456,
+      "z": 1.4976481270350561,
+      "contribution": 0.49921604234501876,
+      "factors_measured": 6,
+      "factors_total": 6,
+      "verdict": "strength"
+    },
+    {
+      "family": "growth",
+      "meaning": "how fast revenue and profit are compounding",
+      "weight": 0.2,
+      "percentile": 68.21015938240369,
+      "z": 0.47358368450992894,
+      "contribution": 0.10524081877998422,
+      "factors_measured": 2,
+      "factors_total": 5,
+      "verdict": "neutral"
+    },
+    {
+      "family": "momentum",
+      "meaning": "price trend and relative strength",
+      "weight": 0.15,
+      "percentile": 93.28583222967455,
+      "z": 1.4974225074483425,
+      "contribution": 0.24957041790805712,
+      "factors_measured": 3,
+      "factors_total": 3,
+      "verdict": "strength"
+    },
+    {
+      "family": "sentiment",
+      "meaning": "tone of the last 30 days of news",
+      "weight": 0.1,
+      "percentile": null,
+      "z": null,
+      "contribution": null,
+      "factors_measured": 0,
+      "factors_total": 1,
+      "verdict": "not measured"
+    }
+  ],
+  "strengths": [
+    {
+      "name": "interest_coverage",
+      "label": "Interest coverage",
+      "meaning": "covers interest comfortably",
+      "family": "quality",
+      "raw_value": 50,
+      "z": 8.200141512605176
+    },
+    {
+      "name": "roce",
+      "label": "Return on capital employed",
+      "meaning": "earns well on capital employed",
+      "family": "quality",
+      "raw_value": 0.2871149656903595,
+      "z": 6.231789543659529
+    },
+    {
+      "name": "roe",
+      "label": "Return on equity",
+      "meaning": "earns well on shareholder funds",
+      "family": "quality",
+      "raw_value": 0.2128971578575266,
+      "z": 4.840546276434922
+    },
+    {
+      "name": "quarterly_pat_yoy",
+      "label": "Profit growth (YoY)",
+      "meaning": "profit growing faster",
+      "family": "growth",
+      "raw_value": 0.5602964625287896,
+      "z": 1.6068233135521977
+    },
+    {
+      "name": "price_to_200dma",
+      "label": "Price vs 200-DMA",
+      "meaning": "trading above its trend",
+      "family": "momentum",
+      "raw_value": 1.2463394300992066,
+      "z": 1.4445872369994923
+    },
+    {
+      "name": "momentum_12_1",
+      "label": "12-1 month momentum",
+      "meaning": "stronger price trend",
+      "family": "momentum",
+      "raw_value": 0.5305883390173634,
+      "z": 1.3827602667046415
+    },
+    {
+      "name": "relative_strength_6m",
+      "label": "Relative strength (6m)",
+      "meaning": "outperforming the index",
+      "family": "momentum",
+      "raw_value": 0.3134293738971822,
+      "z": 1.1318851893719748
+    },
+    {
+      "name": "debt_to_equity",
+      "label": "Debt/equity",
+      "meaning": "carries less debt",
+      "family": "quality",
+      "raw_value": 0,
+      "z": 0.9428149925629048
+    },
+    {
+      "name": "fcf_yield",
+      "label": "Free cash flow yield",
+      "meaning": "cheap on free cash flow",
+      "family": "value",
+      "raw_value": 0.006043699968940296,
+      "z": 0.5977253536084475
+    },
+    {
+      "name": "quarterly_revenue_yoy",
+      "label": "Revenue growth (YoY)",
+      "meaning": "revenue growing faster",
+      "family": "growth",
+      "raw_value": 0.21744359947514713,
+      "z": 0.018982479865927368
+    }
+  ],
+  "weaknesses": [
+    {
+      "name": "accruals",
+      "label": "Accruals",
+      "meaning": "earnings backed by cash, not accruals",
+      "family": "quality",
+      "raw_value": 0.03290322675254134,
+      "z": -1.948904939527802
+    },
+    {
+      "name": "cfo_to_pat",
+      "label": "Cash conversion (CFO/PAT)",
+      "meaning": "profits arrive as cash",
+      "family": "quality",
+      "raw_value": 0.7310071571577572,
+      "z": -1.0896326534211052
+    },
+    {
+      "name": "ebitda_to_ev",
+      "label": "EBITDA/EV",
+      "meaning": "cheap on enterprise value",
+      "family": "value",
+      "raw_value": 0.01492185564657539,
+      "z": -0.8865146652593632
+    },
+    {
+      "name": "book_to_price",
+      "label": "Book-to-price",
+      "meaning": "cheap on book value",
+      "family": "value",
+      "raw_value": 0.048346576544179495,
+      "z": -0.8631873366821536
+    },
+    {
+      "name": "earnings_yield",
+      "label": "Earnings yield",
+      "meaning": "cheap on earnings",
+      "family": "value",
+      "raw_value": 0.010292848738397177,
+      "z": -0.11629128941916131
+    }
+  ],
+  "news": null,
+  "red_flags": [],
+  "unknown_flags": [
+    "promoter_pledge",
+    "weak_cash_conversion",
+    "rating_downgrade"
+  ],
+  "narrative": null,
+  "stale": false,
+  "stored_version": "phase2-composite-4b05e87d",
+  "current_version": "phase2-composite-4b05e87d"
+}
