@@ -1,12 +1,10 @@
 import { ApiUnavailableError, serverGet, type Getter } from "@/lib/api/client";
 import type { Health, ModelInfo, Signal } from "@/lib/api/types";
 import { isSignalKey, type SignalKey } from "@/config/signals";
-import { isPartialRun, signalsOn } from "@/lib/runs";
+import { firstFullRun, isPartialRun, signalsOn, type FullRun } from "@/lib/runs";
 import { counts, partialNotice, sortRows, withPrevious, type Row } from "./list";
 
-const MAX_LOOKBACK = 5;
-
-type Fuller = { date: string; count: number } | null;
+type Fuller = FullRun;
 
 async function required<T>(get: Getter, path: string): Promise<T> {
   const v = await get<T>(path);
@@ -14,18 +12,9 @@ async function required<T>(get: Getter, path: string): Promise<T> {
   return v;
 }
 
-/**
- * The newest date older than `dates[from]` that scored at least half the
- * universe, looking back at most MAX_LOOKBACK dates. `seen` holds rows
- * already fetched, so the previous date isn't fetched twice.
- */
-async function findFuller(get: Getter, dates: string[], from: number, instruments: number, seen: Map<string, Signal[]>): Promise<Fuller> {
-  for (const date of dates.slice(from + 1, from + 1 + MAX_LOOKBACK)) {
-    const rows = seen.get(date) ?? (await signalsOn(get, date)) ?? [];
-    seen.set(date, rows);
-    if (!isPartialRun(rows.length, instruments)) return { date, count: rows.length };
-  }
-  return null;
+/** The newest full run older than `dates[from]`; `seen` saves refetching rows. */
+function findFuller(get: Getter, dates: string[], from: number, instruments: number, seen: Map<string, Signal[]>): Promise<Fuller> {
+  return firstFullRun(get, dates.slice(from + 1), instruments, seen);
 }
 
 export type SignalsData = {
@@ -78,12 +67,18 @@ export async function loadSignals(q: { signal?: string; sector?: string; as_of?:
   };
 }
 
-export type RedFlagsData = { flagged: Signal[]; asOf: string | null };
+export type RedFlagsData = { flagged: Signal[]; asOf: string | null; notice: string | null; fuller: Fuller };
 
-/** Companies with a triggered red flag on the API's latest date. */
-export async function loadRedFlags(get: Getter = serverGet): Promise<RedFlagsData> {
-  const [health, flagged] = await Promise.all([required<Health>(get, "/health"), required<Signal[]>(get, "/signals/red-flags?limit=1000")]);
-  return { flagged, asOf: health.latest_as_of ?? null };
+/** Companies with a triggered red flag on a scored date (the latest by default), with the partial-run notice. */
+export async function loadRedFlags(q: { as_of?: string }, get: Getter = serverGet): Promise<RedFlagsData> {
+  const [model, health] = await Promise.all([required<ModelInfo>(get, "/model"), required<Health>(get, "/health")]);
+  const dates = model.scored_dates;
+  const asOf = q.as_of && dates.includes(q.as_of) ? q.as_of : (dates[0] ?? null);
+  if (asOf === null) return { flagged: [], asOf: null, notice: null, fuller: null };
+  const [flagged, rows] = await Promise.all([required<Signal[]>(get, `/signals/red-flags?as_of=${asOf}&limit=1000`), signalsOn(get, asOf)]);
+  const count = (rows ?? []).length;
+  const fuller = isPartialRun(count, health.instruments) ? await findFuller(get, dates, dates.indexOf(asOf), health.instruments, new Map()) : null;
+  return { flagged, asOf, notice: partialNotice(asOf, count, health.instruments, fuller), fuller };
 }
 
 export type HomeData = {

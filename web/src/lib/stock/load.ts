@@ -1,6 +1,6 @@
 import { ApiUnavailableError, serverGet, type Getter } from "@/lib/api/client";
 import type { Explanation, Financials, Health, Instrument, ModelInfo, NewsItem, PriceBar, Signal } from "@/lib/api/types";
-import { loadRuns, type Runs } from "@/lib/runs";
+import { firstFullRun, loadRuns, type Runs } from "@/lib/runs";
 
 /** Everything the stock page renders, fetched once on the server. */
 export type StockPageData = {
@@ -42,13 +42,15 @@ export async function loadStockPage(symbol: string, get: Getter = serverGet): Pr
   if (model === null) throw new ApiUnavailableError(404, "/model");
 
   // Peers are the same sector on the same date. An unscored company has no
-  // date of its own, so it gets the latest scored date.
-  const peersAsOf = explanation?.as_of ?? model.scored_dates[0] ?? null;
+  // date of its own, so it gets the latest full run (a partial run's few
+  // companies would make a misleading peer list).
+  const instruments = health?.instruments ?? 0;
+  const peersAsOf = explanation?.as_of ?? (await firstFullRun(get, model.scored_dates, instruments))?.date ?? model.scored_dates[0] ?? null;
   const [peers, runs] = await Promise.all([
     peersAsOf && instrument.sector
       ? get<Signal[]>(`/signals?sector=${encodeURIComponent(instrument.sector)}&as_of=${peersAsOf}&limit=1000`)
       : [],
-    loadRuns(get, [...(history ?? []).map((h) => h.as_of), ...(peersAsOf ? [peersAsOf] : [])], health?.instruments ?? 0),
+    loadRuns(get, [...(history ?? []).map((h) => h.as_of), ...(peersAsOf ? [peersAsOf] : [])], instruments),
   ]);
 
   return {

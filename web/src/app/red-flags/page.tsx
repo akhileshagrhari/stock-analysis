@@ -6,12 +6,15 @@ import { RedFlagsView } from "@/components/learn/RedFlagsView";
 
 export const metadata: Metadata = { title: "Red flags" };
 
-export default async function RedFlagsPage() {
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function RedFlagsPage({ searchParams }: PageProps<"/red-flags">) {
   await connection();
-  const { flagged, asOf } = await loadRedFlags();
+  const q = await searchParams;
+  const { flagged, asOf, notice, fuller } = await loadRedFlags({ as_of: one(q.as_of) });
   return (
     <AppShell active="red-flags" crumbs={[{ label: "Red flags" }]} freshness={{ scores: asOf }}>
-      <RedFlagsView flagged={flagged} asOf={asOf} />
+      <RedFlagsView flagged={flagged} asOf={asOf} notice={notice} fuller={fuller} />
     </AppShell>
   );
 }

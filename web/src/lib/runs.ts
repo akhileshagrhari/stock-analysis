@@ -35,3 +35,22 @@ export async function loadRuns(get: Getter, dates: string[], instruments: number
   });
   return { instruments, counts };
 }
+
+/** How many dates back to look for a run that isn't partial. */
+export const MAX_LOOKBACK = 5;
+
+export type FullRun = { date: string; count: number } | null;
+
+/**
+ * The first of `dates` (newest first) whose run scored at least half the
+ * universe, looking at most MAX_LOOKBACK dates. `seen` holds rows already
+ * fetched, and collects the ones fetched here.
+ */
+export async function firstFullRun(get: Getter, dates: string[], instruments: number, seen: Map<string, Signal[]> = new Map()): Promise<FullRun> {
+  for (const date of dates.slice(0, MAX_LOOKBACK)) {
+    const rows = seen.get(date) ?? (await signalsOn(get, date)) ?? [];
+    seen.set(date, rows);
+    if (!isPartialRun(rows.length, instruments)) return { date, count: rows.length };
+  }
+  return null;
+}

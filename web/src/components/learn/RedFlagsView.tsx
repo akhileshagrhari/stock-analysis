@@ -3,11 +3,23 @@ import type { Signal } from "@/lib/api/types";
 import { fmtDate, scoreText } from "@/lib/format";
 import { RED_FLAGS } from "@/config/redflags";
 import { SIGNALS } from "@/config/signals";
+import type { FullRun } from "@/lib/runs";
 import { Card } from "@/components/ui/Card";
+import { Notice } from "@/components/ui/Notice";
 import s from "./learn.module.css";
 
 /** Companies with a triggered red flag on a date, and what each check is. */
-export function RedFlagsView({ flagged, asOf }: { flagged: Signal[]; asOf: string | null }) {
+export function RedFlagsView({
+  flagged,
+  asOf,
+  notice = null,
+  fuller = null,
+}: {
+  flagged: Signal[];
+  asOf: string | null;
+  notice?: string | null;
+  fuller?: FullRun;
+}) {
   const date = asOf ? fmtDate(asOf) : "the latest date";
   const describe = (name: string) => RED_FLAGS.find((f) => f.name === name)?.description ?? name.replace(/_/g, " ");
   return (
@@ -18,6 +30,12 @@ export function RedFlagsView({ flagged, asOf }: { flagged: Signal[]; asOf: strin
         shown as unchecked, never as passed.
       </p>
       <div className={s.stack}>
+        {notice && (
+          <Notice tone="warn">
+            <span>{notice}</span>
+            {fuller && <Link href={`/red-flags?as_of=${fuller.date}`}>See the {fmtDate(fuller.date)} red flags</Link>}
+          </Notice>
+        )}
         <Card>
           <h2>Flagged on {date}</h2>
           {flagged.length === 0 ? (

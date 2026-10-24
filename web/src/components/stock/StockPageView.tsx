@@ -1,5 +1,6 @@
 import type { StockPageData } from "@/lib/stock/load";
 import { toCloses } from "@/lib/prices";
+import { isPartialRun } from "@/lib/runs";
 import { snapshots } from "@/lib/stock/history";
 import { scoreState } from "@/lib/stock/state";
 import { BreakdownCard } from "./BreakdownCard";
@@ -25,6 +26,7 @@ export function StockPageView({ data }: { data: StockPageData }) {
   const state = scoreState(explanation, model);
   const points = snapshots(data.history, data.runs);
   const current = points.find((p) => p.date === explanation?.as_of) ?? null;
+  const peersRun = data.peersAsOf ? data.runs.counts[data.peersAsOf] : undefined;
   const closes = toCloses(data.prices);
   const lastVolume = data.prices.at(-1)?.volume ?? null;
   const scored = explanation !== null;
@@ -81,7 +83,13 @@ export function StockPageView({ data }: { data: StockPageData }) {
 
       {scored && points.length > 0 && <ScoreHistorySection points={points} model={model} />}
       <FinancialsSection financials={data.financials} />
-      <PeersSection instrument={instrument} peers={data.peers} asOf={data.peersAsOf} />
+      <PeersSection
+        instrument={instrument}
+        peers={data.peers}
+        asOf={data.peersAsOf}
+        scored={explanation !== null}
+        partialRun={peersRun !== undefined && isPartialRun(peersRun, data.runs.instruments) ? peersRun : null}
+      />
     </>
   );
 }

@@ -73,10 +73,12 @@ describe("loadStockPage", () => {
     expect(data.explanation?.nse_symbol).toBe("RELIANCE");
   });
 
-  it("uses the latest scored date for an unscored company's peers", async () => {
+  it("gives an unscored company's peers from the latest full run, not a partial one", async () => {
     const get = fixtureGetter("HDFCBANK");
     const data = (await loadStockPage("HDFCBANK", get))!;
     expect(data.explanation).toBeNull();
-    expect(data.peersAsOf).toBe("2026-08-16");
+    // 16 Aug scored 4 companies and 15 Aug 1; 14 Aug scored 77.
+    expect(data.peersAsOf).toBe("2026-08-14");
+    expect(get).toHaveBeenCalledWith("/signals?sector=Financial%20Services&as_of=2026-08-14&limit=1000");
   });
 });

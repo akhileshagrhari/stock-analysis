@@ -142,6 +142,25 @@ describe("other companies", () => {
     expect(notice).toHaveTextContent("16 Aug 2026 was a partial run: only 4 companies were scored, so the score ranks it against those 4.");
   });
 
+  it("HDFCBANK (unscored): peers from the latest full run, never 'other'", () => {
+    renderView("HDFCBANK");
+    const peers = section("peers");
+    expect(within(peers).getByText("Financial Services companies scored on 14 Aug 2026")).toBeInTheDocument();
+    expect(within(peers).getAllByRole("row")).toHaveLength(8); // header + 7
+  });
+
+  it("an unscored company with no scored peers is not called 'other'", () => {
+    render(<StockPageView data={{ ...fixtureStock("HDFCBANK"), peers: [] }} />);
+    expect(within(section("peers")).getByText("No Financial Services company was scored on 14 Aug 2026")).toBeInTheDocument();
+  });
+
+  it("RELIANCE peers: the partial run is named", () => {
+    renderView("RELIANCE");
+    const peers = section("peers");
+    expect(within(peers).getByText("No other Oil Gas & Consumable Fuels company was scored on 16 Aug 2026")).toBeInTheDocument();
+    expect(within(peers).getByText("16 Aug 2026 was a partial run: only 4 companies were scored.")).toBeInTheDocument();
+  });
+
   it("ADANIENSOL: one snapshot, nothing to compare", () => {
     renderView("ADANIENSOL");
     expect(within(section("history")).getByText(/Only one snapshot so far/)).toBeInTheDocument();

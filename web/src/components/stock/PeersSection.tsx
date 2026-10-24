@@ -3,12 +3,27 @@ import type { Instrument, Signal } from "@/lib/api/types";
 import { LOW_COVERAGE } from "@/config/site";
 import { isSignalKey } from "@/config/signals";
 import { fmtDate, pct, scoreText } from "@/lib/format";
+import { companies } from "@/lib/runs";
 import { Card } from "@/components/ui/Card";
 import { SignalChip } from "@/components/ui/SignalChip";
 import s from "./lower.module.css";
 
 /** Same-sector companies scored on the same date. Never silently mixes dates. */
-export function PeersSection({ instrument, peers, asOf }: { instrument: Instrument; peers: Signal[]; asOf: string | null }) {
+export function PeersSection({
+  instrument,
+  peers,
+  asOf,
+  scored = true,
+  partialRun = null,
+}: {
+  instrument: Instrument;
+  peers: Signal[];
+  asOf: string | null;
+  /** Whether this company was itself scored on `asOf`. */
+  scored?: boolean;
+  /** Companies scored on `asOf`, when that run was partial. */
+  partialRun?: number | null;
+}) {
   const others = peers.filter((p) => p.isin !== instrument.isin);
   let body;
   if (!instrument.sector || !asOf) {
@@ -16,7 +31,8 @@ export function PeersSection({ instrument, peers, asOf }: { instrument: Instrume
   } else if (others.length === 0) {
     body = (
       <div className={s.emptyLine}>
-        No other {instrument.sector} company was scored on {fmtDate(asOf)}
+        No {scored ? "other " : ""}
+        {instrument.sector} company was scored on {fmtDate(asOf)}
       </div>
     );
   } else {
@@ -69,7 +85,14 @@ export function PeersSection({ instrument, peers, asOf }: { instrument: Instrume
       <h2 className={s.secH} id="peers-h">
         Peers
       </h2>
-      <Card>{body}</Card>
+      <Card>
+        {body}
+        {asOf && partialRun !== null && (
+          <p className={s.foot}>
+            {fmtDate(asOf)} was a partial run: only {companies(partialRun)} {partialRun === 1 ? "was" : "were"} scored.
+          </p>
+        )}
+      </Card>
     </section>
   );
 }

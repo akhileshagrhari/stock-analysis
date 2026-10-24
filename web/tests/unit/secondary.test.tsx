@@ -33,6 +33,12 @@ describe("RedFlagsView", () => {
     expect(within(catalogue).getAllByText("No data source yet")).toHaveLength(2);
   });
 
+  it("explains a partial date and links the fuller one", () => {
+    render(<RedFlagsView flagged={fixtureRedFlags()} asOf="2026-08-16" notice="Only 4 of 100 companies were scored on 16 Aug 2026." fuller={{ date: "2026-08-14", count: 77 }} />);
+    expect(screen.getByText("Only 4 of 100 companies were scored on 16 Aug 2026.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See the 14 Aug 2026 red flags" })).toHaveAttribute("href", "/red-flags?as_of=2026-08-14");
+  });
+
   it("says when nothing is flagged", () => {
     render(<RedFlagsView flagged={[]} asOf="2026-08-16" />);
     expect(screen.getByText("No company has a triggered red flag on 16 Aug 2026.")).toBeInTheDocument();

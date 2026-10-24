@@ -126,15 +126,28 @@ describe("loadHome on a full run", () => {
 });
 
 describe("loadRedFlags", () => {
-  it("lists the flagged companies with the date", async () => {
-    const data = await loadRedFlags(apiStub());
+  it("lists the flagged companies with the date, and explains a partial date", async () => {
+    const get = apiStub();
+    const data = await loadRedFlags({}, get);
     expect(data.flagged.map((r) => r.nse_symbol)).toContain("ADANIENSOL");
     expect(data.asOf).toBe("2026-08-16");
+    expect(get).toHaveBeenCalledWith("/signals/red-flags?as_of=2026-08-16&limit=1000");
+    expect(data.notice).toContain("Only 4 of 100 companies were scored on 16 Aug 2026");
+    expect(data.fuller).toEqual({ date: "2026-08-14", count: 77 });
+  });
+
+  it("takes a scored date from the URL, and ignores an unknown one", async () => {
+    const get = apiStub();
+    const data = await loadRedFlags({ as_of: "2026-08-14" }, get);
+    expect(data.asOf).toBe("2026-08-14");
+    expect(get).toHaveBeenCalledWith("/signals/red-flags?as_of=2026-08-14&limit=1000");
+    expect(data.notice).toBeNull();
+    expect((await loadRedFlags({ as_of: "1999-01-01" }, apiStub())).asOf).toBe("2026-08-16");
   });
 
   it("is an outage, not 'nothing flagged', when the API has no answer", async () => {
     const stub = apiStub();
     const get = (async (path: string) => (path.startsWith("/signals/red-flags") ? null : stub(path))) as typeof stub;
-    await expect(loadRedFlags(get)).rejects.toBeInstanceOf(ApiUnavailableError);
+    await expect(loadRedFlags({}, get)).rejects.toBeInstanceOf(ApiUnavailableError);
   });
 });
