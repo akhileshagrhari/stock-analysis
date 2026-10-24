@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "gen:api": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts",
     "fixtures": "node scripts/capture-fixtures.mjs",
     "e2e": "playwright test"

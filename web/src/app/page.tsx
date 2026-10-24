@@ -1,15 +1,15 @@
 import { connection } from "next/server";
-import { serverGet } from "@/lib/api/client";
-import type { Health } from "@/lib/api/types";
+import { loadHome } from "@/lib/signals/load";
 import { AppShell } from "@/components/shell/AppShell";
-import { SearchBox } from "@/components/shell/SearchBox";
+import { HomeView } from "@/components/home/HomeView";
 
 export default async function Home() {
+  // Rendered per request (data cached 300s), so `next build` never needs the API.
   await connection();
-  const health = await serverGet<Health>("/health");
+  const data = await loadHome();
   return (
-    <AppShell active="home" crumbs={[{ label: "Home" }]} freshness={{ scores: health?.latest_as_of ?? null }}>
-      <SearchBox />
+    <AppShell active="home" crumbs={[{ label: "Home" }]} freshness={{ scores: data.asOf }}>
+      <HomeView data={data} />
     </AppShell>
   );
 }
