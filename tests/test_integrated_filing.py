@@ -688,3 +688,85 @@ def test_a_failed_fetch_is_reported_and_left_pending(db_with_universe):
 
     assert result.fetch_failed
     assert len(pending_quarterly_filings(db)) == 1
+
+
+# ----------------------------------------------------------------------
+# Annual filings the validators refused
+# ----------------------------------------------------------------------
+
+NESTLEIND_FY2025 = FIXTURES / "nestleind_fy2025_integrated.xml"
+
+
+def _validated(fixture: pathlib.Path, period_end: dt.date):
+    """The annual row read from `fixture`, and the validators' verdict on it —
+    the two steps between parsing a filing and storing or refusing it."""
+    from stockanalysis.extract.validate import validate
+    from stockanalysis.ingest.xbrl_annual import AnnualFilingRef, _as_extraction, to_row
+
+    ref = AnnualFilingRef(
+        isin="INE000000000", symbol=None, period_end=period_end,
+        broadcast_date=period_end + dt.timedelta(days=45), is_consolidated=True,
+        xbrl_url=f"https://x.invalid/{fixture.name}",
+    )
+    row = to_row(ref, parse_annual_xbrl(fixture.read_bytes()))
+    return row, validate(_as_extraction(row), fiscal_year=ref.fiscal_year)
+
+
+def test_an_owners_split_tagged_as_zeros_is_not_the_owners_profit():
+    """NESTLEIND's consolidated filing has a joint venture's share of loss and
+    no minority interest, and tags both halves of the owners/minorities split
+    as 0. Read as PAT, the 0 failed the profit identity by 100% in FY2025 and
+    FY2026 and left the company unscored. Owners are owed nothing of a non-zero
+    profit only if minorities are owed all of it, so two zeros are a filler."""
+    row, report = _validated(NESTLEIND_FY2025, dt.date(2025, 3, 31))
+
+    assert row["pat"] == pytest.approx(3_207.59)  # the group's profit for the year
+    assert row["non_controlling_interest"] == 0
+    assert not report.hard_failures, report.reasons
+
+
+def test_the_quarter_of_a_zero_split_filing_takes_the_group_profit():
+    """The quarterly reader shares the fallback, and read the same 0."""
+    v = parse_xbrl(NESTLEIND_FY2025.read_bytes()).to_crore()
+    assert v["pat"] == pytest.approx(873.46)
+
+
+def test_a_zero_owners_share_stands_when_minorities_take_the_profit():
+    """The filler rule is narrow: a 0 to owners beside a minority that takes
+    the whole profit is a real split, and is kept."""
+    from stockanalysis.ingest.xbrl import _fill_pat
+
+    values = {"profit_for_period": 100.0, "pat": 0.0, "non_controlling_interest": 100.0}
+    _fill_pat(values)
+    assert values["pat"] == 0.0
+
+
+NTPC_FY2025 = FIXTURES / "ntpc_fy2025_integrated.xml"
+TATAPOWER_FY2023 = FIXTURES / "tatapower_fy2023_annual.xml"
+
+
+@pytest.mark.parametrize(
+    ("fixture", "period_end", "regulatory", "pat"),
+    [
+        # PBT 26,282.70 - tax 8,245.18 + 3,701.92 = 21,739.44 from continuing
+        # operations; + associates 2,213.71 = 23,953.15 for the group, which is
+        # owners' 23,422.46 + minorities' 530.69.
+        (NTPC_FY2025, dt.date(2025, 3, 31), 3_701.92, 23_422.46),
+        # The legacy format names the line the same way. 1,333.49 - 1,647.33
+        # + 924.05 = 610.21; + associates 3,199.46 = 3,809.67 for the group.
+        (TATAPOWER_FY2023, dt.date(2023, 3, 31), 924.05, 3_336.44),
+    ],
+)
+def test_a_utility_reconciles_through_its_regulatory_deferral_movement(
+    fixture, period_end, regulatory, pat
+):
+    """Power utilities book the movement in their regulatory deferral account
+    balances (Ind AS 114) between tax and the profit for the period. It is not
+    PBT, tax or a share of associates, and without it NTPC and TATAPOWER failed
+    pbt_tax_pat by 2-24% in every year from FY2023. Their share of associates
+    was never the problem: it is counted once, with the sign it is tagged with."""
+    row, report = _validated(fixture, period_end)
+
+    assert row["regulatory_deferral"] == pytest.approx(regulatory)
+    assert row["pat"] == pytest.approx(pat)
+    assert not report.hard_failures, report.reasons

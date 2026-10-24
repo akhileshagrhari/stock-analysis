@@ -182,7 +182,7 @@ def validate(
             )
         )
 
-    # ---- PBT + associates - tax == PAT + non-controlling interest ----
+    # ---- PBT + associates - tax (+ regulatory deferral) == PAT + NCI ----
     #
     # The naive form of this identity, `pbt - tax == pat`, only holds for a
     # standalone statement. A consolidated one has two legitimate wedges between
@@ -201,11 +201,16 @@ def validate(
     # non-controlling interest almost exactly, and every one of those three years
     # was read correctly.
     #
-    # A null on either line means the statement printed no such line — the common
-    # case — and means zero, not "unknown". Treating it as unknown would skip the
-    # check for precisely the standalone reports where it holds exactly.
+    # A power utility has a third, below tax: the movement in its regulatory
+    # deferral account balances (Ind AS 114). NTPC and TATAPOWER failed this
+    # check by 2-24% in every year from FY2023, which is that line exactly.
+    #
+    # A null on any of these lines means the statement printed no such line — the
+    # common case — and means zero, not "unknown". Treating it as unknown would
+    # skip the check for precisely the standalone reports where it holds exactly.
     pbt, tax, pat = v.get("profit_before_tax"), v.get("tax_expense"), v.get("pat")
     associates = v.get("share_of_associates") or 0.0
+    regulatory = v.get("regulatory_deferral") or 0.0
     nci = v.get("non_controlling_interest") or 0.0
     if pbt is None or tax is None or pat is None:
         add(
@@ -218,16 +223,17 @@ def validate(
             )
         )
     else:
-        group_profit = pbt + associates - tax
+        group_profit = pbt + associates - tax + regulatory
         attributed = pat + nci
         diff = _rel_diff(group_profit, attributed)
+        deferral = f" + regulatory {regulatory:,.1f}" if regulatory else ""
         add(
             Check(
                 "pbt_tax_pat",
                 diff <= PROFIT_TOL,
                 "HARD",
-                f"pbt {pbt:,.1f} + associates {associates:,.1f} - tax {tax:,.1f} "
-                f"= {group_profit:,.1f} vs pat {pat:,.1f} + nci {nci:,.1f} "
+                f"pbt {pbt:,.1f} + associates {associates:,.1f} - tax {tax:,.1f}"
+                f"{deferral} = {group_profit:,.1f} vs pat {pat:,.1f} + nci {nci:,.1f} "
                 f"= {attributed:,.1f} ({diff:.2%})",
             )
         )

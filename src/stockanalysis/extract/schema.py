@@ -68,6 +68,7 @@ MONETARY_FIELDS = (
     "profit_before_tax",
     "tax_expense",
     "share_of_associates",
+    "regulatory_deferral",
     "non_controlling_interest",
     "pat",
     "total_assets",
@@ -144,6 +145,15 @@ class AnnualReportExtraction(BaseModel):
             "separate line between profit before tax and tax expense in a "
             "consolidated statement. Negative for a share of losses. Null when "
             "the statement has no such line."
+        ),
+    )
+    regulatory_deferral: float | None = Field(
+        None,
+        description=(
+            "Net movement in regulatory deferral account balances, as a separate "
+            "line between tax expense and profit for the year — a power "
+            "utility's statement prints one. Negative where it reduces profit. "
+            "Null when the statement has no such line."
         ),
     )
     non_controlling_interest: float | None = Field(

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trimmed from INTEGRATED_FILING_INDAS_1424188_24042025065235_WEB.xml (nsearchives.nseindia.com/corporate/xbrl/), NESTLEIND's consolidated results for the year to March 2025. Only OneD, FourD and OneI are kept, with the facts the annual and quarterly readers use. The owners/minorities split is tagged as zeros: the group reports a share of a joint venture's loss and no minority interest. -->
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in-capmkt="http://www.sebi.gov.in/xbrl/2025-01-31/in-capmkt" xmlns:in-capmkt-ent="http://www.sebi.gov.in/xbrl/IntegratedFinance_IndAS/2025-01-31/in-capmkt/in-capmkt-ent" xmlns:in-capmkt-roles="http://www.sebi.gov.in/xbrl/IntegratedFinance_IndAS/2025-01-31/in-capmkt-roles" xmlns:in-capmkt-types="http://www.sebi.gov.in/xbrl/2025-01-31/in-capmkt-types" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:negated="http://www.xbrl.org/2009/role/negated" xmlns:net="http://www.xbrl.org/2009/role/net" xmlns:nonnum="http://www.xbrl.org/dtr/type/non-numeric" xmlns:num="http://www.xbrl.org/dtr/type/numeric" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xl="http://www.xbrl.org/2003/XLink" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:schemaRef xlink:href="in-capmkt-ent-2025-01-31.xsd" xlink:type="simple"/>
+  <xbrli:context id="OneD">
+    <xbrli:entity>
+    <xbrli:identifier scheme="http://www.bseindia.com/in-capmkt/ScripCode">500790</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+    <xbrli:startDate>2025-01-01</xbrli:startDate>
+    <xbrli:endDate>2025-03-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="FourD">
+    <xbrli:entity>
+    <xbrli:identifier scheme="http://www.bseindia.com/in-capmkt/ScripCode">500790</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+    <xbrli:startDate>2024-04-01</xbrli:startDate>
+    <xbrli:endDate>2025-03-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="OneI">
+    <xbrli:entity>
+    <xbrli:identifier scheme="http://www.bseindia.com/in-capmkt/ScripCode">500790</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+    <xbrli:instant>2025-03-31</xbrli:instant>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:unit id="INR"><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unit>
+  <xbrli:unit id="INRPerShare"><xbrli:divide><xbrli:unitNumerator><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unitNumerator><xbrli:unitDenominator><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unitDenominator></xbrli:divide></xbrli:unit>
+  <in-capmkt:ScripCode contextRef="OneD">500790</in-capmkt:ScripCode>
+  <in-capmkt:Symbol contextRef="OneD">NESTLEIND</in-capmkt:Symbol>
+  <in-capmkt:DeclarationOfUnmodifiedOpinionOrStatementOnImpactOfAuditQualification contextRef="OneD">Declaration of unmodified opinion</in-capmkt:DeclarationOfUnmodifiedOpinionOrStatementOnImpactOfAuditQualification>
+  <in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2025-01-01</in-capmkt:DateOfStartOfReportingPeriod>
+  <in-capmkt:DateOfEndOfReportingPeriod contextRef="OneD">2025-03-31</in-capmkt:DateOfEndOfReportingPeriod>
+  <in-capmkt:WhetherResultsAreAuditedOrUnaudited contextRef="OneD">Audited</in-capmkt:WhetherResultsAreAuditedOrUnaudited>
+  <in-capmkt:NatureOfReportStandaloneConsolidated contextRef="OneD">Consolidated</in-capmkt:NatureOfReportStandaloneConsolidated>
+  <in-capmkt:RevenueFromOperations contextRef="OneD" decimals="-5" unitRef="INR">55038800000</in-capmkt:RevenueFromOperations>
+  <in-capmkt:OtherIncome contextRef="OneD" decimals="-5" unitRef="INR">84400000</in-capmkt:OtherIncome>
+  <in-capmkt:Income contextRef="OneD" decimals="-5" unitRef="INR">55123200000</in-capmkt:Income>
+  <in-capmkt:FinanceCosts contextRef="OneD" decimals="-6" unitRef="INR">375000000</in-capmkt:FinanceCosts>
+  <in-capmkt:DepreciationDepletionAndAmortisationExpense contextRef="OneD" decimals="-5" unitRef="INR">1553400000</in-capmkt:DepreciationDepletionAndAmortisationExpense>
+  <in-capmkt:Expenses contextRef="OneD" decimals="-5" unitRef="INR">43077600000</in-capmkt:Expenses>
+  <in-capmkt:ProfitBeforeExceptionalItemsAndTax contextRef="OneD" decimals="-5" unitRef="INR">12045600000</in-capmkt:ProfitBeforeExceptionalItemsAndTax>
+  <in-capmkt:ExceptionalItemsBeforeTax contextRef="OneD" decimals="-6" unitRef="INR">0</in-capmkt:ExceptionalItemsBeforeTax>
+  <in-capmkt:ProfitBeforeTax contextRef="OneD" decimals="-5" unitRef="INR">12045600000</in-capmkt:ProfitBeforeTax>
+  <in-capmkt:TaxExpense contextRef="OneD" decimals="-5" unitRef="INR">3186800000</in-capmkt:TaxExpense>
+  <in-capmkt:NetMovementInRegulatoryDeferralAccountBalancesRelatedToProfitOrLossAndTheRelatedDeferredTaxMovement contextRef="OneD" decimals="-6" unitRef="INR">0</in-capmkt:NetMovementInRegulatoryDeferralAccountBalancesRelatedToProfitOrLossAndTheRelatedDeferredTaxMovement>
+  <in-capmkt:ProfitLossForPeriodFromContinuingOperations contextRef="OneD" decimals="-5" unitRef="INR">8858800000</in-capmkt:ProfitLossForPeriodFromContinuingOperations>
+  <in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod contextRef="OneD" decimals="-5" unitRef="INR">-124200000</in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod>
+  <in-capmkt:ProfitLossForPeriod contextRef="OneD" decimals="-5" unitRef="INR">8734600000</in-capmkt:ProfitLossForPeriod>
+  <in-capmkt:ProfitOrLossAttributableToOwnersOfParent contextRef="OneD" decimals="-6" unitRef="INR">0</in-capmkt:ProfitOrLossAttributableToOwnersOfParent>
+  <in-capmkt:ProfitOrLossAttributableToNonControllingInterests contextRef="OneD" decimals="-6" unitRef="INR">0</in-capmkt:ProfitOrLossAttributableToNonControllingInterests>
+  <in-capmkt:PaidUpValueOfEquityShareCapital contextRef="OneD" decimals="-5" unitRef="INR">964200000</in-capmkt:PaidUpValueOfEquityShareCapital>
+  <in-capmkt:FaceValueOfEquityShareCapital contextRef="OneD" decimals="INF" unitRef="INRPerShare">1</in-capmkt:FaceValueOfEquityShareCapital>
+  <in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="OneD" decimals="INF" unitRef="INRPerShare">9.06</in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="OneD" decimals="INF" unitRef="INRPerShare">9.06</in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:DateOfStartOfReportingPeriod contextRef="FourD">2024-04-01</in-capmkt:DateOfStartOfReportingPeriod>
+  <in-capmkt:DateOfEndOfReportingPeriod contextRef="FourD">2025-03-31</in-capmkt:DateOfEndOfReportingPeriod>
+  <in-capmkt:WhetherResultsAreAuditedOrUnaudited contextRef="FourD">Audited</in-capmkt:WhetherResultsAreAuditedOrUnaudited>
+  <in-capmkt:NatureOfReportStandaloneConsolidated contextRef="FourD">Consolidated</in-capmkt:NatureOfReportStandaloneConsolidated>
+  <in-capmkt:RevenueFromOperations contextRef="FourD" decimals="-5" unitRef="INR">202015600000</in-capmkt:RevenueFromOperations>
+  <in-capmkt:OtherIncome contextRef="FourD" decimals="-5" unitRef="INR">588600000</in-capmkt:OtherIncome>
+  <in-capmkt:Income contextRef="FourD" decimals="-5" unitRef="INR">202604200000</in-capmkt:Income>
+  <in-capmkt:FinanceCosts contextRef="FourD" decimals="-6" unitRef="INR">1360000000</in-capmkt:FinanceCosts>
+  <in-capmkt:DepreciationDepletionAndAmortisationExpense contextRef="FourD" decimals="-5" unitRef="INR">5399200000</in-capmkt:DepreciationDepletionAndAmortisationExpense>
+  <in-capmkt:Expenses contextRef="FourD" decimals="-5" unitRef="INR">161037700000</in-capmkt:Expenses>
+  <in-capmkt:ProfitBeforeExceptionalItemsAndTax contextRef="FourD" decimals="-5" unitRef="INR">41566500000</in-capmkt:ProfitBeforeExceptionalItemsAndTax>
+  <in-capmkt:ExceptionalItemsBeforeTax contextRef="FourD" decimals="-5" unitRef="INR">1834200000</in-capmkt:ExceptionalItemsBeforeTax>
+  <in-capmkt:ProfitBeforeTax contextRef="FourD" decimals="-5" unitRef="INR">43400700000</in-capmkt:ProfitBeforeTax>
+  <in-capmkt:TaxExpense contextRef="FourD" decimals="-5" unitRef="INR">11085300000</in-capmkt:TaxExpense>
+  <in-capmkt:NetMovementInRegulatoryDeferralAccountBalancesRelatedToProfitOrLossAndTheRelatedDeferredTaxMovement contextRef="FourD" decimals="-6" unitRef="INR">0</in-capmkt:NetMovementInRegulatoryDeferralAccountBalancesRelatedToProfitOrLossAndTheRelatedDeferredTaxMovement>
+  <in-capmkt:ProfitLossForPeriodFromContinuingOperations contextRef="FourD" decimals="-5" unitRef="INR">32315400000</in-capmkt:ProfitLossForPeriodFromContinuingOperations>
+  <in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod contextRef="FourD" decimals="-5" unitRef="INR">-239500000</in-capmkt:ShareOfProfitLossOfAssociatesAndJointVenturesAccountedForUsingEquityMethod>
+  <in-capmkt:ProfitLossForPeriod contextRef="FourD" decimals="-5" unitRef="INR">32075900000</in-capmkt:ProfitLossForPeriod>
+  <in-capmkt:ProfitOrLossAttributableToOwnersOfParent contextRef="FourD" decimals="-6" unitRef="INR">0</in-capmkt:ProfitOrLossAttributableToOwnersOfParent>
+  <in-capmkt:ProfitOrLossAttributableToNonControllingInterests contextRef="FourD" decimals="-6" unitRef="INR">0</in-capmkt:ProfitOrLossAttributableToNonControllingInterests>
+  <in-capmkt:PaidUpValueOfEquityShareCapital contextRef="FourD" decimals="-5" unitRef="INR">964200000</in-capmkt:PaidUpValueOfEquityShareCapital>
+  <in-capmkt:FaceValueOfEquityShareCapital contextRef="FourD" decimals="INF" unitRef="INRPerShare">1</in-capmkt:FaceValueOfEquityShareCapital>
+  <in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="FourD" decimals="INF" unitRef="INRPerShare">33.27</in-capmkt:BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations contextRef="FourD" decimals="INF" unitRef="INRPerShare">33.27</in-capmkt:DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations>
+  <in-capmkt:CashAndCashEquivalents contextRef="OneI" decimals="-5" unitRef="INR">761800000</in-capmkt:CashAndCashEquivalents>
+  <in-capmkt:Assets contextRef="OneI" decimals="-5" unitRef="INR">121933200000</in-capmkt:Assets>
+  <in-capmkt:Equity contextRef="OneI" decimals="-5" unitRef="INR">40102100000</in-capmkt:Equity>
+  <in-capmkt:BorrowingsNoncurrent contextRef="OneI" decimals="-5" unitRef="INR">224800000</in-capmkt:BorrowingsNoncurrent>
+  <in-capmkt:BorrowingsCurrent contextRef="OneI" decimals="-5" unitRef="INR">7308600000</in-capmkt:BorrowingsCurrent>
+  <in-capmkt:EquityAndLiabilities contextRef="OneI" decimals="-5" unitRef="INR">121933200000</in-capmkt:EquityAndLiabilities>
+  <in-capmkt:CashFlowsFromUsedInOperatingActivities contextRef="FourD" decimals="-5" unitRef="INR">29363500000</in-capmkt:CashFlowsFromUsedInOperatingActivities>
+  <in-capmkt:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities contextRef="FourD" decimals="-5" unitRef="INR">20086400000</in-capmkt:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities>
+</xbrli:xbrl>

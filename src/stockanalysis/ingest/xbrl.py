@@ -128,6 +128,13 @@ ELEMENT_MAP: dict[str, str] = {
     "shareofprofitlossofassociatesandjointventuresaccountedforusingequitymethod": (
         "share_of_associates"
     ),
+    # Ind AS 114, which power utilities book between tax and the profit for the
+    # period. NTPC FY2025: PBT 26,283 - tax 8,245 + 3,702 == 21,739 from
+    # continuing operations, before 2,214 of associates.
+    (
+        "netmovementinregulatorydeferralaccountbalances"
+        "relatedtoprofitorlossandtherelateddeferredtaxmovement"
+    ): "regulatory_deferral",
     # The share count, as the filing states it: paid-up equity capital over
     # face value. Tagged on the duration contexts (`OneD`, `FourD`) in every
     # format on file — legacy, integrated, banking and NBFC alike. RELIANCE
@@ -291,9 +298,19 @@ def _fill_pat(values: dict[str, float]) -> None:
     profit *is* the shareholders' profit. Only ever a fallback: overwriting a
     tagged attributable figure with the group total is what makes a consolidated
     PAT too large by exactly the minority's share.
+
+    A split tagged as two zeros is no split. NESTLEIND's consolidated filing has
+    no minority interest and fills both attribution elements with 0, and taking
+    that 0 as PAT left the company unscored. Owners are owed nothing of a
+    non-zero profit only if minorities are owed all of it, so a 0 beside a nil
+    or zero minority share is a filler, not a figure.
     """
-    if values.get("pat") is None and "profit_for_period" in values:
-        values["pat"] = values["profit_for_period"]
+    group = values.get("profit_for_period")
+    if group is None:
+        return
+    pat = values.get("pat")
+    if pat is None or (pat == 0 and not values.get("non_controlling_interest")):
+        values["pat"] = group
 
 
 class NotAnnualFiling(ValueError):

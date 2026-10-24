@@ -290,6 +290,9 @@ ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS extracted_at TIMESTAMP;
 -- which is what let a correct RELIANCE extraction be discarded as a misread.
 ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS share_of_associates DOUBLE;
 ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS non_controlling_interest DOUBLE;
+-- A power utility's third leg, booked below tax (Ind AS 114). Without it NTPC
+-- and TATAPOWER cannot be reconciled either.
+ALTER TABLE fundamentals_annual ADD COLUMN IF NOT EXISTS regulatory_deferral DOUBLE;
 
 -- Which route produced the row: 'XBRL' for the exchange's own tagged filing,
 -- 'LLM' for a model reading the annual-report PDF. They differ in more than
