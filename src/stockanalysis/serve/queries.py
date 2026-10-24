@@ -643,6 +643,39 @@ def signals_on(
     return [_signal(row) for _, row in df.iterrows()]
 
 
+@dataclass(frozen=True)
+class LatestScore:
+    as_of: dt.date
+    composite_score: float | None
+    signal: str | None
+
+
+def latest_scores(db: Database, isins: list[str]) -> dict[str, LatestScore]:
+    """Each instrument's newest signal row, for many at once. Absent: none stored."""
+    if not isins:
+        return {}
+    marks = ", ".join("?" for _ in isins)
+    df = db.query(
+        f"""
+        SELECT s.isin, s.as_of_date, s.composite_score, s.signal
+        FROM signals s
+        JOIN (
+            SELECT isin, MAX(as_of_date) AS newest FROM signals
+            WHERE isin IN ({marks}) GROUP BY isin
+        ) AS latest ON latest.isin = s.isin AND latest.newest = s.as_of_date
+        """,
+        list(isins),
+    )
+    return {
+        _req_str(row["isin"]): LatestScore(
+            as_of=_opt_date(row["as_of_date"]) or dt.date.min,
+            composite_score=_opt_float(row["composite_score"]),
+            signal=_opt_str(row["signal"]),
+        )
+        for _, row in df.iterrows()
+    }
+
+
 def signal_on(db: Database, isin: str, as_of: dt.date) -> Signal | None:
     """The instrument's signal stored for exactly `as_of`, or None.
 

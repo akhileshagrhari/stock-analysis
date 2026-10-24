@@ -1054,3 +1054,30 @@ class TestR17FinancialUnits:
         schemas = app.openapi()["components"]["schemas"]
         assert "crore" in schemas["LineItemOut"]["properties"]["per_share"]["description"]
         assert "crore" in schemas["FinancialsOut"]["properties"]["unit"]["description"]
+
+
+# ----------------------------------------------------------------------
+# R15 — the score on search results
+# ----------------------------------------------------------------------
+
+
+class TestR15SearchScores:
+    def test_each_match_carries_its_newest_score(self, client, partial_run_db):
+        rows = client.get("/v1/instruments/search?q=test&limit=50").json()
+        assert len(rows) == 30
+        newest = {
+            r["isin"]: r for r in client.get("/v1/signals?latest=per_instrument").json()
+        }
+        for row in rows:
+            assert row["as_of"] == newest[row["isin"]]["as_of"]
+            assert row["composite_score"] == newest[row["isin"]]["composite_score"]
+            assert row["signal"] == newest[row["isin"]]["signal"]
+
+    def test_an_unscored_match_has_none(self, client, two_dates_db):
+        two_dates_db.conn.execute(
+            "INSERT INTO instruments (isin, nse_symbol, name) "
+            "VALUES ('INE00NEW0001', 'NEWCO', 'New Listing Ltd')"
+        )
+        (row,) = client.get("/v1/instruments/search?q=newco").json()
+        assert (row["as_of"], row["composite_score"], row["signal"]) == (None, None, None)
+        assert row["nse_symbol"] == "NEWCO"

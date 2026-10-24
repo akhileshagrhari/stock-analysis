@@ -229,6 +229,18 @@ class InstrumentOut(BaseModel):
         return cls(**row.as_dict())
 
 
+class SearchResultOut(InstrumentOut):
+    """A search match with its newest score, for the autocomplete's score chip."""
+
+    as_of: dt.date | None = Field(
+        default=None,
+        description="Date of the newest signal; null when none is stored. It "
+        "may be older than /health.latest_as_of — see /score-status.",
+    )
+    composite_score: float | None = None
+    signal: str | None = None
+
+
 class FactorOut(BaseModel):
     factor_name: str
     raw_value: float | None = None
@@ -1055,17 +1067,31 @@ def get_by_symbol(db: DB, symbol: Annotated[str, Path()]) -> InstrumentOut:
     return InstrumentOut.of(row)
 
 
-@route("/instruments/search", response_model=list[InstrumentOut], tags=["instruments"])
+@route(
+    "/instruments/search", response_model=list[SearchResultOut], tags=["instruments"]
+)
 def search_instruments(
     db: DB,
     q: Annotated[str, Query(description="Part of a symbol or company name")],
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
-) -> list[InstrumentOut]:
+) -> list[SearchResultOut]:
     """Companies matching what is being typed: exact symbol, then symbol
-    prefix, then name prefix, then anywhere in either. Case-insensitive."""
+    prefix, then name prefix, then anywhere in either. Case-insensitive.
+    Each carries its newest score."""
     if not q.strip():
         raise HTTPException(status_code=422, detail="q must not be blank")
-    return [InstrumentOut.of(row) for row in queries.search_instruments(db, q, limit)]
+    found = queries.search_instruments(db, q, limit)
+    scores = queries.latest_scores(db, [row.isin for row in found])
+    out = []
+    for row in found:
+        score = scores.get(row.isin)
+        out.append(SearchResultOut(
+            **row.as_dict(),
+            as_of=None if score is None else score.as_of,
+            composite_score=None if score is None else score.composite_score,
+            signal=None if score is None else score.signal,
+        ))
+    return out
 
 
 @route("/instruments/{isin}", response_model=InstrumentOut, tags=["instruments"])
