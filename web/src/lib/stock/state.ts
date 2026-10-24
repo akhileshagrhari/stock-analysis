@@ -58,8 +58,12 @@ export function scoreState(expl: Explanation | null, model: ModelInfo): ScoreSta
   return { kind: "scored", score, signal, asOf: expl.as_of, coverage, lowCoverage, band, overridden, stale, belowCurrentFloor };
 }
 
-/** How far the displayed score is from the next band line. */
-export function bandGap(score: number, model: ModelInfo): string {
+/**
+ * How far the displayed score is from the next band line. With a red flag
+ * triggered no score can move it out of SELL, so it says that instead.
+ */
+export function bandGap(score: number, model: ModelInfo, flagged = false): string {
+  if (flagged) return `Red flag holds it at ${SIGNALS.SELL.label}`;
   const shown = scoreValue(score);
   const gap = (line: number) => roundTo(Math.abs(line - shown), 1).toFixed(1);
   if (score < model.sell_threshold) return `${gap(model.sell_threshold)} pts to ${SIGNALS.HOLD.label}`;

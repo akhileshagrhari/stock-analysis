@@ -114,8 +114,9 @@ describe("stock page top: other states", () => {
     expect(screen.queryByTestId("needle")).toBeNull();
   });
 
-  it("ADANIENSOL: a single snapshot", () => {
+  it("ADANIENSOL: a single snapshot, held at SELL by a red flag", () => {
     renderView("ADANIENSOL");
+    expect(within(screen.getByTestId("why-card")).getByText("Red flag holds it at SELL")).toBeInTheDocument();
     expect(screen.getByText("First scored 16 Aug 2026")).toBeInTheDocument();
   });
 

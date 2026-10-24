@@ -54,7 +54,8 @@ function partialSentence(p: Snapshot): string {
 export function ScoreHistorySection({ points, model }: { points: Snapshot[]; model: ModelInfo }) {
   const now = points[points.length - 1];
   const earlier = points.slice(0, -1).reverse();
-  const [then, setThen] = useState(earlier.at(-1)?.date ?? "");
+  // Default to the previous snapshot: the latest change, not the oldest.
+  const [then, setThen] = useState(earlier[0]?.date ?? "");
   const thenPoint = points.find((p) => p.date === then) ?? null;
   const cmp = thenPoint && now ? compare(thenPoint, now) : null;
   const changes = new Set(modelChangeIndexes(points).map((i) => points[i].date));

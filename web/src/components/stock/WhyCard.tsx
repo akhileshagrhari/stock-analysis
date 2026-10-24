@@ -64,7 +64,7 @@ export function WhyCard({ state, explanation, model }: { state: ScoreState; expl
       <ScaleBar
         score={state.score}
         thresholds={{ sell: model.sell_threshold, buy: model.buy_threshold }}
-        label={state.score === null ? "" : bandGap(state.score, model)}
+        label={state.score === null ? "" : bandGap(state.score, model, explanation.red_flags.length > 0)}
       />
     </Card>
   );

@@ -47,6 +47,10 @@ describe("bandGap", () => {
     expect(bandGap(74.96, m)).toBe("0.1 pts to BUY");
     expect(bandGap(93.29, m)).toBe("18.3 pts above the BUY line");
   });
+
+  it("says a triggered red flag holds it at SELL, since no score can lift it", () => {
+    expect(bandGap(32.57, m, true)).toBe("Red flag holds it at SELL");
+  });
 });
 
 describe("whySummary", () => {

@@ -146,6 +146,11 @@ describe("other companies", () => {
     expect(row).toHaveTextContent("partial run (4 companies)");
   });
 
+  it("compare defaults to the previous snapshot", () => {
+    renderView("RELIANCE");
+    expect(within(section("history")).getByLabelText("Compare with")).toHaveValue("2026-08-14");
+  });
+
   it("ABB compare: two partial runs under one model still get a warning", async () => {
     const user = userEvent.setup();
     renderView("ABB");
