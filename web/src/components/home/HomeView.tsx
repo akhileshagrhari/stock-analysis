@@ -8,6 +8,7 @@ import { SearchBox } from "@/components/shell/SearchBox";
 import { Card } from "@/components/ui/Card";
 import { Notice } from "@/components/ui/Notice";
 import { SignalChip } from "@/components/ui/SignalChip";
+import { VerdictNote } from "@/components/ui/VerdictNote";
 import s from "./home.module.css";
 
 function StockList({ rows, testId, empty }: { rows: Signal[]; testId: string; empty: string }) {
@@ -45,7 +46,7 @@ export function HomeView({ data }: { data: HomeData }) {
       <div className={s.grid}>
         <Card className={s.wide}>
           <h2 className={s.h2}>
-            Today&apos;s picture <Link href="/signals">All signals</Link>
+            Latest scores ({date}) <Link href="/signals">All signals</Link>
           </h2>
           <div className={`${s.counts} tnum`} data-testid="today-counts">
             <span className={s.pos}>
@@ -72,6 +73,9 @@ export function HomeView({ data }: { data: HomeData }) {
           )}
         </Card>
 
+        <div className={s.wide} data-testid="lists-note">
+          <VerdictNote date={data.listsAsOf} many className={s.listsNote} />
+        </div>
         <Card>
           <h2 className={s.h2}>
             Highest scores <span className="asof">{listsDate}</span>

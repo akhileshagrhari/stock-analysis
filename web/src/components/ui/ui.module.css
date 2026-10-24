@@ -32,17 +32,24 @@
 .segInline { display: inline-flex; }
 .segInline button { flex: none; }
 
+.infoWrap { position: relative; display: inline-flex; vertical-align: middle; flex: none; }
 .info {
-  position: relative; width: 15px; height: 15px; border-radius: 50%; background: #C9C9D3; color: #fff;
-  font-size: 10px; font-weight: 700; display: inline-grid; place-items: center; cursor: help; flex: none;
-  font-style: normal;
+  width: 24px; height: 24px; margin: -4px -2px; padding: 0; border: 0; background: none; cursor: pointer;
+  display: inline-grid; place-items: center;
 }
-.info:hover::after, .info:focus-visible::after {
-  content: attr(data-tip); position: absolute; z-index: 30; left: 50%; top: calc(100% + 8px);
-  transform: translateX(-50%); width: max-content; max-width: 260px; white-space: normal;
-  background: var(--ink); color: #fff; font-size: 12px; font-weight: 400; line-height: 1.45;
-  padding: 8px 10px; border-radius: 8px; text-align: left;
+.info > span {
+  width: 16px; height: 16px; border-radius: 50%; background: var(--ink3); color: #fff;
+  font-size: 10px; font-weight: 700; display: grid; place-items: center; font-style: normal; line-height: 1;
 }
+.info[aria-expanded="true"] > span { background: var(--accent); }
+.infoText {
+  position: absolute; z-index: 30; left: -8px; top: calc(100% + 6px); width: max-content;
+  max-width: min(260px, calc(100vw - 48px)); white-space: normal; background: var(--ink); color: #fff;
+  font-size: 12px; font-weight: 400; line-height: 1.45; padding: 8px 10px; border-radius: 8px; text-align: left;
+  text-transform: none; letter-spacing: normal;
+}
+.verdictNote { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink2); }
+.verdictNote a { color: var(--accent-ink); }
 
 .notice {
   display: flex; gap: 8px; align-items: flex-start; border-radius: 10px; padding: 9px 12px;

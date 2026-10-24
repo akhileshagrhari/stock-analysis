@@ -33,3 +33,4 @@
   .grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .hero h1 { font-size: 26px; }
 }
+.listsNote { margin: 0 0 -8px; }

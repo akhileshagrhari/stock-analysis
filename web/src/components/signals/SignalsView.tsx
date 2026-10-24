@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { Notice } from "@/components/ui/Notice";
 import { Segmented } from "@/components/ui/Segmented";
 import { SignalChip } from "@/components/ui/SignalChip";
+import { VerdictNote } from "@/components/ui/VerdictNote";
 import s from "./signals.module.css";
 
 type Filters = { as_of: string | null; signal: SignalKey | null; sector: string | null };
@@ -83,6 +84,7 @@ export function SignalsView({ data, focusSector = false }: { data: SignalsData; 
           {data.total} stocks scored on {fmtDate(data.asOf)}
         </span>
       </div>
+      <VerdictNote date={data.asOf} many className={s.verdict} />
 
       <div className={s.filters}>
         <Segmented

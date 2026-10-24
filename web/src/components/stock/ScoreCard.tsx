@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { InfoTip } from "@/components/ui/InfoTip";
 import { Notice } from "@/components/ui/Notice";
 import { SignalChip } from "@/components/ui/SignalChip";
+import { VerdictNote } from "@/components/ui/VerdictNote";
 import s from "./stock.module.css";
 
 const TIP = `A relative rank of this stock among scored ${UNIVERSE} stocks on one date, built from factor percentiles. Not a valuation or a price target.`;
@@ -34,7 +35,7 @@ export function ScoreCard({
 }) {
   const thresholds = { sell: model.sell_threshold, buy: model.buy_threshold };
   return (
-    <Card className={s.aScore}>
+    <Card className={s.aScore} data-testid="score-card">
       <div className={s.ct}>
         Composite score <InfoTip text={TIP} />
         {state.kind === "scored" && (
@@ -60,6 +61,8 @@ export function ScoreCard({
             {partialRun !== null && ` · partial run: ranked among ${companies(partialRun)}`}
             {modelVersion && ` · model ${shortModel(modelVersion)}`}
           </div>
+          {state.signal && <p className={s.meaning}>{SIGNALS[state.signal].meaning}</p>}
+          <VerdictNote date={state.asOf} />
         </>
       ) : (
         <>

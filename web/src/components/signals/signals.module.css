@@ -46,3 +46,4 @@
   .filters > * { width: 100%; }
   .filters select { flex: 1; max-width: none; }
 }
+.verdict { margin: -6px 0 14px; }

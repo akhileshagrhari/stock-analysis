@@ -18,6 +18,15 @@ describe("stock page top: RELIANCE (scored, ordinary)", () => {
     expect(screen.getByText("Scored 16 Aug 2026 · partial run: ranked among 4 companies · model 4b05e87d")).toBeInTheDocument();
   });
 
+  it("says what the verdict means, next to it, with the disclaimer a tap away", () => {
+    renderView("RELIANCE");
+    const card = screen.getByTestId("score-card");
+    expect(within(card).getByText("Our model ranks it in the bottom band, or a red flag forced it there.")).toBeVisible();
+    expect(within(card).getByText("Model rank on 16 Aug 2026, not investment advice.")).toBeVisible();
+    expect(within(card).getByRole("link", { name: "How to read this" })).toHaveAttribute("href", "/learn");
+    expect(within(card).getByRole("link", { name: "Disclaimer" })).toHaveAttribute("href", "/disclaimer");
+  });
+
   it("explains why", () => {
     renderView("RELIANCE");
     const why = screen.getByTestId("why-card");

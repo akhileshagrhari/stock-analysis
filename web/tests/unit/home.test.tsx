@@ -17,7 +17,7 @@ const get = (async (path: string) => {
 }) as <T>(path: string) => Promise<T | null>;
 
 describe("HomeView", () => {
-  it("has the hero search, today's picture, short lists and the disclaimer", async () => {
+  it("has the hero search, latest scores, short lists and the disclaimer", async () => {
     const data = await loadHome(get);
     render(
       <AppShell freshness={{ scores: data.asOf }} crumbs={[{ label: "Home" }]} today="2026-10-24">
@@ -26,7 +26,10 @@ describe("HomeView", () => {
     );
     expect(screen.getByRole("heading", { level: 1, name: "Search NIFTY100 stocks" })).toBeInTheDocument();
     expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("heading", { level: 2, name: /^Latest scores \(16 Aug 2026\)/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Today/)).toBeNull();
     expect(screen.getByTestId("today-counts")).toHaveTextContent("BUY 1 · HOLD 0 · SELL 3");
+    expect(within(screen.getByTestId("lists-note")).getByText("Model ranks on 14 Aug 2026, not investment advice.")).toBeVisible();
     expect(screen.getByText("4 of 100 companies scored on 16 Aug 2026; 96 not scored on that date.")).toBeInTheDocument();
     // The 16 Aug run ranked 4 companies, so the lists use 14 Aug and say so.
     expect(screen.getByText("The lists below use 14 Aug 2026.")).toBeInTheDocument();

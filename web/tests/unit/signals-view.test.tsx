@@ -21,6 +21,8 @@ describe("SignalsView", () => {
   it("states the date and count, explains the partial run and links to the fuller list", async () => {
     render(<SignalsView data={await loadSignals({}, get)} />);
     expect(screen.getByText("4 stocks scored on 16 Aug 2026")).toBeInTheDocument();
+    expect(screen.getByText("Model ranks on 16 Aug 2026, not investment advice.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "How to read this" })).toHaveAttribute("href", "/learn");
     const notice = screen.getByText(/Only 4 of 100 companies were scored on 16 Aug 2026/);
     expect(within(notice.closest("div")!).getByRole("link", { name: /14 Aug 2026/ })).toHaveAttribute("href", "/signals?as_of=2026-08-14");
   });

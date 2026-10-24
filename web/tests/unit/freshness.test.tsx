@@ -1,4 +1,6 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { InfoTip } from "@/components/ui/InfoTip";
 import { describe, expect, it } from "vitest";
 import { FreshnessCard } from "@/components/shell/FreshnessCard";
 import { Disclaimer } from "@/components/shell/Disclaimer";
@@ -29,5 +31,22 @@ describe("Disclaimer", () => {
     expect(document.body).toHaveTextContent(
       "Not investment advice. Scores and BUY / HOLD / SELL labels are outputs of a quantitative model that ranks NIFTY100 stocks against each other on a given date. They are not a recommendation to buy or sell any security and don't account for your circumstances. Data can be incomplete or late; check filings before acting. [Final wording pending legal review.]",
     );
+  });
+});
+
+describe("InfoTip", () => {
+  it("is a button that shows its text on tap, and hides it on a second tap or Escape", async () => {
+    const user = userEvent.setup();
+    render(<InfoTip text="What this figure means." />);
+    const button = screen.getByRole("button", { name: "What this means" });
+    expect(screen.queryByText("What this figure means.")).toBeNull();
+    await user.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("What this figure means.")).toBeVisible();
+    await user.click(button);
+    expect(screen.queryByText("What this figure means.")).toBeNull();
+    await user.click(button);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("What this figure means.")).toBeNull();
   });
 });

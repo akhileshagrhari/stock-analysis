@@ -135,3 +135,4 @@
   .whyIn h3 { font-size: 15.5px; }
   .cov { margin-left: 0; }
 }
+.meaning { margin: 10px 0 0; font-size: 13px; line-height: 1.45; color: var(--ink); }
