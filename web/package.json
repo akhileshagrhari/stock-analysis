@@ -12,7 +12,7 @@
     "gen:api": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts",
     "fixtures": "node scripts/capture-fixtures.mjs",
     "e2e": "playwright test",
-    "auth:migrate": "npx @better-auth/cli migrate --config src/lib/auth/server.ts --yes"
+    "auth:migrate": "auth migrate --config src/lib/auth/server.ts --yes"
   },
   "dependencies": {
     "better-auth": "1.7.14",
@@ -32,6 +32,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "auth": "1.7.14",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.3",
     "jsdom": "30.1.3",
