@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import time
 
 import jwt
@@ -10,6 +11,8 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from typer.testing import CliRunner
 
 from stockanalysis.config import settings
 from stockanalysis.serve import auth
@@ -126,3 +129,40 @@ def test_unreachable_keys_are_503(client, sign, monkeypatch):
 
 def test_me_is_not_mounted_at_the_legacy_root(client):
     assert client.get("/me").status_code == 404
+
+
+# ----------------------------------------------------------------------
+# `stockanalysis setup-accounts`: the schema Better Auth keeps accounts in
+# ----------------------------------------------------------------------
+
+TEST_DSN = os.environ.get("SA_TEST_PG_DSN")
+
+
+def test_setup_accounts_without_dsn_fails_readably(monkeypatch):
+    from stockanalysis.cli import app as cli
+
+    monkeypatch.setattr(settings, "pg_dsn", None)
+    result = CliRunner().invoke(cli, ["setup-accounts"])
+    assert result.exit_code == 1
+    assert "SA_PG_DSN" in result.output
+
+
+@pytest.mark.skipif(not TEST_DSN, reason="SA_TEST_PG_DSN not set")
+def test_setup_accounts_creates_the_auth_schema_and_can_run_again(monkeypatch):
+    psycopg = pytest.importorskip("psycopg")
+    from stockanalysis.cli import app as cli
+
+    exists = "SELECT count(*) FROM pg_namespace WHERE nspname = 'auth'"
+    with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+        existed = pg.execute(exists).fetchone()[0] == 1
+    monkeypatch.setattr(settings, "pg_dsn", SecretStr(TEST_DSN))
+    try:
+        for _ in range(2):
+            result = CliRunner().invoke(cli, ["setup-accounts"])
+            assert result.exit_code == 0, result.output
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            assert pg.execute(exists).fetchone()[0] == 1
+    finally:
+        if not existed:
+            with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+                pg.execute("DROP SCHEMA IF EXISTS auth CASCADE")

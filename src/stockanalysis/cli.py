@@ -1579,6 +1579,40 @@ def publish_cmd(
         )
 
 
+@app.command("setup-accounts")
+def setup_accounts_cmd() -> None:
+    """Create the Postgres schema the site's accounts live in. Safe to repeat.
+
+    Better Auth (in the Next.js site) keeps accounts and sessions in schema
+    `auth`, beside `site` but never inside it: every publish replaces `site`
+    wholesale, and publish never touches `auth`. Run this once per database,
+    then `npm --prefix web run auth:migrate` to create Better Auth's tables.
+    Needs SA_PG_DSN.
+    """
+    from stockanalysis.db.postgres import (
+        PostgresUnavailable,
+        configured_dsn,
+        require_psycopg,
+    )
+
+    try:
+        dsn = configured_dsn()
+        psycopg = require_psycopg()
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            conn.execute("CREATE SCHEMA IF NOT EXISTS auth")
+    except PostgresUnavailable as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    except psycopg.Error as e:
+        console.print(f"[red]Postgres error — accounts are not set up.[/red] {e}")
+        raise typer.Exit(1) from e
+
+    console.print(
+        "[green]Schema 'auth' is ready.[/green] Next: `npm --prefix web run auth:migrate` "
+        "creates Better Auth's tables in it."
+    )
+
+
 def _print_releases(releases) -> None:
     if not releases:
         console.print(f"Nothing published to {settings.pg_schema!r} yet.")
