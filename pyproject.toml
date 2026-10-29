@@ -20,6 +20,7 @@ dependencies = [
     "nse>=1.1.0",
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
+    "pyjwt[crypto]>=2.9",
     # 1.49 for the `width=` sizing API, 1.37 for `st.rerun(scope=...)` and
     # `st.fragment(run_every=...)` — the run console redraws through both.
     "streamlit>=1.49.0",

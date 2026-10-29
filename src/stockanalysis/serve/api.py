@@ -1479,7 +1479,10 @@ def list_signals(
 async def cache_control(request: Request, call_next):
     response = await call_next(request)
     seconds = settings.api_cache_seconds
-    if request.method == "GET" and 200 <= response.status_code < 300 and seconds > 0:
+    if request.url.path.startswith("/v1/me"):
+        # Per-user: never stored by a shared cache, whatever the status.
+        response.headers["Cache-Control"] = "no-store"
+    elif request.method == "GET" and 200 <= response.status_code < 300 and seconds > 0:
         response.headers["Cache-Control"] = f"public, max-age={seconds}"
     else:
         response.headers["Cache-Control"] = "no-store"
@@ -1518,6 +1521,8 @@ class ConfiguredCORS:
 # where an OPTIONS request to a GET route would be a 405.
 app.add_middleware(ConfiguredCORS)
 
+# Registers the signed-in `/v1/me*` routes on `app`; it needs `app` defined.
+from stockanalysis.serve import portfolio_api  # noqa: E402,F401
 
 if __name__ == "__main__":   # pragma: no cover
     import uvicorn

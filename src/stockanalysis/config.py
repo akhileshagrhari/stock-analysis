@@ -149,6 +149,13 @@ class Settings(BaseSettings):
     # not preserve between statements.
     pg_dsn: SecretStr | None = None
 
+    # Sign-in. The site (Better Auth) issues short-lived EdDSA JWTs; the API
+    # verifies them against the site's JWKS. All three unset means `/v1/me*`
+    # answers 503 rather than trusting anything.
+    auth_jwks_url: str | None = None
+    auth_issuer: str | None = None
+    auth_audience: str | None = None
+
     # The schema the API reads. A publish loads `<schema>_release_<timestamp>`
     # beside it and renames it into place, so this name always means "the live
     # release". Restricted to a plain lowercase identifier because publish

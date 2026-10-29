@@ -828,6 +828,7 @@ def test_parity_urls_cover_every_route():
     from fastapi.routing import APIRoute
 
     from stockanalysis.serve.api import app
+    from stockanalysis.serve.portfolio_api import PER_USER_PATHS
 
     def covers(template: str, url: str) -> bool:
         # `/v1/x` and `/x` are one handler mounted twice (see `serve.api`), so
@@ -835,7 +836,11 @@ def test_parity_urls_cover_every_route():
         pattern = re.sub(r"\{[^}]+\}", "[^/]+", template.removeprefix("/v1"))
         return re.fullmatch(pattern, urlsplit(url).path.removeprefix("/v1")) is not None
 
-    templates = {r.path for r in app.routes if isinstance(r, APIRoute) and "GET" in r.methods}
+    # Per-user routes read the `app` schema, which is not published, so there is
+    # no DuckDB/Postgres pair to compare.
+    templates = {
+        r.path for r in app.routes if isinstance(r, APIRoute) and "GET" in r.methods
+    } - PER_USER_PATHS
     uncovered = sorted(t for t in templates if not any(covers(t, u) for u in PARITY_URLS))
     assert not uncovered, (
         f"no parity URL exercises {uncovered}; add one to PARITY_URLS in "
