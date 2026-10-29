@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Icon, type IconName } from "./icons";
 import s from "./shell.module.css";
 
-export type NavKey = "home" | "stocks" | "signals" | "red-flags" | "learn" | "disclaimer";
+export type NavKey = "home" | "stocks" | "signals" | "red-flags" | "learn" | "disclaimer" | "portfolio";
 
 type Item = { key?: NavKey; label: string; href?: string; icon: IconName; soon?: boolean };
 
@@ -32,10 +32,14 @@ const GROUPS: { heading?: string; items: Item[] }[] = [
   },
 ];
 
-export function NavList({ active }: { active?: NavKey }) {
+const PORTFOLIO: Item = { key: "portfolio", label: "Portfolio", href: "/portfolio", icon: "portfolio" };
+
+export function NavList({ active, accounts }: { active?: NavKey; accounts: boolean }) {
+  // Portfolio sits in the first group, after Stocks, only when accounts exist.
+  const groups = accounts ? [{ ...GROUPS[0], items: [...GROUPS[0].items, PORTFOLIO] }, ...GROUPS.slice(1)] : GROUPS;
   return (
     <>
-      {GROUPS.map((g, i) => (
+      {groups.map((g, i) => (
         <div key={i}>
           {g.heading && <div className={s.navH}>{g.heading}</div>}
           <nav className={s.nav} aria-label={g.heading ?? "Main"}>

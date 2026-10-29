@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { BRAND, UNIVERSE } from "@/config/site";
 import { todayIso } from "@/lib/format";
+import { AccountMenu } from "@/components/account/AccountMenu";
+import { accountsEnabled } from "@/lib/auth/config";
 import { Brand } from "./Brand";
 import { Disclaimer } from "./Disclaimer";
 import { FreshnessCard } from "./FreshnessCard";
@@ -28,6 +30,7 @@ export function AppShell({
   today?: string;
   children: ReactNode;
 }) {
+  const accounts = accountsEnabled();
   const fresh = <FreshnessCard today={today} {...freshness} />;
   return (
     <div className={s.viewport}>
@@ -37,7 +40,7 @@ export function AppShell({
       <div className={s.app}>
         <aside className={s.sidebar}>
           <Brand />
-          <NavList active={active} />
+          <NavList active={active} accounts={accounts} />
           {fresh}
           <div className={s.sideFoot}>
             <span>{BRAND}</span>
@@ -46,9 +49,10 @@ export function AppShell({
         </aside>
         <main className={s.main} id="main" tabIndex={-1}>
           <MobileNav
+            account={<AccountMenu enabled={accounts} />}
             drawer={
               <>
-                <NavList active={active} />
+                <NavList active={active} accounts={accounts} />
                 {fresh}
               </>
             }
@@ -68,6 +72,7 @@ export function AppShell({
             <div className={s.topSearch}>
               <SearchBox size="bar" />
             </div>
+            <AccountMenu enabled={accounts} />
           </div>
           {children}
           <Disclaimer />

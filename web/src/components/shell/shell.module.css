@@ -69,5 +69,6 @@
     width: 38px; height: 38px; border-radius: 11px; background: #fff; border: 1px solid var(--line2);
     display: grid; place-items: center; color: var(--ink2); cursor: pointer; padding: 0;
   }
-  .ic:last-child { margin-left: auto; }
+  .ic:last-child { margin-left: 0; }
+  .mobileAcct { margin-left: auto; display: inline-flex; }
 }

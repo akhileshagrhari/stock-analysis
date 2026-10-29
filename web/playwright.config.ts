@@ -24,6 +24,8 @@ export default defineConfig({
     url: `${baseURL}/api/v1/instruments/search?q=a&limit=1`,
     reuseExistingServer: process.env.PLAYWRIGHT_REUSE === "1",
     timeout: 120_000,
+    // A fixed sign-in code, so the e2e sign-in needs no email.
+    env: { AUTH_DEV_FIXED_OTP: "246810" },
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], channel, viewport: { width: 1440, height: 900 } } },

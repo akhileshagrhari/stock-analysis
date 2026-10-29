@@ -7,7 +7,7 @@ import { SearchBox } from "./SearchBox";
 import s from "./shell.module.css";
 
 /** Phone top bar: menu drawer, brand, search toggle. Hidden above 720px. */
-export function MobileNav({ drawer }: { drawer: ReactNode }) {
+export function MobileNav({ drawer, account }: { drawer: ReactNode; account?: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [searching, setSearching] = useState(false);
 
@@ -18,6 +18,7 @@ export function MobileNav({ drawer }: { drawer: ReactNode }) {
           <Icon name="menu" />
         </button>
         <Brand />
+        <span className={s.mobileAcct}>{account}</span>
         <button
           type="button"
           className={s.ic}
