@@ -543,6 +543,30 @@ def resolve_symbol(db: Database, symbol: str) -> Instrument | None:
     return _instrument(df.iloc[0])
 
 
+def resolve_symbols(db: Database, symbols: list[str]) -> dict[str, Instrument]:
+    """Listed instruments for many NSE symbols at once, keyed by upper-cased symbol.
+
+    Delisted instruments are skipped. If two listed instruments share a symbol,
+    the lower ISIN wins, so the answer does not depend on row order.
+    """
+    wanted = sorted({s.upper() for s in symbols})
+    if not wanted:
+        return {}
+    marks = ", ".join("?" for _ in wanted)
+    df = db.query(
+        "SELECT i.isin, i.nse_symbol, i.bse_code, i.name, i.sector, i.industry, "
+        "i.listing_date FROM instruments AS i "
+        f"WHERE UPPER(i.nse_symbol) IN ({marks}) AND i.delisting_date IS NULL "
+        "ORDER BY i.isin",
+        wanted,
+    )
+    found: dict[str, Instrument] = {}
+    for _, row in df.iterrows():
+        inst = _instrument(row)
+        found.setdefault(inst.nse_symbol.upper(), inst)
+    return found
+
+
 def search_instruments(db: Database, text: str, limit: int = 10) -> list[Instrument]:
     """Instruments matching what someone is typing, best match first.
 

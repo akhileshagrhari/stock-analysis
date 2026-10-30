@@ -464,7 +464,7 @@ class TestAPI:
         for literal in literals:
             scope = {
                 "type": "http",
-                "method": "GET",
+                "method": sorted(literal.methods or {"GET"})[0],
                 "path": literal.path,
                 "root_path": "",
                 "path_params": {},
