@@ -700,6 +700,87 @@ def latest_scores(db: Database, isins: list[str]) -> dict[str, LatestScore]:
     }
 
 
+def latest_signals(db: Database, isins: list[str]) -> dict[str, Signal]:
+    """Each instrument's newest signal, with `previous` filled, for many at once.
+
+    Absent: no signal stored. The window in `_SIGNALS` runs over the whole
+    table, so `previous` is right whichever instruments are asked for.
+    """
+    if not isins:
+        return {}
+    marks = ", ".join("?" for _ in isins)
+    df = db.query(
+        f"""
+        SELECT {_SIGNAL_COLUMNS}
+        FROM {_SIGNALS} AS s
+        JOIN (
+            SELECT isin, MAX(as_of_date) AS newest FROM signals
+            WHERE isin IN ({marks}) GROUP BY isin
+        ) AS latest ON latest.isin = s.isin AND latest.newest = s.as_of_date
+        JOIN instruments i ON i.isin = s.isin
+        """,
+        list(isins),
+    )
+    return {_req_str(row["isin"]): _signal(row) for _, row in df.iterrows()}
+
+
+def latest_closes(db: Database, isins: list[str]) -> dict[str, tuple[dt.date, float]]:
+    """Each instrument's newest non-null close and its date. Absent: no close."""
+    if not isins:
+        return {}
+    marks = ", ".join("?" for _ in isins)
+    df = db.query(
+        f"""
+        SELECT p.isin, p.date, p.close
+        FROM prices_daily p
+        JOIN (
+            SELECT isin, MAX(date) AS newest FROM prices_daily
+            WHERE isin IN ({marks}) AND close IS NOT NULL GROUP BY isin
+        ) AS latest ON latest.isin = p.isin AND latest.newest = p.date
+        """,
+        list(isins),
+    )
+    out: dict[str, tuple[dt.date, float]] = {}
+    for _, row in df.iterrows():
+        day, close = _opt_date(row["date"]), _opt_float(row["close"])
+        if day is not None and close is not None:
+            out[_req_str(row["isin"])] = (day, close)
+    return out
+
+
+def split_bonus_dates(db: Database, isins: list[str]) -> dict[str, list[dt.date]]:
+    """Ex-dates of each instrument's splits and bonuses, oldest first."""
+    if not isins:
+        return {}
+    marks = ", ".join("?" for _ in isins)
+    df = db.query(
+        f"""
+        SELECT a.isin, a.ex_date
+        FROM corporate_actions a
+        WHERE a.isin IN ({marks}) AND a.action_type IN ('SPLIT', 'BONUS')
+        ORDER BY a.isin, a.ex_date
+        """,
+        list(isins),
+    )
+    out: dict[str, list[dt.date]] = {}
+    for _, row in df.iterrows():
+        day = _opt_date(row["ex_date"])
+        if day is not None:
+            days = out.setdefault(_req_str(row["isin"]), [])
+            if day not in days:
+                days.append(day)
+    return out
+
+
+def complete_run_dates(db: Database) -> set[dt.date]:
+    """Every scoring date that covered at least `COMPLETE_RUN_SHARE` of the universe."""
+    return {
+        c.as_of
+        for c in scored_date_counts(db, limit=None)
+        if c.instruments and c.scored >= COMPLETE_RUN_SHARE * c.instruments
+    }
+
+
 def signal_on(db: Database, isin: str, as_of: dt.date) -> Signal | None:
     """The instrument's signal stored for exactly `as_of`, or None.
 

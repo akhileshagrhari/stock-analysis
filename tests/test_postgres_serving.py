@@ -261,6 +261,19 @@ def _edge_cases(db: Database) -> None:
         ["isin", "as_of_date", "factor_name"],
     )
     db.upsert_df(
+        "corporate_actions",
+        pd.DataFrame(
+            [
+                (MM, dt.date(2021, 6, 1), "SPLIT", 2.0, "split"),
+                (MM, dt.date(2019, 3, 5), "BONUS", 1.0, "bonus"),
+                (MM, dt.date(2022, 8, 1), "DIVIDEND", None, "dividend"),
+                (FIRST, dt.date(2020, 1, 1), "RIGHTS", None, "rights"),
+            ],
+            columns=["isin", "ex_date", "action_type", "ratio", "details"],
+        ),
+        ["isin", "ex_date", "action_type"],
+    )
+    db.upsert_df(
         "news",
         pd.DataFrame(
             [
@@ -936,6 +949,111 @@ def test_read_layer_gives_identical_results_on_both_backends(published):
         )
         quarters = queries.quarterly_financials(pg, FIRST)
         assert [q.is_consolidated for q in quarters] == [None, False, True]
+
+
+# ----------------------------------------------------------------------
+# Batch reads for the portfolio page
+# ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def duck_site(tmp_path):
+    """The fixture database alone: no Postgres needed."""
+    path = tmp_path / "site.duckdb"
+    build_site_db(path)
+    return SimpleNamespace(path=path)
+
+
+def _batch_reads():
+    from stockanalysis.serve import queries
+
+    isins = [FIRST, MM, NOSIGNAL, "INE_UNKNOWN"]
+    return [
+        (queries.latest_closes, (isins,)),
+        (queries.latest_signals, (isins,)),
+        (queries.split_bonus_dates, (isins,)),
+        (queries.complete_run_dates, ()),
+    ]
+
+
+def test_batch_reads_return_empty_for_empty_input(duck_site):
+    from stockanalysis.serve import queries
+
+    with Database(duck_site.path, read_only=True) as db:
+        assert queries.latest_closes(db, []) == {}
+        assert queries.latest_signals(db, []) == {}
+        assert queries.split_bonus_dates(db, []) == {}
+
+
+def test_latest_closes_takes_newest_non_null_close(duck_site):
+    from stockanalysis.serve import queries
+
+    with Database(duck_site.path, read_only=True) as db:
+        newest = db.query(
+            "SELECT MAX(date) AS d FROM prices_daily WHERE isin = ? AND close IS NOT NULL",
+            [FIRST],
+        )["d"][0]
+        got = queries.latest_closes(db, [FIRST, NOSIGNAL, "INE_UNKNOWN"])
+    assert set(got) == {FIRST}
+    day, close = got[FIRST]
+    assert day == newest.date() and isinstance(close, float)
+
+
+def test_latest_closes_skips_a_null_close_on_the_newest_day(duck_site):
+    from stockanalysis.serve import queries
+
+    with Database(duck_site.path) as db:
+        last = db.query("SELECT MAX(date) AS d FROM prices_daily WHERE isin = ?", [FIRST])["d"][0]
+        db.conn.execute(
+            "UPDATE prices_daily SET close = NULL WHERE isin = ? AND date = ?", [FIRST, last]
+        )
+        got = queries.latest_closes(db, [FIRST])
+    assert got[FIRST][0] < last.date()
+
+
+def test_latest_signals_newest_row_with_previous(duck_site):
+    from stockanalysis.serve import queries
+
+    with Database(duck_site.path, read_only=True) as db:
+        got = queries.latest_signals(db, [FIRST, MM, NOSIGNAL])
+    assert set(got) == {FIRST, MM}
+    assert got[MM].as_of == AS_OF
+    assert got[MM].previous is not None and got[MM].previous.as_of == EARLIER
+    assert got[MM].previous.signal == "SELL"
+    assert got[FIRST].as_of == AS_OF
+
+
+def test_split_bonus_dates_only_splits_and_bonuses(duck_site):
+    from stockanalysis.serve import queries
+
+    with Database(duck_site.path, read_only=True) as db:
+        got = queries.split_bonus_dates(db, [FIRST, MM, NOSIGNAL])
+    assert got[MM] == [dt.date(2019, 3, 5), dt.date(2021, 6, 1)]  # not the dividend
+    assert NOSIGNAL not in got
+
+
+def test_complete_run_dates(duck_site):
+    from stockanalysis.serve import queries
+
+    with Database(duck_site.path, read_only=True) as db:
+        got = queries.complete_run_dates(db)
+        expected = {
+            c.as_of
+            for c in queries.scored_date_counts(db, limit=None)
+            if c.instruments and c.scored >= queries.COMPLETE_RUN_SHARE * c.instruments
+        }
+    assert got == expected and AS_OF in got
+
+
+@needs_pg
+def test_batch_reads_are_identical_on_both_backends(published):
+    from stockanalysis.db.postgres import pooled_reader
+
+    with Database(published.path, read_only=True) as duck, pooled_reader() as pg:
+        for fn, args in _batch_reads():
+            a, b = fn(duck, *args), fn(pg, *args)
+            assert a == b, fn.__name__
+            assert a, fn.__name__
 
 
 # ----------------------------------------------------------------------
