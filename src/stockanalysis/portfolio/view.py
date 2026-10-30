@@ -167,8 +167,10 @@ def build_portfolio(holdings: list[StoredHolding], look: Lookups) -> Portfolio:
         h = r.holding
         matched = h.isin is not None and h.isin in look.instruments
         sig = r.signal
+        # Older means before the latest full run. A partial run after it rates
+        # a stock more recently, which is no reason to flag it.
         older_rating = bool(
-            sig is not None and look.ratings_as_of is not None and sig.as_of != look.ratings_as_of
+            sig is not None and look.ratings_as_of is not None and sig.as_of < look.ratings_as_of
         )
         earlier = older_rating and sig is not None and sig.model_version != look.run_model
         older += older_rating

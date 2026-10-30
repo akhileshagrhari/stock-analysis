@@ -148,6 +148,24 @@ def test_older_rating_and_earlier_model_flags():
     assert p.older_ratings == 1 and p.ratings_as_of == RUN
 
 
+def test_newer_partial_run_rating_is_not_older():
+    """A partial run after the latest full one rates a stock more recently:
+    not an older rating, not an earlier model, not in the count."""
+    lk = look(
+        ["A", "B"],
+        signals={
+            "A": sig("A", as_of=D(2026, 10, 28), model="c"),
+            "B": sig("B", as_of=D(2026, 8, 14), model="a"),
+        },
+    )
+    p = build_portfolio([hold("A", "A"), hold("B", "B")], lk)
+    a = next(r for r in p.holdings if r.symbol == "A")
+    b = next(r for r in p.holdings if r.symbol == "B")
+    assert not a.older_rating and not a.earlier_model and a.signal_as_of == D(2026, 10, 28)
+    assert b.older_rating and b.earlier_model
+    assert p.older_ratings == 1
+
+
 def test_no_ratings_as_of_means_no_older_flags():
     lk = look(
         ["A"],
