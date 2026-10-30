@@ -936,3 +936,94 @@ def test_read_layer_gives_identical_results_on_both_backends(published):
         )
         quarters = queries.quarterly_financials(pg, FIRST)
         assert [q.is_consolidated for q in quarters] == [None, False, True]
+
+
+# ----------------------------------------------------------------------
+# The writable app pool, and read roles
+# ----------------------------------------------------------------------
+
+
+@needs_pg
+def test_publish_leaves_other_schemas_alone(published):
+    import psycopg
+    from psycopg import sql
+
+    others = [f"{published.schema}x_app", f"{published.schema}x_auth"]
+    try:
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            for name in others:
+                pg.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(name)))
+                pg.execute(sql.SQL("CREATE TABLE {}.t (n int)").format(sql.Identifier(name)))
+                pg.execute(sql.SQL("INSERT INTO {}.t VALUES (1)").format(sql.Identifier(name)))
+        _publish(published, keep=1)
+        _publish(published, keep=1)
+        _publish(published, keep=1)
+        pub.rollback(TEST_DSN, schema=published.schema)
+        for name in others:
+            assert _pg_scalar("SELECT count(*) FROM {}.t", name) == 1
+    finally:
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            for name in others:
+                pg.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(name)))
+
+
+@needs_pg
+def test_publish_grants_read_roles(site, monkeypatch):
+    import psycopg
+    from psycopg import sql
+
+    role = f"sa_test_reader_{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+        try:
+            pg.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role)))
+        except psycopg.errors.InsufficientPrivilege:
+            pytest.skip("cannot CREATE ROLE")
+    try:
+        monkeypatch.setattr(settings, "pg_read_roles", [role])
+        _publish(site)
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            usage, select = pg.execute(
+                "SELECT has_schema_privilege(%s, %s, 'USAGE'),"
+                " has_table_privilege(%s, %s || '.instruments', 'SELECT')",
+                [role, site.schema, role, site.schema],
+            ).fetchone()
+        assert usage and select
+    finally:
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            ident = sql.Identifier(role)
+            pg.execute(sql.SQL("DROP OWNED BY {}").format(ident))
+            pg.execute(sql.SQL("DROP ROLE {}").format(ident))
+
+
+@needs_pg
+def test_app_connection_can_write_and_falls_back_to_pg_dsn(site, monkeypatch):
+    import psycopg
+    from psycopg import sql
+
+    from stockanalysis.db.postgres import app_connection, pooled_reader
+
+    app_schema = f"{site.schema}_appx"
+    monkeypatch.setattr(settings, "pg_app_dsn", None)
+    monkeypatch.setattr(settings, "pg_app_schema", app_schema)
+    try:
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            pg.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(app_schema)))
+        with app_connection() as conn:
+            conn.execute("CREATE TABLE notes (n int)")
+            conn.execute("INSERT INTO notes VALUES (1)")
+        assert _pg_scalar("SELECT count(*) FROM {}.notes", app_schema) == 1
+        with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
+            with pooled_reader() as reader:
+                reader.conn.execute("CREATE TABLE nope (n int)")
+    finally:
+        from stockanalysis.db.postgres import close_reader_pools
+
+        close_reader_pools()
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            drop = sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE")
+            pg.execute(drop.format(sql.Identifier(app_schema)))
+
+
+def test_bad_read_role_name_is_refused():
+    with pytest.raises(ValueError):
+        Settings(pg_read_roles=["x; drop"])

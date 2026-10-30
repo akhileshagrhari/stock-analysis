@@ -1584,8 +1584,9 @@ def setup_accounts_cmd() -> None:
     """Create the Postgres schema the site's accounts live in. Safe to repeat.
 
     Better Auth (in the Next.js site) keeps accounts and sessions in schema
-    `auth`, beside `site` but never inside it: every publish replaces `site`
-    wholesale, and publish never touches `auth`. Run this once per database,
+    `auth`, and portfolios live in the app schema (SA_PG_APP_SCHEMA, default
+    `app`), both beside `site` but never inside it: every publish replaces
+    `site` wholesale, and publish never touches the others. Run this once per database,
     then `npm --prefix web run auth:migrate` to create Better Auth's tables.
     Needs SA_PG_DSN.
     """
@@ -1596,10 +1597,21 @@ def setup_accounts_cmd() -> None:
     )
 
     try:
-        dsn = configured_dsn()
         psycopg = require_psycopg()
+    except PostgresUnavailable as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    from psycopg import sql
+
+    try:
+        dsn = configured_dsn()
         with psycopg.connect(dsn, autocommit=True) as conn:
             conn.execute("CREATE SCHEMA IF NOT EXISTS auth")
+            conn.execute(
+                sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+                    sql.Identifier(settings.pg_app_schema)
+                )
+            )
     except PostgresUnavailable as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from e
@@ -1608,8 +1620,8 @@ def setup_accounts_cmd() -> None:
         raise typer.Exit(1) from e
 
     console.print(
-        "[green]Schema 'auth' is ready.[/green] Next: `npm --prefix web run auth:migrate` "
-        "creates Better Auth's tables in it."
+        f"[green]Schemas 'auth' and {settings.pg_app_schema!r} are ready.[/green] Next: "
+        "`npm --prefix web run auth:migrate` creates Better Auth's tables in 'auth'."
     )
 
 

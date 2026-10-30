@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import os
 import time
+import uuid
 
 import jwt
 import pytest
@@ -152,17 +153,21 @@ def test_setup_accounts_creates_the_auth_schema_and_can_run_again(monkeypatch):
     psycopg = pytest.importorskip("psycopg")
     from stockanalysis.cli import app as cli
 
-    exists = "SELECT count(*) FROM pg_namespace WHERE nspname = 'auth'"
+    app_schema = f"sa_test_app_{uuid.uuid4().hex[:8]}"
+    exists = "SELECT count(*) FROM pg_namespace WHERE nspname = %s"
     with psycopg.connect(TEST_DSN, autocommit=True) as pg:
-        existed = pg.execute(exists).fetchone()[0] == 1
+        existed = pg.execute(exists, ["auth"]).fetchone()[0] == 1
     monkeypatch.setattr(settings, "pg_dsn", SecretStr(TEST_DSN))
+    monkeypatch.setattr(settings, "pg_app_schema", app_schema)
     try:
         for _ in range(2):
             result = CliRunner().invoke(cli, ["setup-accounts"])
             assert result.exit_code == 0, result.output
         with psycopg.connect(TEST_DSN, autocommit=True) as pg:
-            assert pg.execute(exists).fetchone()[0] == 1
+            assert pg.execute(exists, ["auth"]).fetchone()[0] == 1
+            assert pg.execute(exists, [app_schema]).fetchone()[0] == 1
     finally:
-        if not existed:
-            with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            pg.execute(f'DROP SCHEMA IF EXISTS "{app_schema}" CASCADE')
+            if not existed:
                 pg.execute("DROP SCHEMA IF EXISTS auth CASCADE")

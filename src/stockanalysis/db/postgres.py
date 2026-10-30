@@ -171,7 +171,7 @@ class PostgresReader:
 # Keyed on what a pool is built from, so a changed setting gets a new pool
 # rather than silently reusing one pointed at the old schema — which is also
 # what lets tests switch schemas without reaching in to reset anything.
-_pools: dict[tuple[str, str, int, float], Any] = {}
+_pools: dict[tuple, Any] = {}
 _pools_lock = threading.Lock()
 
 
@@ -276,6 +276,99 @@ def pooled_reader() -> Iterator[PostgresReader]:
             f"or the route reads a table `db.publish.SITE_TABLES` does not copy. "
             f"({exc.diag.message_primary})"
         ) from exc
+    except psycopg.OperationalError as exc:
+        raise ServingUnavailable(f"Lost the Postgres connection: {exc}") from exc
+    finally:
+        pool.putconn(conn)
+
+
+# ----------------------------------------------------------------------
+# The writable pool for user data
+# ----------------------------------------------------------------------
+
+
+def _configure_app(app_schema: str, site_schema: str):
+    def configure(conn: Any) -> None:
+        from psycopg import sql
+
+        conn.execute(
+            sql.SQL("SET search_path TO {}, {}").format(
+                sql.Identifier(app_schema), sql.Identifier(site_schema)
+            )
+        )
+        # Not autocommit: end the implicit transaction so the pool gets an
+        # idle connection back from `configure`.
+        conn.commit()
+
+    return configure
+
+
+def app_pool() -> Any:
+    """The process-wide writable pool for the app schema, opened on first use.
+
+    Uses `pg_app_dsn`, or `pg_dsn` when that is unset. Unlike the reader pool
+    it is not read-only and not autocommit: callers get a transaction.
+    """
+    if settings.pg_app_dsn is not None:
+        dsn = settings.pg_app_dsn.get_secret_value()
+    else:
+        dsn = configured_dsn()
+    require_psycopg()
+    from psycopg_pool import ConnectionPool
+
+    key = (
+        "app",
+        dsn,
+        settings.pg_app_schema,
+        settings.pg_schema,
+        settings.pg_pool_max_size,
+        settings.pg_pool_timeout_seconds,
+    )
+    with _pools_lock:
+        pool = _pools.get(key)
+        if pool is None:
+            pool = ConnectionPool(
+                dsn,
+                min_size=1,
+                max_size=settings.pg_pool_max_size,
+                timeout=settings.pg_pool_timeout_seconds,
+                kwargs={
+                    "autocommit": False,
+                    "prepare_threshold": None,
+                    "application_name": "stockanalysis-app",
+                },
+                configure=_configure_app(settings.pg_app_schema, settings.pg_schema),
+                check=ConnectionPool.check_connection,
+                name="stockanalysis-app",
+                open=True,
+            )
+            _pools[key] = pool
+            atexit.register(pool.close)
+        return pool
+
+
+@contextmanager
+def app_connection() -> Iterator[Any]:
+    """A pooled, writable connection inside one transaction.
+
+    Commits when the block exits cleanly and rolls back when it raises. The
+    search path is the app schema, then the published one. Failures to reach
+    Postgres become `ServingUnavailable`, as in `pooled_reader`.
+    """
+    pool = app_pool()
+    psycopg = require_psycopg()
+    from psycopg_pool import PoolTimeout
+
+    try:
+        conn = pool.getconn()
+    except PoolTimeout as exc:
+        raise ServingUnavailable(
+            f"No Postgres connection within {settings.pg_pool_timeout_seconds:g}s — "
+            f"is the server up, and SA_PG_APP_DSN / SA_PG_DSN correct?"
+        ) from exc
+    try:
+        with conn.transaction():
+            yield conn
     except psycopg.OperationalError as exc:
         raise ServingUnavailable(f"Lost the Postgres connection: {exc}") from exc
     finally:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -149,6 +150,18 @@ class Settings(BaseSettings):
     # not preserve between statements.
     pg_dsn: SecretStr | None = None
 
+    # The writable side: user data (portfolios) lives in its own schema, written
+    # by the API, never by publish. `pg_app_dsn` is a separate login so it can
+    # be a role that may write `app` but not `site`; unset, it falls back to
+    # `pg_dsn`. Same identifier rules as `pg_schema`.
+    pg_app_dsn: SecretStr | None = None
+    pg_app_schema: str = Field(default="app", pattern=r"^[a-z][a-z0-9_]{0,39}$")
+
+    # Roles that may read the published schema (a limited role for the
+    # portfolio code, say). Each publish grants them USAGE and SELECT on the
+    # new release, since a fresh schema starts with no grants.
+    pg_read_roles: list[str] = []
+
     # Sign-in. The site (Better Auth) issues short-lived EdDSA JWTs; the API
     # verifies them against the site's JWKS. All three unset means `/v1/me*`
     # answers 503 rather than trusting anything.
@@ -196,7 +209,17 @@ class Settings(BaseSettings):
     # refuses every browser page served from anywhere else.
     api_cors_origins: list[str] = []
 
-    @field_validator("pg_schema")
+    @field_validator("pg_read_roles")
+    @classmethod
+    def _role_names_are_plain(cls, value: list[str]) -> list[str]:
+        for name in value:
+            if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", name):
+                raise ValueError(
+                    f"SA_PG_READ_ROLES entry {name!r} is not a plain lowercase role name."
+                )
+        return value
+
+    @field_validator("pg_schema", "pg_app_schema")
     @classmethod
     def _not_a_shared_schema(cls, value: str) -> str:
         if value == "public" or value.startswith("pg_"):

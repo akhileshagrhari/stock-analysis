@@ -316,6 +316,7 @@ def publish(
         _execute(pg, "CREATE SCHEMA {}", target)
 
         counts = _load(db, pg, target, plans, progress)
+        _grant_read(pg, target)
 
         _execute(
             pg,
@@ -354,6 +355,18 @@ def publish(
         dropped=dropped,
         drop_failures=failures,
     )
+
+
+def _grant_read(pg: Any, target: str) -> None:
+    """Let `SA_PG_READ_ROLES` read the new release.
+
+    A fresh schema starts with no grants, and the rename keeps whatever it
+    has, so this runs on the release before it goes live, in the same
+    transaction as the load.
+    """
+    for role in settings.pg_read_roles:
+        _execute(pg, "GRANT USAGE ON SCHEMA {} TO {}", target, role)
+        _execute(pg, "GRANT SELECT ON ALL TABLES IN SCHEMA {} TO {}", target, role)
 
 
 def _load(
