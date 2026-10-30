@@ -86,8 +86,8 @@ function createAuth() {
   // than a form that says a code was sent when none can be (Better Auth only
   // logs a failed send). Logged, not thrown: `next build` runs this with
   // NODE_ENV=production and no reason to have the email keys — and stays
-  // quiet there, where every build worker would repeat it; the server logs it
-  // when it starts.
+  // quiet there, where every build worker would repeat it. A running server
+  // logs it once per server bundle, when that bundle first loads this module.
   const emailCodes = emailCodesAvailable();
   if (!emailCodes && process.env.NEXT_PHASE !== "phase-production-build") {
     console.error(
@@ -107,7 +107,8 @@ function createAuth() {
             emailOTP({
               // The email says "It expires in 5 minutes"; this keeps it true.
               expiresIn: 300,
-              // Only a hash in the database: a leaked table holds no usable code.
+              // Only an unsalted hash in the database: codes don't show up in
+              // plain view, but a 6-digit code is quick to recover from its hash.
               storeOTP: "hashed",
               sendVerificationOTP: ({ email, otp }) => sendSignInCode(email, otp),
               // Spread only when set: an explicit `generateOTP: undefined`
