@@ -2,7 +2,7 @@
 // scripts/capture-fixtures.mjs. Tests only.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Health, ModelInfo, Signal } from "@/lib/api/types";
+import type { Health, ModelInfo, Portfolio, Signal } from "@/lib/api/types";
 import type { StockPageData } from "@/lib/stock/load";
 
 // Vitest runs from web/; under jsdom import.meta.url is not a file: URL.
@@ -20,6 +20,14 @@ export function fixtureModel(): ModelInfo {
 
 export function fixtureHealth(): Health {
   return read("health.json");
+}
+
+/**
+ * GET /v1/me/portfolio on the dev data (30 Oct 2026) for a test user who
+ * imported tests/fixtures/portfolio/kite_holdings.csv with Replace.
+ */
+export function fixturePortfolio(): Portfolio {
+  return read("portfolio.json");
 }
 
 export function fixtureSectors(): string[] {

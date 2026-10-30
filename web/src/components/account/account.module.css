@@ -21,6 +21,7 @@
 }
 .menu a:hover, .menu button:hover { background: var(--accent-soft); }
 .danger { color: var(--neg) !important; }
+.menuNotice { margin: 4px 0 0; max-width: 260px; }
 
 .loginWrap { max-width: 420px; }
 .loginCard { display: flex; flex-direction: column; gap: 14px; }

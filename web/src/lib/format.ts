@@ -74,6 +74,11 @@ export function num(v: number, digits = 0): string {
   return signed(grouped(Math.abs(roundTo(v, digits)), digits), roundTo(v, digits), false);
 }
 
+/** "1 holding", "1,200 holdings": a count with its noun, plural unless one. */
+export function count(n: number, noun: string): string {
+  return `${num(n)} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 /** ₹1,310.00 */
 export function inr(v: number, digits = 2): string {
   return signed(`₹${grouped(Math.abs(roundTo(v, digits)), digits)}`, roundTo(v, digits), false);

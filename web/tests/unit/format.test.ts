@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  count,
   daysBetween,
   fiscalLabel,
   fmtDate,
@@ -43,6 +44,12 @@ describe("numbers", () => {
   it("groups digits the Indian way", () => {
     expect(num(1075675)).toBe("10,75,675");
     expect(num(-1234567.891, 1)).toBe("−12,34,567.9");
+  });
+
+  it("counts with a plural noun unless one", () => {
+    expect(count(1, "holding")).toBe("1 holding");
+    expect(count(0, "holding")).toBe("0 holdings");
+    expect(count(1200, "holding")).toBe("1,200 holdings");
   });
 
   it("formats rupees", () => {

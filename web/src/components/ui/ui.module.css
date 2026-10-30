@@ -58,3 +58,4 @@
 .notice.warn { background: var(--hold-soft); color: var(--hold-ink); }
 .notice.alert { background: var(--neg-soft); color: var(--neg); font-weight: 500; }
 .notice.info2 { background: var(--muted2); color: var(--ink2); }
+.notice.success { background: var(--pos-soft); color: var(--pos); font-weight: 500; }

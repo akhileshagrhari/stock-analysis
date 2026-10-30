@@ -17,3 +17,98 @@
 .save:disabled { opacity: .6; cursor: default; }
 .noticeText { margin: 0; }
 .problems { margin: 6px 0 0; padding-left: 18px; }
+
+/* The portfolio page: the signals page's header and table, the stock page's
+   buttons, the score zones' colours. */
+.banner { margin-bottom: 14px; }
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.head h1 { margin: 0; font-size: 30px; letter-spacing: -.03em; }
+.asOf { margin: 4px 0 0; font-size: 13.5px; color: var(--ink2); }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  border-radius: 12px; padding: 10px 16px; font-weight: 600; font-size: 14px; white-space: nowrap; text-decoration: none;
+}
+.btn:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+
+.emptyCard { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 560px; }
+.emptyCard p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink2); }
+
+/* Summary */
+.summary { margin-bottom: 14px; }
+.kpis { display: flex; flex-wrap: wrap; gap: 12px 36px; }
+.kpi { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--ink3); }
+.kpi b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); }
+.kpi b.up { color: var(--pos); }
+.kpi b.down { color: var(--neg); }
+.bar { display: flex; gap: 2px; height: 10px; border-radius: 6px; overflow: hidden; margin: 18px 0 8px; background: var(--muted); }
+.bar span { display: block; height: 100%; min-width: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--ink2); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.zBuy { background: var(--zone-buy); }
+.zHold { background: var(--zone-hold); }
+.zSell { background: var(--zone-sell); }
+.zNone { background: var(--zone-neutral); }
+.verdict { margin-top: 12px; }
+.unpriced { margin: 6px 0 0; font-size: 12.5px; color: var(--ink2); }
+
+/* Holdings */
+.holdings { margin-bottom: 14px; padding-top: 8px; padding-bottom: 8px; }
+.tblWrap { overflow-x: auto; }
+.tbl { border-collapse: collapse; width: 100%; font-size: 14px; }
+.tbl th, .tbl td { padding: 11px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: baseline; }
+.tbl thead th { font-size: 12.5px; color: var(--ink3); font-weight: 600; }
+.tbl .stock { text-align: left; white-space: normal; min-width: 220px; }
+.groupRow th { text-align: left; font-weight: 400; padding: 20px 12px 8px; }
+.tbl tbody:first-of-type .groupRow th { padding-top: 14px; }
+.groupHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.groupMeta { font-size: 13px; color: var(--ink2); }
+.row:hover td { background: var(--muted2); }
+.tbl tbody:last-of-type .row:last-child td { border-bottom: 0; }
+.id { display: flex; flex-direction: column; }
+.sym { color: var(--ink); font-weight: 700; text-decoration: none; }
+a.sym:hover { text-decoration: underline; }
+.name { color: var(--ink3); font-size: 12.5px; }
+.reason { margin-top: 4px; max-width: 460px; color: var(--ink2); font-size: 12.5px; line-height: 1.45; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+/* A long pill wraps rather than widening the row. */
+.pills > * { white-space: normal; font-size: 12px; padding: 2px 9px; }
+.lab { display: none; }
+.up { color: var(--pos); }
+.down { color: var(--neg); }
+
+.dangerZone { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 18px; }
+.quiet { border: 0; background: none; padding: 0; color: var(--ink3); font: 500 13px var(--font); text-decoration: underline; cursor: pointer; }
+.quiet:hover { color: var(--neg); }
+.quiet:disabled { cursor: default; color: var(--ink3); opacity: .7; }
+.dangerNotice { max-width: 560px; }
+
+/* Phone: each holding is two lines, symbol, value and P&L, then quantity,
+   cost and score; the not-rated reason and pills follow at full width. */
+@container vp (max-width: 720px) {
+  .head h1 { font-size: 24px; }
+  .kpis { gap: 10px 24px; }
+  .kpi b { font-size: 19px; }
+  .holdings { padding-top: 4px; }
+  .tblWrap { overflow: visible; }
+  .tbl, .tbl tbody { display: block; }
+  .tbl thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .groupRow, .groupRow th { display: block; }
+  .groupRow th { padding: 18px 2px 6px; border-bottom: 1px solid var(--line); }
+  .tbl tbody:first-of-type .groupRow th { padding-top: 12px; }
+  .row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+  .tbl tbody:last-of-type .row:last-child { border-bottom: 0; }
+  .row:hover td { background: none; }
+  .row td { padding: 0; border: 0; }
+  .row .stock { display: contents; }
+  /* The break between the two lines. */
+  .row::after { content: ""; flex-basis: 100%; order: 1; }
+  .id { order: 0; flex: 1 1 0; min-width: 0; }
+  .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .value, .pnl { order: 0; font-weight: 600; }
+  .weight { display: none; }
+  .qty, .avg, .score { order: 2; margin-top: 4px; font-size: 13px; color: var(--ink2); }
+  .reason { order: 3; flex-basis: 100%; max-width: none; margin-top: 6px; }
+  .pills { order: 4; flex-basis: 100%; }
+  .lab { display: inline; color: var(--ink3); }
+}

@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Notice } from "@/components/ui/Notice";
 import { authClient } from "@/lib/auth/client";
 import s from "./account.module.css";
+
+const NOT_DELETED = "Couldn't delete your account. Try again.";
+const HALF_DELETED = "Your portfolio is deleted, but your account isn't. Sign in again, then try once more.";
 
 /**
  * Sign in, or the avatar and its menu. Reads the session in the browser so the
@@ -23,6 +27,8 @@ function Menu() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const deleting = useRef(false);
   const wrap = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +52,29 @@ function Menu() {
         Sign in
       </Link>
     );
+  }
+
+  /**
+   * The portfolio first, while the session can still mint the API's token,
+   * so an account is never deleted with its holdings left behind.
+   */
+  async function deleteAccount() {
+    if (deleting.current || !confirm("Delete your account and portfolio? This can't be undone.")) return;
+    deleting.current = true;
+    setProblem(null);
+    const portfolioGone = await fetch("/api/portfolio", { method: "DELETE" }).then(
+      (res) => res.ok,
+      () => false,
+    );
+    const { error } = portfolioGone ? await authClient.deleteUser().catch(() => ({ error: true })) : { error: true };
+    deleting.current = false;
+    if (error) {
+      setProblem(portfolioGone ? HALF_DELETED : NOT_DELETED);
+      return;
+    }
+    setOpen(false);
+    router.push("/");
+    router.refresh();
   }
 
   const label = (data.user.name || data.user.email || "?").trim();
@@ -73,7 +102,14 @@ function Menu() {
           >
             Sign out
           </button>
-          {/* "Delete account" is wired in Task 12. */}
+          <button type="button" className={s.danger} onClick={deleteAccount}>
+            Delete account
+          </button>
+          {problem && (
+            <Notice tone="alert" className={s.menuNotice}>
+              {problem}
+            </Notice>
+          )}
         </div>
       )}
     </div>

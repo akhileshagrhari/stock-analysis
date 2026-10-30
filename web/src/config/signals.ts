@@ -13,6 +13,9 @@ export const SIGNALS: Record<SignalKey, { label: string; tone: Tone; meaning: st
 
 export const NOT_SCORED = "Not scored";
 
+/** A portfolio holding the model gives no rating: outside the universe, or not scored. */
+export const NOT_RATED = "Not rated";
+
 export function isSignalKey(key: string | null | undefined): key is SignalKey {
   return key === "BUY" || key === "HOLD" || key === "SELL";
 }
