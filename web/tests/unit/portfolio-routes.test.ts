@@ -55,6 +55,49 @@ describe("POST /api/portfolio/import", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
+  it("answers 400 for a mode that is neither replace nor add", async () => {
+    const res = await POST(new Request(`${ORIGIN}/api/portfolio/import?mode=wipe`, { method: "POST", headers: { origin: ORIGIN }, body: "x" }));
+    expect(res.status).toBe(400);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("answers 413 for a declared length over 1 MB without reading", async () => {
+    const res = await POST(
+      new Request(importUrl, { method: "POST", headers: { origin: ORIGIN, "content-length": "1000001" }, body: "x" }),
+    );
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ detail: "The file is larger than 1 MB." });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("answers 413 for a streamed body over 1 MB with no length, and stops reading", async () => {
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(400_000));
+        if (pulled > 50) controller.close();
+      },
+    });
+    const req = new Request(importUrl, { method: "POST", headers: { origin: ORIGIN }, body: stream, duplex: "half" } as RequestInit);
+    const res = await POST(req);
+    expect(res.status).toBe(413);
+    expect(pulled).toBeLessThan(10);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("answers 504 when the API times out", async () => {
+    mocks.fetch.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+    const res = await post();
+    expect(res.status).toBe(504);
+    expect((await res.json()).detail).toBe("The server took too long. Check your portfolio before trying again.");
+  });
+
+  it("gives the upload a timeout signal", async () => {
+    await post();
+    expect(mocks.fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("answers 502 when the API cannot be reached", async () => {
     mocks.fetch.mockRejectedValue(new TypeError("fetch failed"));
     const res = await post();
