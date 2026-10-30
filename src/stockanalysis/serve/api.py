@@ -1479,7 +1479,10 @@ def list_signals(
 async def cache_control(request: Request, call_next):
     response = await call_next(request)
     seconds = settings.api_cache_seconds
-    if request.url.path.startswith("/v1/me"):
+    path = request.url.path
+    # `/v1/me` and below, never a public `/v1/media…` that happens to share
+    # the prefix.
+    if path == "/v1/me" or path.startswith("/v1/me/"):
         # Per-user: never stored by a shared cache, whatever the status.
         response.headers["Cache-Control"] = "no-store"
     elif request.method == "GET" and 200 <= response.status_code < 300 and seconds > 0:

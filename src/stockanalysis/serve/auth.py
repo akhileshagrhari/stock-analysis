@@ -15,6 +15,9 @@ from fastapi import Depends, Header, HTTPException
 
 from stockanalysis.config import settings
 
+# Slack on `exp`, `iat` and `nbf`, for clock skew between the site and the API.
+LEEWAY_SECONDS = 30
+
 
 class AuthError(Exception):
     """The token is missing, malformed, expired or not ours."""
@@ -43,6 +46,9 @@ def verify(token: str) -> str:
             audience=audience,
             issuer=issuer,
             options={"require": ["exp", "sub", "iss", "aud"]},
+            # The site's clock and this server's can drift a little apart;
+            # without slack a fresh token can read as expired or not yet issued.
+            leeway=LEEWAY_SECONDS,
         )
     except jwt.PyJWKClientConnectionError as exc:
         raise AuthUnavailable("Sign-in keys are unavailable.") from exc

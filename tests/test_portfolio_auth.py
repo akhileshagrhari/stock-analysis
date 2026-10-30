@@ -95,6 +95,15 @@ def test_bad_claims_are_401(client, sign, claims):
     assert r.headers["cache-control"] == "no-store"
 
 
+def test_small_clock_skew_is_tolerated(client, sign):
+    """The site's clock and the API's may differ by seconds: a token just past
+    its expiry, or issued a moment in the API's future, still verifies."""
+    assert client.get("/v1/me", headers=_bearer(sign(exp=-10))).status_code == 200
+    ahead = sign(iat=int(time.time()) + 10)
+    assert client.get("/v1/me", headers=_bearer(ahead)).status_code == 200
+    assert client.get("/v1/me", headers=_bearer(sign(exp=-45))).status_code == 401
+
+
 def test_signature_from_another_key_is_401(client):
     forged = _sign_with(Ed25519PrivateKey.generate())
     assert client.get("/v1/me", headers=_bearer(forged)).status_code == 401
@@ -130,6 +139,30 @@ def test_unreachable_keys_are_503(client, sign, monkeypatch):
 
 def test_me_is_not_mounted_at_the_legacy_root(client):
     assert client.get("/me").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "cache"),
+    [
+        ("/v1/me", "no-store"),
+        ("/v1/me/portfolio", "no-store"),
+        ("/v1/media", "public, max-age=300"),
+        ("/v1/meetings/today", "public, max-age=300"),
+    ],
+)
+def test_no_store_covers_me_and_below_only(monkeypatch, path, cache):
+    """`/v1/me` and its sub-paths are per user; a public `/v1/media…` is not."""
+    from fastapi import FastAPI
+
+    from stockanalysis.serve.api import cache_control
+
+    monkeypatch.setattr(settings, "api_cache_seconds", 300)
+    probe = FastAPI()
+    probe.middleware("http")(cache_control)
+    probe.get(path)(lambda: {"ok": True})
+    r = TestClient(probe).get(path)
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == cache
 
 
 # ----------------------------------------------------------------------
@@ -171,3 +204,47 @@ def test_setup_accounts_creates_the_auth_schema_and_can_run_again(monkeypatch):
             pg.execute(f'DROP SCHEMA IF EXISTS "{app_schema}" CASCADE')
             if not existed:
                 pg.execute("DROP SCHEMA IF EXISTS auth CASCADE")
+
+
+# ----------------------------------------------------------------------
+# The default DuckDB deployment: psycopg is the optional `postgres` extra
+# ----------------------------------------------------------------------
+
+_WITHOUT_PSYCOPG = """
+import json, sys
+
+class _NoPsycopg:
+    def find_spec(self, name, path=None, target=None):
+        if name.split(".")[0] in ("psycopg", "psycopg_pool"):
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+        return None
+
+sys.meta_path.insert(0, _NoPsycopg())
+
+from stockanalysis.serve.api import app
+assert "/v1/me/portfolio" in app.openapi()["paths"]
+
+from typer.testing import CliRunner
+from stockanalysis.cli import app as cli
+result = CliRunner().invoke(cli, ["export-openapi", sys.argv[1]])
+assert result.exit_code == 0, result.output
+loaded = sorted(m for m in sys.modules if m.split(".")[0] in ("psycopg", "psycopg_pool"))
+assert not loaded, loaded
+print(json.dumps(len(json.load(open(sys.argv[1]))["paths"])))
+"""
+
+
+def test_api_and_openapi_export_need_no_psycopg(tmp_path):
+    """The API (portfolio routes included) imports and builds without psycopg."""
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SA_")}
+    out = tmp_path / "openapi.json"
+    # cwd is tmp_path, so no developer .env is read.
+    done = subprocess.run(
+        [sys.executable, "-c", _WITHOUT_PSYCOPG, str(out)],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120,
+    )
+    assert done.returncode == 0, done.stderr[-3000:]
+    assert int(done.stdout.strip().splitlines()[-1]) > 0

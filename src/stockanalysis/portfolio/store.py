@@ -4,6 +4,10 @@ Every function takes a connection and leaves the transaction to the caller
 (`app_connection()` commits on a clean exit and rolls back on error), so a
 save that is refused or fails halfway leaves the saved portfolio as it was.
 Every query filters on `user_id`: one user never sees another's rows.
+
+psycopg is imported inside each function, never at module level: the API
+imports this module whatever its backend, and psycopg is the optional
+`postgres` extra the default DuckDB deployment never installs.
 """
 
 from __future__ import annotations
@@ -11,13 +15,14 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Any, Literal
-
-from psycopg import sql
+from typing import TYPE_CHECKING, Any, Literal
 
 from stockanalysis.config import settings
 from stockanalysis.portfolio.kite import LIMIT, ImportRefused, ParsedRow
 from stockanalysis.portfolio.lots import combine
+
+if TYPE_CHECKING:
+    from psycopg import sql
 
 _PLACES = Decimal("0.0001")
 
@@ -61,11 +66,15 @@ CREATE INDEX IF NOT EXISTS imports_user ON {s}.imports (user_id, id DESC);
 
 
 def _s() -> sql.Identifier:
+    from psycopg import sql
+
     return sql.Identifier(settings.pg_app_schema)
 
 
 def ensure_schema(conn: Any) -> None:
     """Create the tables if missing. Idempotent."""
+    from psycopg import sql
+
     conn.execute(sql.SQL(_DDL).format(s=_s()))
 
 
@@ -108,6 +117,8 @@ def save_import(
     `isins` maps an upper-case symbol to its ISIN. A refused add raises
     `ImportRefused`; the caller's transaction then rolls back.
     """
+    from psycopg import sql
+
     s = _s()
     # Refuse what can't be stored before writing anything.
     for row in rows:
@@ -166,6 +177,8 @@ def save_import(
 
 
 def load_holdings(conn: Any, user_id: str) -> list[StoredHolding]:
+    from psycopg import sql
+
     cur = conn.execute(
         sql.SQL(
             "SELECT symbol, isin, quantity, avg_cost, file_price, uploaded_at "
@@ -177,6 +190,8 @@ def load_holdings(conn: Any, user_id: str) -> list[StoredHolding]:
 
 
 def last_import(conn: Any, user_id: str) -> ImportRecord | None:
+    from psycopg import sql
+
     r = conn.execute(
         sql.SQL(
             "SELECT id, filename, mode, row_count, matched, created_at "
@@ -189,6 +204,8 @@ def last_import(conn: Any, user_id: str) -> ImportRecord | None:
 
 def delete_portfolio(conn: Any, user_id: str) -> int:
     """Remove the user's holdings and import log. Returns holdings removed."""
+    from psycopg import sql
+
     _lock_user(conn, user_id)
     cur = conn.execute(
         sql.SQL("DELETE FROM {s}.holdings WHERE user_id = %s").format(s=_s()), [user_id]
