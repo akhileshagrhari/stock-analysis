@@ -201,3 +201,27 @@ def test_prices_range_and_name():
     p = build_portfolio([hold("A", "A"), hold("B", "B")], lk)
     assert (p.prices_from, p.prices_to) == (D(2026, 10, 22), D(2026, 10, 24))
     assert p.holdings[0].name in {"A", "B"}
+
+
+def test_future_split_after_the_close_is_not_flagged():
+    lk = look(["A"], closes={"A": (D(2026, 10, 24), 120.0)}, split={"A": [D(2026, 10, 27)]})
+    r = build_portfolio([hold("A", "A")], lk).holdings[0]
+    assert r.price_source == "site" and r.price == 120.0 and not r.split_since_upload
+
+
+def test_split_between_upload_and_close_is_flagged():
+    lk = look(["A"], closes={"A": (D(2026, 10, 24), 60.0)}, split={"A": [D(2026, 10, 23)]})
+    r = build_portfolio([hold("A", "A")], lk).holdings[0]
+    assert r.price_source == "file" and r.split_since_upload
+
+
+def test_split_on_the_close_date_is_flagged():
+    lk = look(["A"], closes={"A": (D(2026, 10, 24), 60.0)}, split={"A": [D(2026, 10, 24)]})
+    r = build_portfolio([hold("A", "A")], lk).holdings[0]
+    assert r.price_source == "file" and r.split_since_upload
+
+
+def test_split_without_a_close_is_not_flagged():
+    lk = look(["A"], split={"A": [D(2026, 10, 24)]})
+    r = build_portfolio([hold("A", "A")], lk).holdings[0]
+    assert r.price_source == "file" and not r.split_since_upload

@@ -107,7 +107,13 @@ def _price(
     upload = h.uploaded_at.astimezone(_IST).date()
     file_price = h.file_price
     close = look.closes.get(h.isin) if matched and h.isin else None
-    split = bool(matched and h.isin and any(d > upload for d in look.split_bonus.get(h.isin, ())))
+    # Only a split/bonus already in the close counts: announced future ones have
+    # not happened, so the close is still on the upload's share basis.
+    split = bool(
+        close is not None
+        and h.isin
+        and any(upload < d <= close[0] for d in look.split_bonus.get(h.isin, ()))
+    )
     if split:
         return (
             file_price,
