@@ -512,6 +512,8 @@ def rollback(dsn: str | None = None, *, schema: str | None = None) -> RollbackRe
         _execute(
             pg, "UPDATE {}." + _RELEASE_TABLE + " SET demoted_at = NULL", target.schema
         )
+        # A kept release may predate the current SA_PG_READ_ROLES.
+        _grant_read(pg, target.schema)
         _execute(pg, "ALTER SCHEMA {} RENAME TO {}", target.schema, live)
         pg.commit()
 

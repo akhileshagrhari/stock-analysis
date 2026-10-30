@@ -996,6 +996,50 @@ def test_publish_grants_read_roles(site, monkeypatch):
 
 
 @needs_pg
+def test_rollback_grants_read_roles_on_an_older_release(site, monkeypatch):
+    import psycopg
+    from psycopg import sql
+
+    role = f"sa_test_reader_{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+        try:
+            pg.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role)))
+        except psycopg.errors.InsufficientPrivilege:
+            pytest.skip("cannot CREATE ROLE")
+    try:
+        _publish(site)
+        monkeypatch.setattr(settings, "pg_read_roles", [role])
+        _publish(site)
+        pub.rollback(TEST_DSN, schema=site.schema)
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            usage, select = pg.execute(
+                "SELECT has_schema_privilege(%s, %s, 'USAGE'),"
+                " has_table_privilege(%s, %s || '.instruments', 'SELECT')",
+                [role, site.schema, role, site.schema],
+            ).fetchone()
+        assert usage and select
+    finally:
+        with psycopg.connect(TEST_DSN, autocommit=True) as pg:
+            ident = sql.Identifier(role)
+            pg.execute(sql.SQL("DROP OWNED BY {}").format(ident))
+            pg.execute(sql.SQL("DROP ROLE {}").format(ident))
+
+
+@needs_pg
+def test_app_connection_missing_schema_is_serving_unavailable(site, monkeypatch):
+    from stockanalysis.db.postgres import ServingUnavailable, app_connection, close_reader_pools
+
+    monkeypatch.setattr(settings, "pg_app_dsn", None)
+    monkeypatch.setattr(settings, "pg_app_schema", f"{site.schema}_missing")
+    try:
+        with pytest.raises(ServingUnavailable, match="setup-accounts"):
+            with app_connection() as conn:
+                conn.execute("SELECT * FROM holdings")
+    finally:
+        close_reader_pools()
+
+
+@needs_pg
 def test_app_connection_can_write_and_falls_back_to_pg_dsn(site, monkeypatch):
     import psycopg
     from psycopg import sql

@@ -369,6 +369,12 @@ def app_connection() -> Iterator[Any]:
     try:
         with conn.transaction():
             yield conn
+    except (psycopg.errors.UndefinedTable, psycopg.errors.InvalidSchemaName) as exc:
+        raise ServingUnavailable(
+            f"The app schema {settings.pg_app_schema!r} or one of its tables is "
+            f"missing. Run `stockanalysis setup-accounts` to create it. "
+            f"({exc.diag.message_primary})"
+        ) from exc
     except psycopg.OperationalError as exc:
         raise ServingUnavailable(f"Lost the Postgres connection: {exc}") from exc
     finally:
