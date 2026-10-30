@@ -1,5 +1,13 @@
-// Accounts: whether they are switched on, and where to send someone after
-// they sign in. No Better Auth import here, so any component can ask.
+// Accounts: whether they are switched on, where to send someone after they
+// sign in, and the one error code the server and the account menu share. No
+// Better Auth import here, so any component can ask.
+
+/**
+ * The error code `/api/auth/delete-user` answers with when the portfolio
+ * couldn't be deleted first, so the account was kept too. Here so the account
+ * menu (a client component) and `server.ts` share it.
+ */
+export const PORTFOLIO_NOT_DELETED = "PORTFOLIO_NOT_DELETED";
 
 /** Where a sign-in lands when it was not sent from anywhere in particular. */
 const DEFAULT_NEXT = "/portfolio";

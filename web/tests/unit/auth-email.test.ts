@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fixedOtp, sendSignInCode } from "@/lib/auth/email";
+import { emailCodesAvailable, fixedOtp, sendSignInCode } from "@/lib/auth/email";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -107,5 +107,28 @@ describe("fixedOtp", () => {
     expect(fixedOtp()).toBeNull();
     vi.stubEnv("AUTH_DEV_FIXED_OTP", "");
     expect(fixedOtp()).toBeNull();
+  });
+});
+
+describe("emailCodesAvailable", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("is always on outside production, where the code can go to the log", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("RESEND_API_KEY", undefined);
+    vi.stubEnv("EMAIL_FROM", undefined);
+    expect(emailCodesAvailable()).toBe(true);
+  });
+
+  it("needs both the Resend key and a sender in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    vi.stubEnv("EMAIL_FROM", undefined);
+    expect(emailCodesAvailable()).toBe(false);
+    vi.stubEnv("RESEND_API_KEY", undefined);
+    vi.stubEnv("EMAIL_FROM", "Stock Analysis <codes@example.test>");
+    expect(emailCodesAvailable()).toBe(false);
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    expect(emailCodesAvailable()).toBe(true);
   });
 });

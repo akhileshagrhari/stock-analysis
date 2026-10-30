@@ -3,14 +3,31 @@
 //
 // Resend over plain `fetch`, so there is no SDK to keep current. With no key
 // set, development writes the code to the server log instead, so signing in
-// locally needs no outside account; production refuses rather than leave a
-// visitor waiting for an email that will never come.
+// locally needs no outside account.
+//
+// In production without RESEND_API_KEY and EMAIL_FROM, `createAuth()` leaves
+// email codes out altogether and the sign-in page doesn't offer them
+// (`emailCodesAvailable()`). A send that fails anyway — Resend down, a refused
+// message — never reaches the visitor: Better Auth runs `sendVerificationOTP`
+// through `runInBackgroundOrAwait`, which catches the error and only logs it,
+// so the endpoint still answers success. The sign-in page's wording allows for
+// a code that never arrives.
 
 const RESEND_URL = "https://api.resend.com/emails";
 const TIMEOUT_MS = 10_000;
 
 function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
+}
+
+/**
+ * Whether the site can offer sign-in by emailed code: always outside
+ * production (the code goes to the server log), and in production only with
+ * both RESEND_API_KEY and EMAIL_FROM set.
+ */
+export function emailCodesAvailable(): boolean {
+  if (!isProduction()) return true;
+  return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
 }
 
 export async function sendSignInCode(email: string, otp: string): Promise<void> {

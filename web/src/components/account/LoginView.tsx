@@ -10,8 +10,11 @@ import s from "./account.module.css";
 const noSubscribe = () => () => {};
 const WRONG_CODE = "That code didn't work. Check it or send a new one.";
 
-/** Sign in with Google, or with a six-digit code sent to an email address. */
-export function LoginView({ google, next }: { google: boolean; next: string }) {
+/**
+ * Sign in with Google, or with a six-digit code sent to an email address.
+ * Each is offered only when the server has it set up (`google`, `emailCodes`).
+ */
+export function LoginView({ google, emailCodes, next }: { google: boolean; emailCodes: boolean; next: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -65,10 +68,12 @@ export function LoginView({ google, next }: { google: boolean; next: string }) {
             <button type="button" className={s.secondary} onClick={() => authClient.signIn.social({ provider: "google", callbackURL: next })}>
               Continue with Google
             </button>
-            <div className={s.or}>or</div>
+            {emailCodes && <div className={s.or}>or</div>}
           </>
         )}
-        {!sent ? (
+        {!emailCodes ? (
+          <Notice tone="info">Email sign-in isn&apos;t available right now.</Notice>
+        ) : !sent ? (
           <form className={s.form} onSubmit={sendCode}>
             <label className={s.label}>
               Email
@@ -80,7 +85,11 @@ export function LoginView({ google, next }: { google: boolean; next: string }) {
           </form>
         ) : (
           <form className={s.form} onSubmit={verify}>
-            <p className={s.lede}>We sent a code to {email.trim()}. It expires in 5 minutes.</p>
+            {/* A failed send can't be detected here (Better Auth only logs it), so no promise that it arrived. */}
+            <p className={s.lede}>
+              We&apos;ve sent a code to {email.trim()}. It expires in 5 minutes. If it doesn&apos;t arrive in a minute or two, check your spam
+              folder or send a new code.
+            </p>
             <label className={s.label}>
               Code
               <input

@@ -26,25 +26,45 @@ beforeEach(() => {
 
 describe("LoginView", () => {
   it("offers Google only when it is set up", () => {
-    const { rerender } = render(<LoginView google={false} next="/portfolio" />);
+    const { rerender } = render(<LoginView google={false} emailCodes next="/portfolio" />);
     expect(screen.queryByRole("button", { name: "Continue with Google" })).toBeNull();
-    rerender(<LoginView google next="/portfolio" />);
+    rerender(<LoginView google emailCodes next="/portfolio" />);
     expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
   });
 
   it("sends a code to the email, then asks for it", async () => {
     const user = userEvent.setup();
-    render(<LoginView google={false} next="/portfolio" />);
+    render(<LoginView google={false} emailCodes next="/portfolio" />);
     await user.type(screen.getByLabelText("Email"), "a@example.test");
     await user.click(screen.getByRole("button", { name: "Send code" }));
     expect(send).toHaveBeenCalledWith({ email: "a@example.test", type: "sign-in" });
     expect(await screen.findByLabelText("Code")).toBeInTheDocument();
   });
 
+  it("says a code is on its way without promising it arrived", async () => {
+    const user = userEvent.setup();
+    render(<LoginView google={false} emailCodes next="/portfolio" />);
+    await user.type(screen.getByLabelText("Email"), "a@example.test");
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    expect(await screen.findByText(/If it doesn't arrive in a minute or two, check your spam folder or send a new code\./)).toBeInTheDocument();
+  });
+
+  it("offers no email form when email codes are off", () => {
+    const { rerender } = render(<LoginView google emailCodes={false} next="/portfolio" />);
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send code" })).toBeNull();
+    expect(screen.queryByText("or")).toBeNull();
+    expect(screen.getByText("Email sign-in isn't available right now.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeInTheDocument();
+    rerender(<LoginView google={false} emailCodes={false} next="/portfolio" />);
+    expect(screen.getByText("Email sign-in isn't available right now.")).toBeInTheDocument();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("says so when the code is wrong", async () => {
     const user = userEvent.setup();
     signIn.mockResolvedValue({ data: null, error: { message: "Invalid OTP" } } as never);
-    render(<LoginView google={false} next="/portfolio" />);
+    render(<LoginView google={false} emailCodes next="/portfolio" />);
     await user.type(screen.getByLabelText("Email"), "a@example.test");
     await user.click(screen.getByRole("button", { name: "Send code" }));
     await user.type(await screen.findByLabelText("Code"), "000000");
@@ -56,7 +76,7 @@ describe("LoginView", () => {
   it("goes to next after a good code", async () => {
     const user = userEvent.setup();
     signIn.mockResolvedValue({ data: { token: "t" }, error: null } as never);
-    render(<LoginView google={false} next="/signals" />);
+    render(<LoginView google={false} emailCodes next="/signals" />);
     await user.type(screen.getByLabelText("Email"), "a@example.test");
     await user.click(screen.getByRole("button", { name: "Send code" }));
     await user.type(await screen.findByLabelText("Code"), "246810");

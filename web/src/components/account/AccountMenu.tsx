@@ -5,10 +5,20 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Notice } from "@/components/ui/Notice";
 import { authClient } from "@/lib/auth/client";
+import { PORTFOLIO_NOT_DELETED } from "@/lib/auth/config";
 import s from "./account.module.css";
 
-const NOT_DELETED = "Couldn't delete your account. Try again.";
-const HALF_DELETED = "Your portfolio is deleted, but your account isn't. Sign in again, then try once more.";
+const NOT_FRESH = "For your security, sign out and sign in again, then delete your account.";
+const NOTHING_DELETED = "Couldn't delete your portfolio, so nothing was deleted. Try again later.";
+const NOT_DELETED = "Couldn't delete your account. Try again later.";
+
+/** What to say when `deleteUser` answers with an error `code` (none when the request itself failed). */
+function deleteProblem(code: string | undefined): string {
+  // Better Auth refuses a session older than its freshAge (a day) before anything is deleted.
+  if (code === "SESSION_EXPIRED") return NOT_FRESH;
+  if (code === PORTFOLIO_NOT_DELETED) return NOTHING_DELETED;
+  return NOT_DELETED;
+}
 
 /**
  * Sign in, or the avatar and its menu. Reads the session in the browser so the
@@ -55,21 +65,18 @@ function Menu() {
   }
 
   /**
-   * The portfolio first, while the session can still mint the API's token,
-   * so an account is never deleted with its holdings left behind.
+   * One request. On the server, Better Auth deletes the portfolio first (its
+   * `beforeDelete` hook, through the API) and then the account, or keeps
+   * both: an account is never deleted with its holdings left behind.
    */
   async function deleteAccount() {
     if (deleting.current || !confirm("Delete your account and portfolio? This can't be undone.")) return;
     deleting.current = true;
     setProblem(null);
-    const portfolioGone = await fetch("/api/portfolio", { method: "DELETE" }).then(
-      (res) => res.ok,
-      () => false,
-    );
-    const { error } = portfolioGone ? await authClient.deleteUser().catch(() => ({ error: true })) : { error: true };
+    const { error } = await authClient.deleteUser().catch(() => ({ error: { code: undefined } }));
     deleting.current = false;
     if (error) {
-      setProblem(portfolioGone ? HALF_DELETED : NOT_DELETED);
+      setProblem(deleteProblem(error.code));
       return;
     }
     setOpen(false);

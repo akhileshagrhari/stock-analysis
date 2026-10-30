@@ -919,7 +919,7 @@ The site (`web/`):
 | `BETTER_AUTH_SECRET` | Signs sessions and encrypts the token signing key: `openssl rand -base64 32` |
 | `BETTER_AUTH_URL` | The site's public origin, such as `https://example.com`. Tokens carry it as issuer and audience |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | A Google Cloud OAuth client (web application) with the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/google`. Unset hides the Google button |
-| `RESEND_API_KEY`, `EMAIL_FROM` | Sign-in codes by email through Resend, from an address on a domain verified there. Without a key, production refuses to send a code rather than log it |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Sign-in codes by email through Resend, from an address on a domain verified there. Without both, production offers no email sign-in (only Google, if set up) and logs an error at startup |
 | `SA_API_URL` | Where the API is |
 | `AUTH_DEV_FIXED_OTP` | Never set. Production ignores it anyway |
 

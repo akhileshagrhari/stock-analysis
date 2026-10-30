@@ -9,8 +9,8 @@ const FIXTURE = "../tests/fixtures/portfolio/kite_holdings.csv";
 const EMPTY = "See your Zerodha holdings beside the model's latest rating of each stock.";
 
 // Accounts a test made and hasn't deleted: the sign-out test's, or one from a
-// test that failed partway. afterEach removes them, portfolio first, so a run
-// leaves no test user or portfolio behind.
+// test that failed partway. afterEach removes them, so a run leaves no test
+// user or portfolio behind (deleting an account deletes its portfolio first).
 const leftover = new Set<string>();
 
 function newEmail(project: string): string {
@@ -58,14 +58,14 @@ async function importFile(page: Page, mode: "Replace my portfolio" | "Add to my 
 
 test.afterEach(async ({ page, baseURL }) => {
   // Sign in again through the API with the fixed code, then delete the
-  // portfolio and the account, as the account menu would.
+  // account as the account menu does: one request, which deletes the
+  // portfolio first on the server.
   const headers = { origin: baseURL! };
   for (const email of leftover) {
     const sent = await page.request.post("/api/auth/email-otp/send-verification-otp", { headers, data: { email, type: "sign-in" } });
     expect(sent.ok(), `cleanup: send a code to ${email}`).toBe(true);
     const signedIn = await page.request.post("/api/auth/sign-in/email-otp", { headers, data: { email, otp: CODE } });
     expect(signedIn.ok(), `cleanup: sign in as ${email}`).toBe(true);
-    expect((await page.request.delete("/api/portfolio", { headers })).ok(), `cleanup: delete ${email}'s portfolio`).toBe(true);
     expect((await page.request.post("/api/auth/delete-user", { headers, data: {} })).ok(), `cleanup: delete ${email}`).toBe(true);
     leftover.delete(email);
   }
@@ -75,6 +75,10 @@ test("signs in with an emailed code, then signs out", async ({ page }, testInfo)
   await signIn(page, newEmail(testInfo.project.name), "/");
 
   await expect(page).toHaveURL(/\/$/);
+  // Sign-in ends with router.push then router.refresh. The session (and so the
+  // avatar) can be ready before the refresh lands, and the re-render closes a
+  // menu opened in between, so let the page settle first.
+  await page.waitForLoadState("networkidle");
   const avatar = page.getByRole("button", { name: "Account" });
   await expect(avatar).toBeVisible();
 

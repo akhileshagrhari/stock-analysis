@@ -58,21 +58,13 @@ describe("AccountMenu", () => {
     return confirm;
   }
 
-  it("deletes the portfolio, then the account, then goes home", async () => {
-    const order: string[] = [];
-    fetchMock.mockImplementation(async () => {
-      order.push("portfolio");
-      return Response.json({ deleted: 3 });
-    });
-    deleteUser.mockImplementation((async () => {
-      order.push("account");
-      return { data: { success: true }, error: null };
-    }) as never);
+  it("deletes the account with one request, which removes the portfolio first on the server, then goes home", async () => {
+    deleteUser.mockResolvedValue({ data: { success: true }, error: null } as never);
     const confirm = await openAndDelete(true);
     expect(confirm).toHaveBeenCalledWith("Delete your account and portfolio? This can't be undone.");
     await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
-    expect(fetchMock).toHaveBeenCalledWith("/api/portfolio", { method: "DELETE" });
-    expect(order).toEqual(["portfolio", "account"]);
+    expect(deleteUser).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does nothing when the visitor cancels", async () => {
@@ -81,19 +73,30 @@ describe("AccountMenu", () => {
     expect(deleteUser).not.toHaveBeenCalled();
   });
 
-  it("keeps the account when the portfolio could not be deleted", async () => {
-    fetchMock.mockResolvedValue(Response.json({ detail: "x" }, { status: 503 }));
+  it("asks a visitor whose sign-in is too old to sign in again first", async () => {
+    deleteUser.mockResolvedValue({
+      data: null,
+      error: { code: "SESSION_EXPIRED", message: "Session expired. Re-authenticate to perform this action.", status: 400, statusText: "Bad Request" },
+    } as never);
     await openAndDelete(true);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't delete your account. Try again.");
-    expect(deleteUser).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("For your security, sign out and sign in again, then delete your account.");
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("says so when the account itself could not be deleted", async () => {
-    fetchMock.mockResolvedValue(Response.json({ deleted: 3 }));
-    deleteUser.mockResolvedValue({ data: null, error: { message: "Session expired" } } as never);
+  it("says nothing was deleted when the portfolio could not be", async () => {
+    deleteUser.mockResolvedValue({
+      data: null,
+      error: { code: "PORTFOLIO_NOT_DELETED", message: "x", status: 503, statusText: "Service Unavailable" },
+    } as never);
     await openAndDelete(true);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Your portfolio is deleted, but your account isn't. Sign in again, then try once more.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't delete your portfolio, so nothing was deleted. Try again later.");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("says so when the account could not be deleted for any other reason", async () => {
+    deleteUser.mockRejectedValue(new TypeError("Failed to fetch"));
+    await openAndDelete(true);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't delete your account. Try again later.");
     expect(push).not.toHaveBeenCalled();
   });
 

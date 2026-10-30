@@ -33,6 +33,8 @@ beforeEach(() => {
 afterEach(() => {
   process.off("unhandledRejection", onRejection);
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function accountsOff() {
@@ -139,5 +141,131 @@ describe("with accounts on", () => {
       session: { id: "s1" },
     });
     expect(await currentUser()).toEqual({ id: "u1", email: "asha@example.test", name: "Asha" });
+  });
+});
+
+// What `server.ts` handed Better Auth. The plugins are the real ones; only
+// betterAuth itself is faked.
+type Plugin = { id: string; options?: Record<string, unknown> };
+type Options = {
+  plugins: Plugin[];
+  user: { deleteUser: { enabled: boolean; beforeDelete: (user: { id: string }, request?: Request) => Promise<void> } };
+};
+const given = () => mocks.betterAuth.mock.calls[0][0] as Options;
+const plugin = (id: string) => given().plugins.find((p) => p.id === id);
+
+describe("the Better Auth options", () => {
+  it("never puts the API's token in a response header", async () => {
+    accountsOn();
+    await import("@/lib/auth/server");
+    expect(plugin("jwt")?.options).toMatchObject({ disableSettingJwtHeader: true });
+  });
+
+  it("stores email codes hashed, and leaves code generation to Better Auth without a fixed code", async () => {
+    accountsOn();
+    vi.stubEnv("AUTH_DEV_FIXED_OTP", undefined);
+    await import("@/lib/auth/server");
+    const options = plugin("email-otp")?.options;
+    expect(options?.storeOTP).toBe("hashed");
+    // An explicit `generateOTP: undefined` replaces Better Auth's own generator
+    // and every send fails, so the key must be absent.
+    expect(options).not.toHaveProperty("generateOTP");
+  });
+
+  it("uses the fixed code outside production when one is set", async () => {
+    accountsOn();
+    vi.stubEnv("AUTH_DEV_FIXED_OTP", "246810");
+    await import("@/lib/auth/server");
+    const generate = plugin("email-otp")?.options?.generateOTP as () => string;
+    expect(generate()).toBe("246810");
+  });
+
+  it.each([
+    ["RESEND_API_KEY", { RESEND_API_KEY: undefined, EMAIL_FROM: "Stock Analysis <codes@example.test>" }],
+    ["EMAIL_FROM", { RESEND_API_KEY: "re_test_key", EMAIL_FROM: undefined }],
+  ])("leaves email codes out in production without %s, and says so once", async (_, env) => {
+    accountsOn();
+    vi.stubEnv("NODE_ENV", "production");
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await import("@/lib/auth/server");
+    expect(plugin("email-otp")).toBeUndefined();
+    expect(plugin("jwt")).toBeDefined();
+    expect(error).toHaveBeenCalledOnce();
+    expect(error.mock.calls[0].join(" ")).toMatch(/RESEND_API_KEY and EMAIL_FROM/);
+  });
+
+  it("leaves email codes out quietly while `next build` collects pages", async () => {
+    accountsOn();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PHASE", "phase-production-build");
+    vi.stubEnv("RESEND_API_KEY", undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await import("@/lib/auth/server");
+    expect(plugin("email-otp")).toBeUndefined();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("offers email codes in production with an email service", async () => {
+    accountsOn();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    vi.stubEnv("EMAIL_FROM", "Stock Analysis <codes@example.test>");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await import("@/lib/auth/server");
+    expect(plugin("email-otp")).toBeDefined();
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleting an account", () => {
+  const user = { id: "u1" };
+  const request = () =>
+    new Request("http://localhost:3000/api/auth/delete-user", {
+      method: "POST",
+      headers: { cookie: "better-auth.session_token=s" },
+    });
+
+  async function beforeDelete(apiReply: () => Promise<Response>) {
+    accountsOn();
+    vi.stubEnv("SA_API_URL", "http://api.test:8000");
+    const fetchMock = vi.fn<typeof fetch>(apiReply);
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await import("@/lib/auth/server");
+    expect(given().user.deleteUser.enabled).toBe(true);
+    return { hook: given().user.deleteUser.beforeDelete, fetchMock };
+  }
+
+  it("deletes the portfolio through the API first, with the visitor's own token", async () => {
+    mocks.getToken.mockResolvedValue({ token: "tok" });
+    const { hook, fetchMock } = await beforeDelete(async () => Response.json({ deleted: 3 }));
+
+    await hook(user, request());
+
+    const tokenFor = mocks.getToken.mock.calls[0][0] as { headers: Headers };
+    expect(tokenFor.headers.get("cookie")).toBe("better-auth.session_token=s");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://api.test:8000/v1/me/portfolio");
+    expect(init?.method).toBe("DELETE");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer tok");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each([
+    ["the API refuses", async () => Response.json({ detail: "Portfolio needs Postgres." }, { status: 503 })],
+    ["the API can't be reached", async () => Promise.reject(new TypeError("fetch failed"))],
+  ])("keeps the account when %s", async (_, reply) => {
+    mocks.getToken.mockResolvedValue({ token: "tok" });
+    const { hook } = await beforeDelete(reply);
+    await expect(hook(user, request())).rejects.toMatchObject({ name: "APIError", body: { code: "PORTFOLIO_NOT_DELETED" } });
+  });
+
+  it("keeps the account when no token can be minted, or there is no request to mint it from", async () => {
+    mocks.getToken.mockRejectedValue(Object.assign(new Error("Unauthorized"), { name: "APIError", statusCode: 401 }));
+    const { hook, fetchMock } = await beforeDelete(async () => Response.json({ deleted: 0 }));
+    await expect(hook(user, request())).rejects.toMatchObject({ body: { code: "PORTFOLIO_NOT_DELETED" } });
+    await expect(hook(user, undefined)).rejects.toMatchObject({ body: { code: "PORTFOLIO_NOT_DELETED" } });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
