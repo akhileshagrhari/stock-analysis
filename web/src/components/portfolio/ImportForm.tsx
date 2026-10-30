@@ -15,6 +15,7 @@ const MODES: { value: Mode; label: string; sub: string }[] = [
   { value: "add", label: "Add to my portfolio", sub: "Keep what's saved and add this file's holdings" },
 ];
 const UNREACHABLE = "Couldn't reach the server. Nothing was changed.";
+const NO_DEFAULT = "Couldn't check for a saved portfolio. Choose how to save this file.";
 
 type Problem = { message: string; problems: string[] };
 
@@ -35,10 +36,14 @@ async function problemFrom(res: Response): Promise<Problem> {
   return { message: "Something went wrong. Nothing was changed.", problems: [] };
 }
 
-/** Choose a Kite holdings CSV and save it as the portfolio, or add it to one. */
-export function ImportForm({ hasHoldings }: { hasHoldings: boolean }) {
+/**
+ * Choose a Kite holdings CSV and save it as the portfolio, or add it to one.
+ * `hasHoldings` picks the starting mode (Add when some are saved); null means
+ * the page couldn't tell, so no mode is chosen and Save waits for one.
+ */
+export function ImportForm({ hasHoldings }: { hasHoldings: boolean | null }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>(hasHoldings ? "add" : "replace");
+  const [mode, setMode] = useState<Mode | null>(hasHoldings === null ? null : hasHoldings ? "add" : "replace");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -47,7 +52,7 @@ export function ImportForm({ hasHoldings }: { hasHoldings: boolean }) {
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!file || inFlight.current) return;
+    if (!file || !mode || inFlight.current) return;
     inFlight.current = true;
     setSaving(true);
     setProblem(null);
@@ -76,7 +81,7 @@ export function ImportForm({ hasHoldings }: { hasHoldings: boolean }) {
     }
   }
 
-  const current = MODES.find((m) => m.value === mode)!;
+  const current = MODES.find((m) => m.value === mode);
   return (
     <Card className={s.importCard}>
       <h1>Import from Zerodha</h1>
@@ -97,8 +102,8 @@ export function ImportForm({ hasHoldings }: { hasHoldings: boolean }) {
           {file && <span className={s.fileName}>{file.name}</span>}
         </label>
         <Segmented label="How to save" options={MODES} value={mode} onChange={setMode} />
-        <p className={s.modeSub}>{current.sub}</p>
-        <button type="submit" className={s.save} disabled={!file || saving}>
+        <p className={s.modeSub}>{current ? current.sub : NO_DEFAULT}</p>
+        <button type="submit" className={s.save} disabled={!file || !mode || saving}>
           {saving ? "Saving…" : "Save portfolio"}
         </button>
       </form>

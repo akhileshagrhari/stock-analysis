@@ -30,6 +30,7 @@ vi.mock("@/lib/auth/config", async (orig) => ({ ...(await orig<typeof import("@/
 vi.mock("@/lib/auth/client", () => ({ authClient: { useSession: vi.fn(), signOut: vi.fn(), deleteUser: vi.fn() } }));
 vi.mock("@/lib/api/user", async (orig) => ({ ...(await orig<typeof import("@/lib/api/user")>()), userGet: mocks.userGet }));
 
+import ImportPage from "@/app/portfolio/import/page";
 import PortfolioPage from "@/app/portfolio/page";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ImportForm } from "@/components/portfolio/ImportForm";
@@ -38,6 +39,7 @@ import { ApiUnavailableError } from "@/lib/api/client";
 import type { Holding, Portfolio } from "@/lib/api/types";
 import { SignedOutError } from "@/lib/api/user";
 import { authClient } from "@/lib/auth/client";
+import { currentUser } from "@/lib/auth/server";
 import { fixturePortfolio } from "../fixtures";
 
 const OUTSIDE_UNIVERSE = "Outside the NIFTY 100 companies the model covers. ETFs, gold bonds and REITs are never rated.";
@@ -349,5 +351,36 @@ describe("the portfolio page", () => {
     render(await page(String(p.last_import!.id + 1)));
     expect(screen.queryByText(/^Saved /)).toBeNull();
     expect(screen.getByRole("heading", { level: 1, name: "Your portfolio" })).toBeInTheDocument();
+  });
+});
+
+describe("the import page", () => {
+  const pressed = (name: string) => screen.getByRole("button", { name }).getAttribute("aria-pressed");
+
+  beforeEach(() => {
+    vi.mocked(currentUser).mockResolvedValue({ id: "u1", email: "a@example.test", name: "" });
+  });
+
+  it("preselects Add with saved holdings and Replace without", async () => {
+    mocks.userGet.mockResolvedValue(fixturePortfolio());
+    const { unmount } = render(await ImportPage());
+    expect(pressed("Add to my portfolio")).toBe("true");
+    unmount();
+    mocks.userGet.mockResolvedValue({ ...fixturePortfolio(), holdings: [] });
+    render(await ImportPage());
+    expect(pressed("Replace my portfolio")).toBe("true");
+  });
+
+  it("preselects nothing when it can't learn whether holdings are saved", async () => {
+    mocks.userGet.mockRejectedValue(new ApiUnavailableError(503, "/me/portfolio"));
+    render(await ImportPage());
+    expect(pressed("Replace my portfolio")).toBe("false");
+    expect(pressed("Add to my portfolio")).toBe("false");
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it("sends a signed-out visitor to sign in, then back", async () => {
+    mocks.userGet.mockRejectedValue(new SignedOutError());
+    await expect(ImportPage()).rejects.toThrow("NEXT_REDIRECT /login?next=/portfolio/import");
   });
 });

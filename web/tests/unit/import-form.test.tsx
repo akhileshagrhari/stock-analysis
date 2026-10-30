@@ -29,6 +29,22 @@ describe("ImportForm", () => {
     expect(screen.getByRole("button", { name: "Add to my portfolio" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("preselects no mode when the page couldn't tell, and keeps Save off until one is picked", async () => {
+    const user = userEvent.setup();
+    render(<ImportForm hasHoldings={null} />);
+    expect(screen.getByRole("button", { name: "Replace my portfolio" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Add to my portfolio" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Couldn't check for a saved portfolio. Choose how to save this file.")).toBeInTheDocument();
+    await choose(user);
+    const save = screen.getByRole("button", { name: "Save portfolio" });
+    expect(save).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Add to my portfolio" }));
+    expect(save).toBeEnabled();
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    await user.click(save);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/portfolio/import?mode=add&filename=holdings.csv");
+  });
+
   it("keeps Save off until a file is chosen", async () => {
     const user = userEvent.setup();
     render(<ImportForm hasHoldings={false} />);

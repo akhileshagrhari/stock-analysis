@@ -4,7 +4,7 @@ import s from "./ui.module.css";
 
 export type SegmentOption<T extends string> = { value: T; label: string };
 
-/** A row of toggle buttons; aria-pressed marks the chosen one. */
+/** A row of toggle buttons; aria-pressed marks the chosen one, if any (`value` null: none yet). */
 export function Segmented<T extends string>({
   options,
   value,
@@ -14,7 +14,7 @@ export function Segmented<T extends string>({
   className,
 }: {
   options: SegmentOption<T>[];
-  value: T;
+  value: T | null;
   onChange: (v: T) => void;
   label: string;
   inline?: boolean;

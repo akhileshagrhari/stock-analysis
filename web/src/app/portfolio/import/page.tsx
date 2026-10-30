@@ -15,15 +15,16 @@ export default async function ImportPage() {
   await connection();
   if (!accountsEnabled()) notFound();
   if (!(await currentUser())) redirect("/login?next=/portfolio/import");
-  // Only to choose the default mode; until the portfolio route exists the API
-  // answers 404 "Not Found", which userGet reads as no holdings.
-  let hasHoldings = false;
+  // Only to choose the starting mode: Add when holdings are saved, Replace
+  // when none are. When the API can't say (an outage, a misrouted API), null:
+  // no mode is chosen for the visitor and Save waits until they pick one.
+  // Saving reports its own trouble.
+  let hasHoldings: boolean | null = null;
   try {
     const saved = await userGet<{ holdings?: unknown[] }>("/me/portfolio");
-    hasHoldings = Boolean(saved?.holdings?.length);
+    if (saved) hasHoldings = Boolean(saved.holdings?.length);
   } catch (error) {
     if (error instanceof SignedOutError) redirect("/login?next=/portfolio/import");
-    // Any other trouble only costs the default; saving reports its own.
   }
   const health = await serverGet<Health>("/health").catch(() => null);
   return (
