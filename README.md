@@ -770,6 +770,182 @@ schema without starting a server, so the site can generate its TypeScript
 client from it (for example with `openapi-typescript`) and fail to build when
 the API changes shape under it.
 
+## Accounts and portfolios
+
+A signed-in visitor can upload their Zerodha Kite holdings file (Kite:
+Holdings → Download) and see it on the site's `/portfolio` page, grouped by the
+model's rating of each stock: BUY, HOLD, SELL, or Not rated (funds, bonds,
+anything outside the NIFTY 100, and companies the model doesn't score). Each
+group shows its share of the portfolio's value. The labels are the site's usual
+model ratings from `web/src/config/signals.ts`; the page sets them beside the
+holdings and adds no advice of its own. Design:
+`docs/superpowers/specs/2026-10-30-portfolio-design.md`.
+
+Sign-in belongs to the site: Better Auth, with a six-digit code by email, and
+Google when its keys are set. Portfolios belong to the API. The site's server
+forwards each request with a 15-minute EdDSA token from Better Auth, and the
+API checks it against the site's public keys and touches only that user's rows.
+
+| Route | Does |
+|---|---|
+| `GET /v1/me` | The signed-in user's id |
+| `POST /v1/me/portfolio/import?mode=replace\|add&filename=…` | The CSV as the raw body, up to 1 MB and 2,000 rows. `replace` makes the file the whole portfolio; `add` merges it into what is saved (quantities summed, average cost weighted). A refused file changes nothing and names its bad rows |
+| `GET /v1/me/portfolio` | Each holding's value, P&L, rating and group, each group's share, and the last import |
+| `DELETE /v1/me/portfolio` | The holdings and the import log |
+
+Every `/v1/me*` response is `no-store`. All four answer 503 while the
+`SA_AUTH_*` settings are unset, and the portfolio routes answer 503 "Portfolio
+needs Postgres." when the API serves DuckDB. The uploaded file is never
+stored, only what was parsed from it: each holding's symbol, ISIN, quantity,
+average cost and Kite's last price, and per import the file name, mode and row
+counts.
+
+Three Postgres schemas share one database: `site` (published stock data),
+`auth` (Better Auth's accounts and sessions) and `app` (portfolios,
+`SA_PG_APP_SCHEMA`). Publish and rollback touch only `site` and its
+releases.
+
+### Local setup
+
+Postgres serving comes first ([Serving from Postgres](#serving-from-postgres));
+the feature has no DuckDB path. Then, once per database:
+
+```bash
+stockanalysis setup-accounts          # schemas auth and app, and app's tables
+npm --prefix web run auth:migrate     # Better Auth's tables, in auth
+```
+
+`auth:migrate` runs the `auth` CLI pinned in `web/package.json` and reads
+`web/.env.local`, so `DATABASE_URL` and `BETTER_AUTH_SECRET` (below) go in
+before it runs. Both commands are safe to repeat.
+
+Then the settings. In `.env`, for the API:
+
+```bash
+SA_PG_DSN=postgresql://localhost/stockanalysis
+SA_SERVE_BACKEND=postgres
+SA_AUTH_JWKS_URL=http://localhost:3000/api/auth/jwks   # the site's public keys
+SA_AUTH_ISSUER=http://localhost:3000                   # both exactly the site's
+SA_AUTH_AUDIENCE=http://localhost:3000                 # BETTER_AUTH_URL
+```
+
+In `web/.env.local`, for the site:
+
+```bash
+DATABASE_URL=postgresql:///stockanalysis
+BETTER_AUTH_SECRET=…                  # openssl rand -base64 32
+BETTER_AUTH_URL=http://localhost:3000
+```
+
+Restart the API and the site after a change. With `RESEND_API_KEY` unset, the
+sign-in code goes to the Next.js server log instead of an inbox. A dev server
+on another port needs that origin in `BETTER_AUTH_URL` and in all three
+`SA_AUTH_*` settings. "Sign in" and "Portfolio" appear whenever the site has
+`DATABASE_URL` and `BETTER_AUTH_SECRET`. The site can't see which backend the
+API serves, so with an API on DuckDB, `/portfolio` shows the API's 503.
+
+`npm run e2e` in `web/` runs the whole flow at desktop and phone sizes: sign
+in, import `tests/fixtures/portfolio/kite_holdings.csv` with Replace and then
+Add, delete the portfolio, delete the account. It needs the API running as
+above. It signs in with the fixed code `AUTH_DEV_FIXED_OTP`, which
+`playwright.config.ts` sets and production ignores, and it deletes any test
+account a failed test leaves behind.
+
+### Separate Postgres roles (optional)
+
+Locally the `SA_PG_DSN` role does everything. Elsewhere, two more logins keep
+each side to its own schema:
+
+| Role | Can | Used by |
+|---|---|---|
+| `sa_app` | Write `app`, read `site` | The API's portfolio pool (`SA_PG_APP_DSN`) |
+| `sa_auth` | Write `auth` only | The site (`DATABASE_URL`) |
+
+In this order:
+
+1. Run `stockanalysis setup-accounts` as the `SA_PG_DSN` role. It creates both
+   schemas and `app`'s tables, so that role owns all of them.
+2. As the same role, in `psql`:
+
+   ```sql
+   CREATE ROLE sa_app LOGIN PASSWORD '…';
+   GRANT sa_app TO CURRENT_USER;     -- lets a non-superuser hand objects to it
+   ALTER SCHEMA app OWNER TO sa_app;
+   -- Owning the schema doesn't give sa_app its tables, and without them it
+   -- can't insert or delete. Schema first, then tables; the id sequence moves
+   -- with app.imports.
+   ALTER TABLE app.imports OWNER TO sa_app;
+   ALTER TABLE app.holdings OWNER TO sa_app;
+
+   CREATE ROLE sa_auth LOGIN PASSWORD '…';
+   GRANT sa_auth TO CURRENT_USER;
+   ALTER SCHEMA auth OWNER TO sa_auth;
+   ```
+
+3. Set the site's `DATABASE_URL` to `sa_auth`
+   (`postgresql://sa_auth:<password>@localhost/stockanalysis` in
+   `web/.env.local`), and only then run `npm --prefix web run auth:migrate`,
+   so `sa_auth` creates and owns Better Auth's tables. If the migration already
+   ran as another role, hand those tables over too:
+   `ALTER TABLE auth."user" OWNER TO sa_auth;`, and the same for
+   `auth.session`, `auth.account`, `auth.verification` and `auth.jwks`.
+4. In `.env`, then restart the API:
+
+   ```bash
+   SA_PG_APP_DSN=postgresql://sa_app:<password>@localhost/stockanalysis
+   SA_PG_READ_ROLES=["sa_app"]
+   ```
+
+`SA_PG_APP_DSN` is the portfolio pool's login; unset, it falls back to
+`SA_PG_DSN`. Each publish grants the roles in `SA_PG_READ_ROLES` `USAGE` on the
+new release's schema and `SELECT` on all its tables before the release goes
+live, and `publish --rollback` grants the same on the release it brings back,
+so `sa_app` can always read the live `site`. The release that is live when the
+setting is added has no such grant; until the next publish, grant it by hand:
+`GRANT USAGE ON SCHEMA site TO sa_app; GRANT SELECT ON ALL TABLES IN SCHEMA
+site TO sa_app;`. `setup-accounts` stays safe to repeat as the `SA_PG_DSN` role,
+which step 2 made a member of both.
+
+### Production settings
+
+Nothing is deployed yet. A deployment with accounts uses these, besides the
+serving settings in [Serving from Postgres](#serving-from-postgres).
+
+The site (`web/`):
+
+| Setting | |
+|---|---|
+| `DATABASE_URL` | Postgres for Better Auth: the `sa_auth` login, as a direct connection string |
+| `BETTER_AUTH_SECRET` | Signs sessions and encrypts the token signing key: `openssl rand -base64 32` |
+| `BETTER_AUTH_URL` | The site's public origin, such as `https://example.com`. Tokens carry it as issuer and audience |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | A Google Cloud OAuth client (web application) with the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/google`. Unset hides the Google button |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Sign-in codes by email through Resend, from an address on a domain verified there. Without a key, production refuses to send a code rather than log it |
+| `SA_API_URL` | Where the API is |
+| `AUTH_DEV_FIXED_OTP` | Never set. Production ignores it anyway |
+
+The API (`.env`):
+
+| Setting | |
+|---|---|
+| `SA_AUTH_JWKS_URL` | `<BETTER_AUTH_URL>/api/auth/jwks`, reachable from the API |
+| `SA_AUTH_ISSUER`, `SA_AUTH_AUDIENCE` | Both exactly `BETTER_AUTH_URL` |
+| `SA_PG_APP_DSN`, `SA_PG_READ_ROLES` | The `sa_app` login and `["sa_app"]`, with the separate roles |
+| `SA_PG_APP_SCHEMA` | Only when the portfolio schema isn't called `app` |
+
+### Before it goes public
+
+Two things gate a public launch. Both sit outside the build (spec §11).
+
+- **A lawyer's sign-off.** Showing BUY/SELL beside a specific person's holdings
+  may count as investment advice under SEBI's Investment Adviser rules, which
+  are stricter than the rules for publishing ratings in general. The owner
+  takes this to their lawyer before launch. If the advice renames the labels,
+  `web/src/config/signals.ts` is the one file to change.
+- **A privacy notice.** Holdings are personal financial data under India's
+  DPDP Act. The build supplies deleting a portfolio and deleting an account
+  (which deletes the portfolio first), and stores no uploaded files. The owner
+  adds a privacy notice before launch.
+
 ## Next: phase 4
 
 Serving — FastAPI endpoints, a Streamlit dashboard, LLM narrative generation
