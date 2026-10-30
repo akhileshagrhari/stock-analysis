@@ -973,6 +973,7 @@ def _batch_reads():
         (queries.latest_signals, (isins,)),
         (queries.split_bonus_dates, (isins,)),
         (queries.complete_run_dates, ()),
+        (queries.instruments_by_isin, (isins,)),
     ]
 
 
@@ -983,6 +984,7 @@ def test_batch_reads_return_empty_for_empty_input(duck_site):
         assert queries.latest_closes(db, []) == {}
         assert queries.latest_signals(db, []) == {}
         assert queries.split_bonus_dates(db, []) == {}
+        assert queries.instruments_by_isin(db, []) == {}
 
 
 def test_latest_closes_takes_newest_non_null_close(duck_site):
@@ -1030,6 +1032,15 @@ def test_split_bonus_dates_only_splits_and_bonuses(duck_site):
         got = queries.split_bonus_dates(db, [FIRST, MM, NOSIGNAL])
     assert got[MM] == [dt.date(2019, 3, 5), dt.date(2021, 6, 1)]  # not the dividend
     assert NOSIGNAL not in got
+
+
+def test_instruments_by_isin(duck_site):
+    from stockanalysis.serve import queries
+
+    with Database(duck_site.path, read_only=True) as db:
+        got = queries.instruments_by_isin(db, [FIRST, NOSIGNAL, "INE_UNKNOWN"])
+    assert set(got) == {FIRST, NOSIGNAL}
+    assert got[FIRST].isin == FIRST and got[FIRST].nse_symbol
 
 
 def test_complete_run_dates(duck_site):

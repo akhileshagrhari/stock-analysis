@@ -20,7 +20,7 @@ from test_postgres_serving import (  # noqa: F401  (fixtures)
 
 from stockanalysis.config import settings
 from stockanalysis.db.database import Database
-from stockanalysis.portfolio import store
+from stockanalysis.portfolio import store, view
 from stockanalysis.portfolio.kite import MAX_BYTES, NOT_KITE
 from stockanalysis.serve import queries
 
@@ -154,3 +154,67 @@ def test_resolve_symbols_postgres(published):
     with pooled_reader() as db:
         got = queries.resolve_symbols(db, ["test001", "NIFTYBEES"])
     assert set(got) == {"TEST001"}
+
+
+PORTFOLIO = "/v1/me/portfolio"
+
+
+def _get(api, sign, user="u1"):
+    return api.get(PORTFOLIO, headers=_bearer(sign(sub=user)))
+
+
+def test_portfolio_after_import(api, sign):
+    assert _post(api, sign, SMALL).status_code == 200
+    r = _get(api, sign)
+    assert r.status_code == 200, r.text
+    assert r.headers["cache-control"] == "no-store"
+    out = r.json()
+    rows = {h["symbol"]: h for h in out["holdings"]}
+    t = rows["TEST001"]
+    assert t["group"] in ("BUY", "HOLD", "SELL") and t["score"] is not None
+    assert t["isin"] == "INE000000001" and t["not_rated_reason"] is None
+    n = rows["NIFTYBEES"]
+    assert n["group"] == "NOT_RATED" and n["isin"] is None
+    assert n["not_rated_reason"] == view.OUTSIDE_UNIVERSE
+    assert n["price"] == 210.0 and n["price_source"] == "file"
+    assert [g["group"] for g in out["groups"]] == ["BUY", "HOLD", "SELL", "NOT_RATED"]
+    assert out["last_import"]["rows"] == 2 and out["last_import"]["matched"] == 1
+    assert out["ratings_as_of"] is not None
+    assert out["value"] > 0 and isinstance(out["prices_to"], str)
+    assert [h["group"] for h in out["holdings"]][0] == t["group"]
+
+
+def test_portfolio_empty_is_200(api, sign):
+    r = _get(api, sign)
+    assert r.status_code == 200
+    out = r.json()
+    assert out["holdings"] == [] and out["value"] == 0 and out["last_import"] is None
+    assert len(out["groups"]) == 4 and out["unpriced"] == 0 and out["pnl_pct"] is None
+
+
+def test_portfolio_is_per_user(api, sign):
+    _post(api, sign, SMALL, user="a")
+    assert _get(api, sign, user="b").json()["holdings"] == []
+    assert len(_get(api, sign, user="a").json()["holdings"]) == 2
+
+
+def test_portfolio_needs_token_and_postgres(api, sign, monkeypatch):
+    assert api.get(PORTFOLIO).status_code == 401
+    monkeypatch.setattr(settings, "serve_backend", "duckdb")
+    r = _get(api, sign)
+    assert r.status_code == 503 and r.json()["detail"] == "Portfolio needs Postgres."
+
+
+def test_portfolio_unscored_matched_holding_has_reason(api, sign):
+    body = b'"Instrument","Qty.","Avg. cost","LTP"\n"NOSIGNAL",3,50,60\n'
+    from stockanalysis.db.postgres import pooled_reader
+
+    with pooled_reader() as db:
+        nos = next(
+            i for i in queries.list_instruments(db) if queries.latest_signal(db, i.isin) is None
+        )
+    body = body.replace(b"NOSIGNAL", nos.nse_symbol.encode())
+    assert _post(api, sign, body).status_code == 200
+    h = _get(api, sign).json()["holdings"][0]
+    assert h["group"] == "NOT_RATED" and h["isin"] == nos.isin
+    assert h["not_rated_reason"] and h["not_rated_reason"] != view.OUTSIDE_UNIVERSE

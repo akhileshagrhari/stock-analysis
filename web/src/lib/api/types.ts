@@ -28,3 +28,6 @@ export type NewsItem = Full<S["NewsOut"]>;
 export type ModelInfo = Full<S["ModelInfoOut"]>;
 export type Health = Full<S["HealthOut"]>;
 export type ImportResult = Full<S["ImportOut"]>;
+export type Portfolio = Full<S["PortfolioOut"]>;
+export type Holding = Full<S["HoldingOut"]>;
+export type GroupShare = Full<S["GroupShareOut"]>;

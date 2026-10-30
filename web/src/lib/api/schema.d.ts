@@ -446,7 +446,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Portfolio */
+        get: operations["get_portfolio_v1_me_portfolio_get"];
         put?: never;
         post?: never;
         /** Delete Portfolio */
@@ -765,6 +766,20 @@ export interface components {
              */
             per_share_unit: "INR";
         };
+        /** GroupShareOut */
+        GroupShareOut: {
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "BUY" | "HOLD" | "SELL" | "NOT_RATED";
+            /** Holdings */
+            holdings: number;
+            /** Value */
+            value: number;
+            /** Share */
+            share: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -846,6 +861,56 @@ export interface components {
              * @description The day's family breakdown, replayed from that day's stored z-scores with the current model's weights — a row whose model_version differs is re-derived, as /explanation's stale flag says. Empty when the day stored no factor rows.
              */
             families?: components["schemas"]["FamilyPointOut"][];
+        };
+        /** HoldingOut */
+        HoldingOut: {
+            /** Symbol */
+            symbol: string;
+            /** Isin */
+            isin: string | null;
+            /** Name */
+            name: string | null;
+            /** Quantity */
+            quantity: number;
+            /** Avg Cost */
+            avg_cost: number;
+            /** Price */
+            price: number | null;
+            /** Price Date */
+            price_date: string | null;
+            /** Price Source */
+            price_source: ("site" | "file") | null;
+            /** Value */
+            value: number | null;
+            /** Invested */
+            invested: number;
+            /** Pnl */
+            pnl: number | null;
+            /** Pnl Pct */
+            pnl_pct: number | null;
+            /** Weight */
+            weight: number | null;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "BUY" | "HOLD" | "SELL" | "NOT_RATED";
+            /** Score */
+            score: number | null;
+            /** Signal As Of */
+            signal_as_of: string | null;
+            /** Older Rating */
+            older_rating: boolean;
+            /** Earlier Model */
+            earlier_model: boolean;
+            /** Was Signal */
+            was_signal: string | null;
+            /** Red Flags */
+            red_flags: string[];
+            /** Not Rated Reason */
+            not_rated_reason: string | null;
+            /** Split Since Upload */
+            split_since_upload: boolean;
         };
         /** ImportOut */
         ImportOut: {
@@ -1106,6 +1171,32 @@ export interface components {
              * @default false
              */
             counts_toward_sentiment: boolean;
+        };
+        /** PortfolioOut */
+        PortfolioOut: {
+            /** Holdings */
+            holdings: components["schemas"]["HoldingOut"][];
+            /** Groups */
+            groups: components["schemas"]["GroupShareOut"][];
+            /** Value */
+            value: number;
+            /** Invested */
+            invested: number;
+            /** Pnl */
+            pnl: number;
+            /** Pnl Pct */
+            pnl_pct: number | null;
+            /** Unpriced */
+            unpriced: number;
+            /** Ratings As Of */
+            ratings_as_of: string | null;
+            /** Older Ratings */
+            older_ratings: number;
+            /** Prices From */
+            prices_from: string | null;
+            /** Prices To */
+            prices_to: string | null;
+            last_import: components["schemas"]["ImportOut"] | null;
         };
         /** PreviousSignalOut */
         PreviousSignalOut: {
@@ -2125,6 +2216,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_portfolio_v1_me_portfolio_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioOut"];
                 };
             };
             /** @description Validation Error */

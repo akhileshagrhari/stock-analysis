@@ -567,6 +567,20 @@ def resolve_symbols(db: Database, symbols: list[str]) -> dict[str, Instrument]:
     return found
 
 
+def instruments_by_isin(db: Database, isins: list[str]) -> dict[str, Instrument]:
+    """Instruments for many ISINs at once, keyed by ISIN. Absent: not in the universe."""
+    if not isins:
+        return {}
+    marks = ", ".join("?" for _ in isins)
+    df = db.query(
+        "SELECT i.isin, i.nse_symbol, i.bse_code, i.name, i.sector, i.industry, "
+        "i.listing_date FROM instruments AS i "
+        f"WHERE i.isin IN ({marks})",
+        list(isins),
+    )
+    return {_req_str(row["isin"]): _instrument(row) for _, row in df.iterrows()}
+
+
 def search_instruments(db: Database, text: str, limit: int = 10) -> list[Instrument]:
     """Instruments matching what someone is typing, best match first.
 

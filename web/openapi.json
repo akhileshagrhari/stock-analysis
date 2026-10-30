@@ -1196,6 +1196,53 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Get Portfolio",
+        "operationId": "get_portfolio_v1_me_portfolio_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -2045,6 +2092,40 @@
         ],
         "title": "FinancialsOut"
       },
+      "GroupShareOut": {
+        "properties": {
+          "group": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "HOLD",
+              "SELL",
+              "NOT_RATED"
+            ],
+            "title": "Group"
+          },
+          "holdings": {
+            "type": "integer",
+            "title": "Holdings"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "share": {
+            "type": "number",
+            "title": "Share"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group",
+          "holdings",
+          "value",
+          "share"
+        ],
+        "title": "GroupShareOut"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2275,6 +2356,230 @@
           "as_of"
         ],
         "title": "HistoryPointOut"
+      },
+      "HoldingOut": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "avg_cost": {
+            "type": "number",
+            "title": "Avg Cost"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "price_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Date"
+          },
+          "price_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "site",
+                  "file"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Source"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "invested": {
+            "type": "number",
+            "title": "Invested"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "pnl_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Pct"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "HOLD",
+              "SELL",
+              "NOT_RATED"
+            ],
+            "title": "Group"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "signal_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal As Of"
+          },
+          "older_rating": {
+            "type": "boolean",
+            "title": "Older Rating"
+          },
+          "earlier_model": {
+            "type": "boolean",
+            "title": "Earlier Model"
+          },
+          "was_signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Was Signal"
+          },
+          "red_flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Red Flags"
+          },
+          "not_rated_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Rated Reason"
+          },
+          "split_since_upload": {
+            "type": "boolean",
+            "title": "Split Since Upload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "isin",
+          "name",
+          "quantity",
+          "avg_cost",
+          "price",
+          "price_date",
+          "price_source",
+          "value",
+          "invested",
+          "pnl",
+          "pnl_pct",
+          "weight",
+          "group",
+          "score",
+          "signal_as_of",
+          "older_rating",
+          "earlier_model",
+          "was_signal",
+          "red_flags",
+          "not_rated_reason",
+          "split_since_upload"
+        ],
+        "title": "HoldingOut"
       },
       "ImportOut": {
         "properties": {
@@ -2901,6 +3206,117 @@
         },
         "type": "object",
         "title": "NewsOut"
+      },
+      "PortfolioOut": {
+        "properties": {
+          "holdings": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingOut"
+            },
+            "type": "array",
+            "title": "Holdings"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupShareOut"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "invested": {
+            "type": "number",
+            "title": "Invested"
+          },
+          "pnl": {
+            "type": "number",
+            "title": "Pnl"
+          },
+          "pnl_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Pct"
+          },
+          "unpriced": {
+            "type": "integer",
+            "title": "Unpriced"
+          },
+          "ratings_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratings As Of"
+          },
+          "older_ratings": {
+            "type": "integer",
+            "title": "Older Ratings"
+          },
+          "prices_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices From"
+          },
+          "prices_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices To"
+          },
+          "last_import": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "holdings",
+          "groups",
+          "value",
+          "invested",
+          "pnl",
+          "pnl_pct",
+          "unpriced",
+          "ratings_as_of",
+          "older_ratings",
+          "prices_from",
+          "prices_to",
+          "last_import"
+        ],
+        "title": "PortfolioOut"
       },
       "PreviousSignalOut": {
         "properties": {
