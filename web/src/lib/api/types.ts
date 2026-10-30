@@ -27,3 +27,4 @@ export type PriceBar = Full<S["PriceBarOut"]>;
 export type NewsItem = Full<S["NewsOut"]>;
 export type ModelInfo = Full<S["ModelInfoOut"]>;
 export type Health = Full<S["HealthOut"]>;
+export type ImportResult = Full<S["ImportOut"]>;

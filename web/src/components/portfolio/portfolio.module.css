@@ -1,0 +1,19 @@
+.importCard { display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
+.importCard h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--ink); }
+.importForm { display: flex; flex-direction: column; gap: 14px; }
+.drop {
+  position: relative; display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center;
+  padding: 28px 18px; border: 1.5px dashed var(--line2); border-radius: 14px; background: var(--muted2); cursor: pointer;
+}
+.drop:hover, .drop:focus-within { border-color: var(--accent); background: var(--accent-soft); }
+.dropTitle { font-size: 15px; font-weight: 600; color: var(--ink); }
+.dropHelp { font-size: 13px; color: var(--ink3); }
+.fileName { font-size: 13.5px; font-weight: 600; color: var(--accent-ink); word-break: break-all; }
+.fileInput { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.modeSub { margin: -6px 0 0; font-size: 13px; color: var(--ink3); }
+.save {
+  border: 0; border-radius: 13px; background: var(--accent); color: #fff; padding: 12px 16px; font: 600 15px var(--font); cursor: pointer;
+}
+.save:disabled { opacity: .6; cursor: default; }
+.noticeText { margin: 0; }
+.problems { margin: 6px 0 0; padding-left: 18px; }
