@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Literal
 
 from psycopg import sql
@@ -18,6 +18,8 @@ from psycopg import sql
 from stockanalysis.config import settings
 from stockanalysis.portfolio.kite import LIMIT, ImportRefused, ParsedRow
 from stockanalysis.portfolio.lots import combine
+
+_PLACES = Decimal("0.0001")
 
 Mode = Literal["replace", "add"]
 
@@ -67,6 +69,15 @@ def ensure_schema(conn: Any) -> None:
     conn.execute(sql.SQL(_DDL).format(s=_s()))
 
 
+def _lock_user(conn: Any, user_id: str) -> None:
+    """Serialize writers for one user until the transaction ends.
+
+    Row locks can't cover a row that doesn't exist yet, so two simultaneous
+    Adds would otherwise overwrite rather than sum.
+    """
+    conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [user_id])
+
+
 def _too_large(symbol: str) -> ImportRefused:
     return ImportRefused(f"{symbol.upper()} adds up to too large a holding.")
 
@@ -98,6 +109,11 @@ def save_import(
     `ImportRefused`; the caller's transaction then rolls back.
     """
     s = _s()
+    # Refuse what can't be stored before writing anything.
+    for row in rows:
+        if row.quantity.quantize(_PLACES, rounding=ROUND_HALF_UP) <= 0:
+            raise ImportRefused(f"{row.symbol.upper()}: quantity is too small.")
+    _lock_user(conn, user_id)
     if mode == "replace":
         conn.execute(sql.SQL("DELETE FROM {s}.holdings WHERE user_id = %s").format(s=s), [user_id])
 
@@ -134,7 +150,7 @@ def save_import(
                 "ON CONFLICT (user_id, key) DO UPDATE SET symbol = EXCLUDED.symbol, "
                 "isin = EXCLUDED.isin, quantity = EXCLUDED.quantity, "
                 "avg_cost = EXCLUDED.avg_cost, file_price = EXCLUDED.file_price, "
-                "updated_at = EXCLUDED.updated_at"
+                "uploaded_at = EXCLUDED.uploaded_at, updated_at = EXCLUDED.updated_at"
             ).format(s=s),
             [user_id, key, row.symbol, isin, qty, cost, row.file_price, now, now],
         )
@@ -172,8 +188,11 @@ def last_import(conn: Any, user_id: str) -> ImportRecord | None:
 
 
 def delete_portfolio(conn: Any, user_id: str) -> int:
-    """Remove the user's holdings (the import log stays). Returns rows removed."""
+    """Remove the user's holdings and import log. Returns holdings removed."""
+    _lock_user(conn, user_id)
     cur = conn.execute(
         sql.SQL("DELETE FROM {s}.holdings WHERE user_id = %s").format(s=_s()), [user_id]
     )
-    return cur.rowcount
+    removed = cur.rowcount
+    conn.execute(sql.SQL("DELETE FROM {s}.imports WHERE user_id = %s").format(s=_s()), [user_id])
+    return removed

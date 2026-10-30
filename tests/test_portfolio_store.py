@@ -79,7 +79,7 @@ def test_add_combines_same_isin(app):
     (h,) = load(app, "u")
     assert (h.quantity, h.avg_cost, h.file_price) == (40, 175, 1500)
     assert h.isin == INFY
-    assert h.uploaded_at == T1
+    assert h.uploaded_at == T2
 
 
 def test_add_folds_an_unmatched_row_once_it_matches(app):
@@ -138,3 +138,50 @@ def test_last_import_is_the_newest(app):
     with app() as conn:
         rec = store.last_import(conn, "u")
     assert (rec.filename, rec.mode, rec.rows, rec.matched) == ("two.csv", "add", 1, 0)
+
+
+def test_delete_removes_holdings_and_imports_for_that_user_only(app):
+    save(app, "a", [row("INFY", 1, 1)], {"INFY": INFY}, "replace")
+    save(app, "b", [row("TCS", 1, 1)], {"TCS": TCS}, "replace")
+    with app() as conn:
+        assert store.delete_portfolio(conn, "a") == 1
+    with app() as conn:
+        assert store.last_import(conn, "a") is None
+        assert store.last_import(conn, "b") is not None
+    assert load(app, "a") == []
+    assert len(load(app, "b")) == 1
+
+
+def test_tiny_quantity_is_refused_before_writing(app):
+    save(app, "u", [row("INFY", 1, 1)], {"INFY": INFY}, "replace")
+    with pytest.raises(ImportRefused, match="TINY: quantity is too small"):
+        save(app, "u", [row("TCS", 2, 2), row("TINY", "0.00001", 1)], {}, "replace", T2)
+    assert [h.symbol for h in load(app, "u")] == ["INFY"]
+
+
+def test_simultaneous_adds_sum(app):
+    import threading
+    import time
+
+    save(app, "u", [row("INFY", 1, 100)], {"INFY": INFY}, "replace")
+    # Different symbol first so each Add inserts a brand-new key.
+    errors = []
+    gate = threading.Event()
+
+    def second():
+        try:
+            gate.wait()
+            save(app, "u", [row("NEWCO", 5, 10)], {}, "add", T2)
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    th = threading.Thread(target=second)
+    th.start()
+    with app() as conn:
+        store.save_import(conn, "u", [row("NEWCO", 3, 10)], {}, "add", "x.csv", T2)
+        gate.set()
+        time.sleep(0.5)  # the other Add is now waiting on the lock
+    th.join(10)
+    assert not errors
+    got = {h.symbol: h.quantity for h in load(app, "u")}
+    assert got["NEWCO"] == 8
