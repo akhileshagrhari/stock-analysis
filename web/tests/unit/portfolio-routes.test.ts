@@ -86,6 +86,17 @@ describe("POST /api/portfolio/import", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
+  it("does not send a signed-in visitor to sign in when the API refuses their fresh token", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.fetch.mockResolvedValue(Response.json({ detail: "Sign in again." }, { status: 401, headers: { "www-authenticate": "Bearer" } }));
+    const res = await post();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ detail: "The server couldn't confirm your sign-in. Nothing was changed. Try again later." });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(error).toHaveBeenCalledOnce();
+    error.mockRestore();
+  });
+
   it("answers 504 when the API times out", async () => {
     mocks.fetch.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
     const res = await post();
@@ -129,5 +140,12 @@ describe("DELETE /api/portfolio", () => {
   it("answers 502 when the API cannot be reached", async () => {
     mocks.fetch.mockRejectedValue(new TypeError("fetch failed"));
     expect((await del()).status).toBe(502);
+  });
+
+  it("answers 502, not 401, when the API refuses a fresh token", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.fetch.mockResolvedValue(Response.json({ detail: "Sign in again." }, { status: 401 }));
+    expect((await del()).status).toBe(502);
+    error.mockRestore();
   });
 });

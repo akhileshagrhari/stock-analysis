@@ -30,9 +30,16 @@ describe("userGet", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it("throws SignedOutError on a 401", async () => {
+  it("treats the API refusing a token minted just now as an outage, and logs why", async () => {
+    // A redirect to sign in would loop: /login sends a signed-in visitor back.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.fetch.mockResolvedValue(Response.json({ detail: "Sign in again." }, { status: 401 }));
-    await expect(userGet("/me/portfolio")).rejects.toBeInstanceOf(SignedOutError);
+    const thrown = await userGet("/me/portfolio").catch((e: unknown) => e);
+    expect(thrown).toBeInstanceOf(ApiUnavailableError);
+    expect(thrown).toMatchObject({ status: 401 });
+    expect(error).toHaveBeenCalledOnce();
+    expect(error.mock.calls[0].join(" ")).toMatch(/SA_AUTH_ISSUER/);
+    error.mockRestore();
   });
 
   it("is null for the API's own 404", async () => {
