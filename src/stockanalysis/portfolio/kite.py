@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Literal
@@ -46,13 +47,16 @@ class ImportRefused(ValueError):
         self.problems = problems or []
 
 
+# Plain decimals only: no exponent, NaN or Infinity.
+_PLAIN = re.compile(r"-?(\d+\.?\d*|\.\d+)")
+# The store keeps these as NUMERIC(20,4); anything at or past this can't fit.
+LIMIT = Decimal(10) ** 16
+
+
 def _number(raw: str) -> Decimal | None:
-    """A finite Decimal from text like "1,234.50", or None if it isn't one."""
-    try:
-        value = Decimal(raw.replace(",", "").strip())
-    except InvalidOperation:
-        return None
-    return value if value.is_finite() else None
+    """A Decimal from text like "1,234.50", or None if it isn't a plain number."""
+    text = raw.replace(",", "").strip()
+    return Decimal(text) if _PLAIN.fullmatch(text) else None
 
 
 def _parse_row(
@@ -66,11 +70,15 @@ def _parse_row(
         return None, "quantity isn't a number."
     if qty <= 0:
         return None, "quantity must be more than 0."
+    if qty >= LIMIT:
+        return None, "quantity is too large."
     cost = _number(cost_raw)
     if cost is None:
         return None, "average cost isn't a number."
     if cost < 0:
         return None, "average cost can't be negative."
+    if cost >= LIMIT:
+        return None, "average cost is too large."
     price = None
     if ltp_raw is not None and ltp_raw.strip():
         price = _number(ltp_raw)
@@ -78,6 +86,8 @@ def _parse_row(
             return None, "last price isn't a number."
         if price < 0:
             return None, "last price can't be negative."
+        if price >= LIMIT:
+            return None, "last price is too large."
     return ParsedRow(symbol, qty, cost, price), None
 
 
@@ -140,13 +150,21 @@ def parse_kite_holdings(data: bytes) -> ParsedFile:
         raise ImportRefused("The file has no holdings in it.")
 
     merged: dict[str, ParsedRow] = {}
-    for _, r in parsed:
+    for line, r in parsed:
         key = r.symbol.upper()
         prev = merged.get(key)
         if prev is None:
             merged[key] = r
             continue
-        qty, cost = combine(prev.quantity, prev.avg_cost, r.quantity, r.avg_cost)
+        try:
+            qty, cost = combine(prev.quantity, prev.avg_cost, r.quantity, r.avg_cost)
+        except InvalidOperation:
+            qty = cost = LIMIT
+        if qty >= LIMIT or cost >= LIMIT:
+            raise ImportRefused(
+                "Some rows can't be imported.",
+                [f"Row {line}: {r.symbol} adds up to too large a holding."],
+            )
         # The file price comes from the last occurrence.
         merged[key] = ParsedRow(prev.symbol, qty, cost, r.file_price)
     return ParsedFile("kite_csv", list(merged.values()))

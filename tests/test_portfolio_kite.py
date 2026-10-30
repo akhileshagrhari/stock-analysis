@@ -112,3 +112,34 @@ def test_limits():
     rows = "".join(f"S{i},1,1,1\n" for i in range(MAX_ROWS + 1))
     with pytest.raises(ImportRefused, match="more than 2,000 holdings"):
         parse_kite_holdings((HEADER + "\n" + rows).encode())
+
+
+@pytest.mark.parametrize(
+    "row, problem",
+    [
+        ("A,1e30,10,1", "Row 2: quantity isn't a number."),
+        ("A,1" + "0" * 400 + ",10,1", "Row 2: quantity is too large."),
+        ("A,10000000000000000,10,1", "Row 2: quantity is too large."),
+        ("A,1,1" + "0" * 400 + ",1", "Row 2: average cost is too large."),
+        ("A,1,10,1" + "0" * 400, "Row 2: last price is too large."),
+        ("A,1,1e3,1", "Row 2: average cost isn't a number."),
+        ("A,1,10,NaN", "Row 2: last price isn't a number."),
+        ("A,1,Infinity,1", "Row 2: average cost isn't a number."),
+    ],
+)
+def test_huge_and_exponent_values_are_refused(row, problem):
+    with pytest.raises(ImportRefused) as e:
+        parse_kite_holdings(f"{HEADER}\n{row}\n".encode())
+    assert e.value.problems == [problem]
+
+
+def test_just_under_the_bound_is_accepted():
+    f = parse_kite_holdings(f"{HEADER}\nA,9999999999999999.9999,1,1\n".encode())
+    assert f.rows[0].quantity == Decimal("9999999999999999.9999")
+
+
+def test_duplicates_that_add_past_the_bound_are_refused():
+    big = "9999999999999999"
+    with pytest.raises(ImportRefused) as e:
+        parse_kite_holdings(f"{HEADER}\nA,{big},1,1\nA,{big},1,1\n".encode())
+    assert e.value.problems == ["Row 3: A adds up to too large a holding."]
