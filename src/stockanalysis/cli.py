@@ -1603,6 +1603,8 @@ def setup_accounts_cmd() -> None:
         raise typer.Exit(1) from e
     from psycopg import sql
 
+    from stockanalysis.portfolio import store
+
     try:
         dsn = configured_dsn()
         with psycopg.connect(dsn, autocommit=True) as conn:
@@ -1612,6 +1614,7 @@ def setup_accounts_cmd() -> None:
                     sql.Identifier(settings.pg_app_schema)
                 )
             )
+            store.ensure_schema(conn)
     except PostgresUnavailable as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from e
@@ -1620,7 +1623,8 @@ def setup_accounts_cmd() -> None:
         raise typer.Exit(1) from e
 
     console.print(
-        f"[green]Schemas 'auth' and {settings.pg_app_schema!r} are ready.[/green] Next: "
+        f"[green]Schemas 'auth' and {settings.pg_app_schema!r} (with its tables) are ready."
+        "[/green] Next: "
         "`npm --prefix web run auth:migrate` creates Better Auth's tables in 'auth'."
     )
 
