@@ -156,6 +156,25 @@ class TestUnconfigured:
         with pytest.raises(ValueError):
             Settings(_env_file=None, pg_schema=name)
 
+    @pytest.mark.parametrize(
+        ("schema", "app_schema", "says"),
+        [
+            ("site", "site", "SA_PG_APP_SCHEMA"),
+            ("site", pub.release_schema("site", "20261030_120000"), "release"),
+            ("site", "auth", "accounts"),
+            ("auth", "app", "accounts"),
+        ],
+    )
+    def test_schema_settings_refuse_names_that_collide(self, schema, app_schema, says):
+        """Publish replaces `pg_schema` and drops its releases, and the site
+        keeps accounts in `auth`: portfolios may live in none of them."""
+        with pytest.raises(ValueError, match=says):
+            Settings(_env_file=None, pg_schema=schema, pg_app_schema=app_schema)
+
+    def test_schema_settings_accept_distinct_names(self):
+        fresh = Settings(_env_file=None, pg_schema="site", pg_app_schema="site_app")
+        assert (fresh.pg_schema, fresh.pg_app_schema) == ("site", "site_app")
+
     def test_publish_says_what_to_configure(self, db):
         with pytest.raises(PostgresUnavailable, match="SA_PG_DSN"):
             pub.publish(db)

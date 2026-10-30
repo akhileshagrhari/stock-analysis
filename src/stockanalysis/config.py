@@ -6,8 +6,13 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The schema the site's Better Auth keeps accounts and sessions in
+# (`stockanalysis setup-accounts` creates it; `web/src/lib/auth/server.ts`
+# pins its search_path there). Neither publish nor portfolios may use it.
+AUTH_SCHEMA = "auth"
 
 
 class Settings(BaseSettings):
@@ -228,6 +233,38 @@ class Settings(BaseSettings):
                 f"renames and drops the schema it is given. Use a dedicated name."
             )
         return value
+
+    @model_validator(mode="after")
+    def _schemas_do_not_collide(self) -> Settings:
+        """Keep the three schemas apart.
+
+        Publish replaces `pg_schema` wholesale and drops the releases it kept
+        beside it (`<pg_schema>_release_*`, see `db.publish.release_schema`);
+        accounts live in `auth`. Portfolios in any of those would be lost, and
+        publish must never rename or drop the accounts schema.
+        """
+        live, user_data = self.pg_schema, self.pg_app_schema
+        if live == AUTH_SCHEMA:
+            raise ValueError(
+                f"SA_PG_SCHEMA={live!r} is the schema the site keeps accounts in, "
+                f"and publish renames and drops the schema it is given. Use another name."
+            )
+        if user_data == AUTH_SCHEMA:
+            raise ValueError(
+                f"SA_PG_APP_SCHEMA={user_data!r} is the schema the site keeps accounts "
+                f"in. Use a dedicated name for portfolios."
+            )
+        if user_data == live:
+            raise ValueError(
+                f"SA_PG_APP_SCHEMA and SA_PG_SCHEMA are both {live!r}. Publish replaces "
+                f"SA_PG_SCHEMA wholesale, which would delete every portfolio. Use another name."
+            )
+        if user_data.startswith(f"{live}_release_"):
+            raise ValueError(
+                f"SA_PG_APP_SCHEMA={user_data!r} is named like a release of "
+                f"{live!r} ({live}_release_*), which publish drops. Use another name."
+            )
+        return self
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
